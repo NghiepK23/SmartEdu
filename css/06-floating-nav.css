@@ -1,0 +1,180 @@
+/* EducMind · css/06-floating-nav.css — Thanh điều hướng nổi, tay nắm thu gọn, thứ tự lớp hiển thị, bo góc thống nhất, ảnh nền. */
+/* ===== Thanh điều hướng nổi: Crema Studio sidebar + viên thuốc trên cùng ===== */
+@media(min-width:901px){
+  .layout.teacher-layout, .layout:not(.teacher-layout){
+    max-width:1440px!important;
+    margin:78px auto 0!important;
+    padding:0 18px 28px!important;
+    align-items:start;
+    min-height:calc(100vh - 78px);
+  }
+  .layout>.main{min-height:calc(100vh - 106px)}
+  .layout.teacher-layout:not(.sidebar-collapsed),
+  .layout:not(.teacher-layout):not(.sidebar-collapsed){
+    grid-template-columns:292px minmax(0,1fr)!important;
+    gap:0!important;
+  }
+  .layout.teacher-layout.sidebar-collapsed,
+  .layout:not(.teacher-layout).sidebar-collapsed{
+    grid-template-columns:92px minmax(0,1fr)!important;
+    gap:0!important;
+  }
+
+  /* Sidebar nổi kiểu Crema Studio */
+  .layout>.side{
+    position:fixed!important;
+    top:78px!important;
+    left:max(18px, calc(50vw - 702px))!important;
+    right:auto!important;
+    bottom:16px!important;
+    transform:none!important;
+    width:274px!important;
+    max-width:274px!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:calc(100vh - 94px)!important;
+    max-height:calc(100svh - 94px)!important;
+    z-index:2147483646!important;
+    align-self:auto;
+    margin:0!important;
+    padding:12px 11px 10px!important;
+    border-radius:28px!important;
+    display:flex!important;
+    flex-direction:column!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    overscroll-behavior:contain;
+    scrollbar-width:thin;
+    scrollbar-color:rgba(100,116,139,.45) transparent;
+  }
+  .layout.sidebar-collapsed>.side{
+    left:max(18px, calc(50vw - 702px))!important;
+    width:74px!important;
+    max-width:74px!important;
+    padding:14px 10px 12px!important;
+    border-radius:26px!important;
+  }
+  .layout>.side .items{display:grid;gap:3px}
+  .layout>.side .items .nav span.nav-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+
+  /* Phần nội dung luôn nằm ở cột 2 */
+  .layout>.main{grid-column:2 / -1;min-height:calc(100vh - 106px);padding:22px clamp(20px,2.5vw,30px) 32px}
+}
+
+/* ===== Tay nắm thu gọn/mở rộng: nút tròn ở mép trên-phải sidebar ===== */
+@media(min-width:901px){
+  .layout>.side-toggle{
+    position:fixed;
+    top:94px;
+    left:var(--tog-x,276px);
+    transform:none;
+    z-index:2147483647;
+    display:grid;
+    place-items:center;
+    width:32px;
+    height:32px;
+    min-height:32px;
+    margin:0;
+    padding:0;
+    border:1px solid var(--line-strong);
+    border-radius:999px;
+    background:var(--surface);
+    color:var(--ink);
+    font-size:14px;
+    line-height:1;
+    box-shadow:0 2px 10px -2px rgba(15,35,70,.18);
+    cursor:pointer;
+    transition:transform .18s var(--ease),box-shadow .18s var(--ease),background .18s var(--ease),left .22s var(--ease);
+  }
+  .layout>.side-toggle:hover{
+    box-shadow:0 6px 16px -3px rgba(15,35,70,.24);
+    transform:scale(1.06);
+  }
+  .layout>.side-toggle:active{transform:scale(.96)}
+  .layout>.side-toggle:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+}
+@media(max-width:900px){
+  .layout>.side-toggle{display:none!important}
+}
+/* Lớp phủ hộp thoại luôn nằm trên tay nắm */
+.ov{z-index:120!important}
+
+/* Thanh trên nổi dạng viên thuốc (Floating Top Capsule) */
+.top{
+  position:fixed!important;
+  top:12px!important;
+  left:max(18px, calc(50vw - 702px))!important;
+  right:max(18px, calc(50vw - 702px))!important;
+  height:54px;
+  border-radius:999px!important;
+  padding:8px 14px!important;
+  z-index:2147483647!important;
+}
+.cdbar,.asgbar{position:static!important;top:auto!important;bottom:auto!important;max-height:none!important}
+
+.layout{height:auto!important;min-height:calc(100vh - 78px);overflow:visible!important}
+.layout>.main,.main,.view{height:auto!important;overflow:visible!important}
+
+@media(min-width:901px){
+  .top.db-student-top .logo{display:none}
+}
+@media(max-width:900px){
+  .top{
+    top:8px!important;
+    left:10px!important;
+    right:10px!important;
+    height:auto;
+    min-height:52px;
+    border-radius:20px!important;
+    padding:8px 12px!important;
+  }
+  #app>.layout{margin-top:68px!important;padding:0!important}
+  .layout>.side,.teacher-layout .side,.layout:not(.teacher-layout) .side{
+    position:relative!important;top:auto!important;left:auto!important;bottom:auto!important;
+    width:100%!important;height:fit-content!important;min-height:0!important;max-height:none!important;overflow:visible!important;
+  }
+}
+
+/* Thứ tự lớp: header > điều hướng > nội dung */
+#app .layout>.side{z-index:2147483646!important}
+#app .layout>.main,#main{position:relative;z-index:0!important}
+
+/* Hệ thống bo góc thống nhất: viên thuốc cho nút/tab, bo mềm cho ô nhập */
+:root{--radius-control:14px}
+button,.btn,.seg,.folder-tabs{border-radius:999px!important}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+select,textarea,.selectbox{
+  border-radius:var(--radius-control)!important;
+}
+.folder-tabs>button,.seg>button,
+.seg.seg-page>button,.seg.seg-page>button:first-child,.seg.seg-page>button:last-child,
+.folder-tabs>button:first-child,.folder-tabs>button:last-child{
+  border-radius:999px!important;
+}
+
+/* Thanh cuộn sidebar màu xanh đá dịu đồng bộ */
+@media(min-width:901px){
+  .layout>.side{scrollbar-width:auto;scrollbar-color:auto}
+  .layout>.side::-webkit-scrollbar{width:8px}
+  .layout>.side::-webkit-scrollbar-track{background:transparent;border-radius:8px;margin:24px 4px}
+  .layout>.side::-webkit-scrollbar-thumb{background:rgba(100,116,139,.45);border:2px solid transparent;background-clip:padding-box;border-radius:8px}
+  .layout>.side::-webkit-scrollbar-thumb:hover{background:rgba(37,99,235,.70);background-clip:padding-box}
+}
+@supports (-moz-appearance:none){
+  @media(min-width:901px){.layout>.side{scrollbar-width:thin;scrollbar-color:rgba(100,116,139,.55) transparent}}
+}
+
+/* Breadcrumb thư mục gọn nhẹ */
+#main .folder-crumb{
+  width:fit-content;max-width:100%;padding:8px 14px;margin:0 0 12px;
+  border:1px solid var(--line);border-radius:999px;
+  background:var(--lg-control-a,var(--surface));color:var(--muted);box-shadow:var(--shadow)
+}
+#main .folder-crumb b{color:var(--ink)}
+
+/* Ảnh nền tầng 4 cố định theo khung nhìn */
+#app .layout{position:relative;isolation:isolate;background:transparent!important}
+#app .layout::before{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:var(--layer4-bg-image,none);background-size:cover;background-position:center;background-repeat:no-repeat
+}

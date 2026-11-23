@@ -1,0 +1,331 @@
+/* EducMind · js/db/02-shell.js
+   Khung giao diện của chế độ dữ liệu thật: thanh trên, thanh điều hướng, ô chọn lớp, thông báo và hộp thoại tài khoản.
+   Lưu ý: Dùng lại các lớp CSS của bản gốc (.top, .side, .nav, .head, .panel, …) nên giao diện giống chế độ demo. */
+
+/* Danh mục điều hướng: [tên nhóm, [[khóa trang, nhãn, biểu tượng], …]] */
+const DB_NAV_T = [
+  ['', [['home', 'Tổng quan', 'dashboard'], ['schedule', 'Lịch & việc cần làm', 'calendar']]],
+  ['Dạy học', [['content', 'Thư mục học tập', 'lessons'], ['assignments', 'Bài tập', 'navAsg'], ['questions', 'Ngân hàng câu hỏi', 'questionBank'], ['assessments', 'Bài kiểm tra', 'exam'], ['ai', 'AI tạo câu hỏi', 'spark'], ['chat', 'Trợ lý AI', 'chat']]],
+  ['Đánh giá học tập', [['progress', 'Mức độ nắm vững', 'mastery'], ['gaps', 'Lỗ hổng kiến thức', 'gaps'], ['recommend', 'Gợi ý học tập', 'recommend'], ['report', 'Báo cáo tiến bộ', 'trend']]],
+  ['Quản lý', [['classes', 'Lớp học phụ trách', 'classes'], ['trash', 'Thùng rác', 'trash'], ['history', 'Lịch sử chỉnh sửa', 'history']]],
+];
+const DB_NAV_S = [
+  ['', [['home', 'Tổng quan', 'dashboard'], ['schedule', 'Lịch & việc cần làm', 'calendar']]],
+  ['Học tập', [['lessons', 'Bài học', 'lessons'], ['assignments', 'Bài tập', 'assignments'], ['assessments', 'Bài kiểm tra', 'exam'], ['chat', 'Trợ lý AI', 'chat']]],
+  ['Kết quả', [['progress', 'Mức nắm vững', 'mastery'], ['gaps', 'Lỗ hổng kiến thức', 'gaps'], ['recommend', 'Gợi ý học tập', 'recommend'], ['report', 'Báo cáo tiến bộ', 'trend']]],
+  ['Lớp học', [['classes', 'Lớp của em', 'classes']]],
+];
+
+function dbShell(P, body) {
+  const T = dbIsTeacher();
+  const collapsed = typeof sidebarCollapsed !== 'undefined' && sidebarCollapsed;
+  const width = typeof sidebarWidth !== 'undefined' ? sidebarWidth : 274;
+  const avatarPhoto = safeImageSrc(avatarPhotoData());
+  const avatarFallback = h(dbInitials(DB.me.full_name || DB.me.email));
+  const avatarMarkup = `<span class="avatar" aria-hidden="true">${avatarPhoto ? `<img src="${h(avatarPhoto)}" alt="">` : avatarFallback}</span>`;
+  const unread = DB.notifs.filter((n) => !n.is_read).length;
+  const bellLabel = 'Thông báo' + (unread ? ', ' + unread + ' chưa xem' : '');
+  const setupNotice = dbTeacherSetupRequired()
+    ? `<div class="notice" role="alert"><div><b>Chưa hoàn tất thông tin giáo viên.</b> Hãy nhập Lớp và Môn học trong Tài khoản để sử dụng các chức năng của hệ thống. ${dbBtn('Cập nhật Tài khoản', 'openAccount', {}, 'light mini')}</div></div>`
+    : '';
+  const nav = (T ? DB_NAV_T : DB_NAV_S).map(([g, items]) => `<div class="grp${g ? '' : ' grp-bare'}">${g ? `<h2>${g}</h2>` : ''}<div class="items">${items.map(([k, label, icon]) =>
+    `<button type="button" class="nav" id="nav-${k}" ${DB.page === k ? 'aria-current="page"' : ''} aria-label="${label}" title="${label}" data-act="go" data-page="${k}"><span class="nav-ic-tile" data-nav-tone="${k}" aria-hidden="true">${ic(icon, 15)}</span><span class="nav-label">${label}</span></button>`).join('')}</div></div>`).join('');
+  const title = typeof P.title === 'function' ? P.title() : P.title;
+  const sub = typeof P.sub === 'function' ? P.sub() : P.sub;
+  const classSelect = !P.noClass && !P.hideClass && DB.classes.length
+    ? `<div class="selectbox class-select"><label for="classSelect">${T ? 'Lớp đang chọn' : 'Lớp'}</label><select id="classSelect" data-change="setClass">${DB.classes.map((c) => `<option value="${h(c.id)}" ${c.id === DB.classId ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></div>`
+    : '';
+  const iconBtn = (label, icon, attrs, extra, cls) => `<button type="button" class="btn light icon-only ${cls || ''}" data-iconified="1" ${attrs} aria-label="${label}" title="${label}">${ic(icon, 18)}<span class="sr">${label}</span>${extra || ''}</button>`;
+  const roleLabel = T ? 'Giáo viên' : 'Học sinh';
+  const greetingName = h(dbName(DB.me));
+  const studentHero = !T && DB.page === 'home'
+    ? `<section class="db-student-hero db-home-hero db-home-hero--student" aria-label="Tổng quan học tập">
+        <div class="db-student-hero-copy">
+          <span class="db-student-hero-kicker">HÀNH TRÌNH HỌC TẬP CỦA EM</span>
+          <h2>Chào ${greetingName}!</h2>
+          <h3>Mỗi bước học hôm nay đưa em tiến xa hơn.</h3>
+          <p>Bài học · mục tiêu · gợi ý dành riêng cho em</p>
+          ${dbBtn('Bắt đầu học ngay', 'go', { page: 'lessons' }, 'db-student-hero-action')}
+        </div>
+        <div class="db-student-hero-art" aria-hidden="true">
+          <img src="assets/student-characters.webp" alt="" width="1400" height="665" decoding="async">
+        </div>
+      </section>`
+    : '';
+  const sideHeader = `
+    <div class="side-brand">
+      <span class="side-brand-mark" aria-hidden="true">${ic('classes', 18)}</span>
+      <div class="side-brand-copy"><b>EducMind</b><small>${T ? 'Không gian giảng dạy' : 'Không gian học tập'}</small></div>
+    </div>
+    <div class="side-search">
+      ${ic('search', 15)}
+      <input id="db-nav-filter" type="search" placeholder="Tìm nhanh mục…" aria-label="Tìm nhanh mục điều hướng" data-input="filterNav" autocomplete="off">
+    </div>`;
+  app.innerHTML = `
+  <header class="top db-student-top">
+    ${brandLogoHtml()}
+    <div class="user">${avatarPickerHtml(avatarMarkup)}<span class="user-greeting">Xin chào, ${greetingName}</span><span class="user-role">· ${roleLabel}</span></div>
+    <span class="spacer"></span>
+    <span class="db-student-top-title"><span>Hệ thống quản lý dạy học số phổ thông</span></span>
+    <span class="spacer"></span>
+    ${typeof dbChatTopBtnHtml === 'function' ? dbChatTopBtnHtml() : ''}
+    ${iconBtn(bellLabel, 'bell', 'data-act="openNotifs" id="db-bell"', unread ? `<span class="nb" aria-hidden="true">${unread > 9 ? '9+' : unread}</span>` : '', 'notif-btn')}
+    ${themeBtn()}
+    ${iconBtn('Tài khoản', 'user', 'data-act="openAccount"')}
+    ${iconBtn('Đăng xuất', 'logout', 'data-app-act="logout"')}
+  </header>
+  <div class="layout ${T ? 'teacher-layout' : ''} ${collapsed ? 'sidebar-collapsed' : ''} ${DB.dialog ? 'has-dialog' : ''}" style="--sidebar-width:${width}px">
+    <nav class="side" aria-label="Điều hướng chính">${sideHeader}${nav}</nav>
+    <button type="button" class="side-toggle" data-app-act="toggleSidebar" aria-label="${collapsed ? 'Mở rộng' : 'Thu gọn'} thanh điều hướng" title="${collapsed ? 'Mở rộng' : 'Thu gọn'} thanh điều hướng" aria-expanded="${!collapsed}">${ic(collapsed ? 'chevronRight' : 'chevronLeft', 16)}</button>
+    <main class="main" id="main">
+      <div class="head">
+        <div><h1 id="pageTitle" tabindex="-1">${h(title)}</h1>${sub ? `<p class="sub">${h(sub)}</p>` : ''}</div>
+        ${classSelect}
+      </div>
+      ${typeof dbNetBannerHtml === 'function' ? dbNetBannerHtml() : ''}
+      ${setupNotice}
+      ${studentHero}
+      <div class="view">${body}</div>${dbDialogHtml()}
+    </main>
+  </div>${typeof dbChatDrawerHtml === 'function' ? dbChatDrawerHtml() : ''}${layer4BackgroundControls()}`;
+  applyLayer4Background();
+}
+
+function dbFoldSearch(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase().trim();
+}
+DB_ACT.filterNav = (el) => {
+  const side = document.querySelector('#app .layout>.side');
+  if (!side) return;
+  const q = dbFoldSearch(el && el.value);
+  side.querySelectorAll('.grp').forEach((grp) => {
+    let shown = 0;
+    grp.querySelectorAll('.nav').forEach((btn) => {
+      const label = dbFoldSearch(btn.textContent || btn.getAttribute('aria-label') || '');
+      const match = !q || label.includes(q);
+      btn.hidden = !match;
+      if (match) shown++;
+    });
+    grp.hidden = shown === 0;
+  });
+};
+
+/* ===== Thông báo ===== */
+const DB_NOTIF_EVERY = 60000;
+async function dbLoadNotifications(reportError = false) {
+  if (!dbActive()) return false;
+  try {
+    const list = await dbCall(EducMindDB.listNotifications(30));
+    if (!dbActive()) return false;
+    const before = DB.notifs.filter((n) => !n.is_read).length, after = list.filter((n) => !n.is_read).length;
+    DB.notifs = list;
+    if (before !== after) dbPaintBell();
+    return true;
+  } catch (e) {
+    console.warn('Không tải được thông báo:', e.message || e);
+    if (reportError) throw e;
+    return false;
+  }
+}
+/* Chỉ cập nhật con số trên chuông, không vẽ lại cả trang (tránh làm mất nội dung người dùng đang nhập). */
+function dbPaintBell() {
+  const b = document.getElementById('db-bell');
+  if (!b) return;
+  const unread = DB.notifs.filter((n) => !n.is_read).length, label = 'Thông báo' + (unread ? ', ' + unread + ' chưa xem' : '');
+  b.setAttribute('aria-label', label); b.title = label;
+  const sr = b.querySelector('.sr');
+  if (sr) sr.textContent = label;
+  let nb = b.querySelector('.nb');
+  if (unread) { if (!nb) { nb = document.createElement('span'); nb.className = 'nb'; nb.setAttribute('aria-hidden', 'true'); b.appendChild(nb); } nb.textContent = unread > 9 ? '9+' : String(unread); }
+  else if (nb) nb.remove();
+}
+function dbStartNotifications() {
+  dbLoadNotifications();
+  DB.timers.push(setInterval(dbLoadNotifications, DB_NOTIF_EVERY));
+  /* Realtime: chuông tự cập nhật khi có thông báo mới; dự phòng tự nạp lại định kỳ. */
+  if (typeof dbLiveStart === 'function') dbLiveStart();
+}
+/* Thông báo do máy chủ tạo, payload.page cho biết nên mở trang nào. */
+function dbNotifTarget(n) {
+  const p = n.payload || {}, T = dbIsTeacher();
+  const map = {
+    grading: p.assessment_id ? ['assessments', { id: p.assessment_id, tab: 'attempts' }] : ['assignments', { id: p.assignment_id }],
+    results: p.assessment_id ? ['assessments', { id: p.assessment_id }] : ['assignments', { id: p.assignment_id }],
+    lessons: [T ? 'content' : 'lessons', {}],
+    assignments: ['assignments', p.assignment_id ? { id: p.assignment_id } : {}],
+    assessments: ['assessments', p.assessment_id ? { id: p.assessment_id } : {}],
+    recommend: ['recommend', {}],
+    ai: ['ai', {}],
+    students: ['classes', {}],
+    dashboard: ['home', {}],
+  };
+  const t = map[p.page] || ['home', {}];
+  Object.keys(t[1]).forEach((k) => t[1][k] == null && delete t[1][k]);
+  return { page: t[0], arg: t[1], classId: p.class_id || '' };
+}
+function dbShowNotifications() {
+  const rows = DB.notifs.map((n) => `<div class="db-notif-row">
+      <button type="button" class="db-notif${n.is_read ? '' : ' unread'}" data-act="openNotif" data-id="${h(n.id)}">
+        <b>${h(n.title)}</b>${n.content ? `<span class="muted">${h(n.content)}</span>` : ''}<span class="muted db-notif-time">${dbDateTime(n.created_at)}${n.is_read ? '' : ' · chưa xem'}</span>
+      </button><button type="button" class="btn light icon-only mini danger-soft db-notif-delete" data-iconified="1" data-act="hideNotification" data-id="${h(n.id)}" aria-label="Ẩn thông báo" title="Ẩn thông báo">${ic('trash', 18)}<span class="sr">Ẩn thông báo</span></button>
+    </div>`).join('');
+  const controls = DB.notifs.length
+    ? `<div class="db-notif-controls">${dbBtn('Đánh dấu tất cả đã xem', 'readAllNotifs', {}, 'light mini')}${dbBtn('Ẩn tất cả', 'hideAllNotifications', {}, 'light mini danger-soft')}</div>`
+    : '';
+  dbOpenDialog({
+    title: 'Thông báo', wide: true,
+    body: controls + (rows ? `<div class="db-notifs">${rows}</div>` : dbEmpty('Chưa có thông báo nào.')),
+  });
+}
+DB_ACT.openNotifs = async () => {
+  await dbLoadNotifications(true);
+  dbShowNotifications();
+};
+DB_ACT.hideNotification = (el) => {
+  const n = DB.notifs.find((x) => x.id === el.dataset.id);
+  if (!n) throw new Error('Không tìm thấy thông báo cần ẩn.');
+  dbConfirm('Ẩn thông báo?', `Thông báo “${h(n.title)}” sẽ không còn hiển thị trong danh sách của bạn.`, 'Ẩn thông báo', async () => {
+    const hidden = await dbCall(EducMindDB.hideNotification(n.id));
+    if (!hidden.length) throw new Error('Thông báo không còn tồn tại hoặc không thuộc tài khoản của bạn.');
+    DB.notifs = DB.notifs.filter((x) => x.id !== n.id);
+    dbPaintBell();
+    toast('Đã ẩn thông báo khỏi danh sách của bạn.');
+    dbShowNotifications();
+    return false;
+  }, true);
+};
+DB_ACT.readAllNotifs = (el) => dbRun(el, async () => {
+  await dbCall(EducMindDB.markAllNotificationsRead());
+  DB.notifs.forEach((n) => { n.is_read = true; });
+  DB.dialog = null; render();
+  return false;
+}, 'Đã đánh dấu tất cả thông báo là đã xem.');
+DB_ACT.hideAllNotifications = () => dbConfirm('Ẩn tất cả thông báo?', 'Tất cả thông báo sẽ không còn hiển thị trong danh sách của bạn.', 'Ẩn tất cả', async () => {
+  await dbCall(EducMindDB.hideAllNotifications());
+  DB.notifs = [];
+  dbPaintBell();
+  toast('Đã ẩn tất cả thông báo khỏi danh sách của bạn.');
+  dbShowNotifications();
+  return false;
+}, true);
+DB_ACT.openNotif = async (el) => {
+  const n = DB.notifs.find((x) => x.id === el.dataset.id);
+  if (!n) return;
+  if (!n.is_read) { n.is_read = true; EducMindDB.markNotificationRead(n.id).then(({ error }) => error && console.warn(error.message)); }
+  const t = dbNotifTarget(n);
+  DB.dialog = null;
+  if (t.classId && t.classId !== DB.classId && DB.classes.some((c) => c.id === t.classId)) await dbSetClass(t.classId, t.page, t.arg);
+  else await dbGo(t.page, t.arg);
+};
+
+/* ===== Tài khoản ===== */
+DB_ACT.openAccount = async () => {
+  const courses = await dbCall(EducMindDB.listCoursesForClasses(DB.classes.map((c) => c.id)));
+  const coursesByClass = Object.fromEntries(courses.map((course) => [course.class_id, course]));
+  const selectedClass = DB.classes.find((c) => c.id === DB.classId) || DB.classes[0] || null;
+  let accountClass = selectedClass;
+  const selectedCourse = selectedClass ? coursesByClass[selectedClass.id] : null;
+  const setupRequired = dbIsTeacher() && dbTeacherSetupRequired();
+  const classInfo = DB.classes.length
+    ? DB.classes.map((c) => `<div class="item"><div><b>${h(c.name)}</b><div class="muted">Môn học: ${h((coursesByClass[c.id] || {}).title || 'Chưa thiết lập')}</div></div></div>`).join('')
+    : `<p class="muted">Chưa có lớp nào.</p>`;
+  const teacherFields = dbIsTeacher()
+    ? dbField('Lớp', 'db-acc-class', `<input id="db-acc-class" name="class_name" maxlength="100" value="${h(selectedClass ? selectedClass.name : '')}" autocomplete="off">`, DB.classes.length > 1 ? 'Thông tin của lớp đang chọn: ' + h(selectedClass.name) : '')
+      + dbField('Môn học', 'db-acc-subject', `<input id="db-acc-subject" name="subject" maxlength="120" value="${h(selectedCourse ? selectedCourse.title : '')}" placeholder="Ví dụ: Toán, Ngữ văn, Vật lí" autocomplete="off">`)
+      + (setupRequired ? `<p class="muted" role="alert">Cần nhập cả Lớp và Môn học để sử dụng các chức năng giáo viên.</p>` : '')
+    : `<div class="field"><span class="db-label">Lớp đang học và môn học</span><div>${classInfo}</div></div>`;
+  dbOpenDialog({
+    title: setupRequired ? 'Hoàn tất thông tin giáo viên' : 'Tài khoản',
+    okLabel: setupRequired ? 'Lưu thông tin' : 'Lưu thay đổi',
+    teacherSetup: setupRequired,
+    body: `<div class="facts"><div><span>Email</span><b>${h(DB.me.email)}</b></div><div><span>Vai trò</span><b>${dbIsTeacher() ? 'Giáo viên' : 'Học sinh'}</b></div></div>
+      ${teacherFields}
+      ${dbField('Họ và tên', 'db-acc-name', `<input id="db-acc-name" name="full_name" maxlength="120" value="${h(DB.me.full_name)}" autocomplete="name">`)}
+      <div class="field"><span class="db-label">Mật khẩu</span>${dbBtn('Đổi mật khẩu', 'changePassword', {}, 'light')}</div>
+      ${dbIsTeacher() ? `<div class="field"><span class="db-label">Tạo câu hỏi bằng AI</span>${dbBtn('Quản lý API key Gemini', 'aiKeySettings', {}, 'light')}</div>` : ''}`,
+    onOk: async (v) => {
+      if (!v.full_name) throw new Error('Nhập họ và tên.');
+      const className = String(v.class_name || '').trim(), subject = String(v.subject || '').trim();
+      if (dbIsTeacher()) {
+        if (!className) throw new Error('Nhập tên Lớp.');
+        if (className.length > 100) throw new Error('Tên Lớp tối đa 100 ký tự.');
+        if (!subject) throw new Error('Nhập tên Môn học.');
+        if (subject.length > 120) throw new Error('Tên Môn học tối đa 120 ký tự.');
+      }
+      if (v.full_name !== DB.me.full_name) DB.me = await dbCall(EducMindDB.renameMe(v.full_name));
+      let joinCode = '';
+      if (dbIsTeacher()) {
+        if (accountClass) {
+          await dbCall(EducMindDB.updateClassWithSubject(accountClass.id, {
+            name: className, grade: accountClass.grade, school_year: accountClass.school_year, subject,
+          }));
+        } else {
+          const made = await dbCall(EducMindDB.createClassWithSubject(className, null, null, subject));
+          const row = Array.isArray(made) ? made[0] : made;
+          if (!row || !row.class_id) throw new Error('Không tạo được lớp cho tài khoản giáo viên.');
+          accountClass = { id: row.class_id, name: className, grade: null, school_year: null };
+          DB.classId = row.class_id;
+          joinCode = row.join_code || '';
+          try { localStorage.setItem('educmind.db.class', DB.classId); } catch (_) {}
+        }
+        await dbLoadClasses();
+        await dbLoadCourse();
+      }
+      toast(joinCode ? `Đã lưu thông tin và tạo lớp ${className}. Mã lớp: ${joinCode}.` : 'Đã lưu thông tin tài khoản, lớp và môn học.');
+    },
+  });
+};
+
+DB_ACT.changePassword = () => {
+  dbOpenDialog({
+    title: 'Đổi mật khẩu',
+    okLabel: 'Lưu mật khẩu mới',
+    body: `<p class="muted">Nhập mật khẩu hiện tại để xác nhận đây là tài khoản của bạn.</p>
+      ${dbField('Mật khẩu hiện tại', 'db-cpw-old', `<input id="db-cpw-old" name="old_pw" type="password" autocomplete="current-password" required>`)}
+      ${dbField('Mật khẩu mới', 'db-cpw-new', `<input id="db-cpw-new" name="new_pw" type="password" autocomplete="new-password" required>`, `Tối thiểu ${PW_MIN} ký tự.`)}
+      ${dbField('Nhập lại mật khẩu mới', 'db-cpw-new2', `<input id="db-cpw-new2" name="new_pw2" type="password" autocomplete="new-password" required>`)}`,
+    onOk: async (v) => {
+      const oldPw = String(v.old_pw || '');
+      const newPw = String(v.new_pw || '');
+      const newPw2 = String(v.new_pw2 || '');
+      if (!oldPw) throw new Error('Nhập mật khẩu hiện tại.');
+      if (newPw.length < PW_MIN) throw new Error('Mật khẩu mới cần ít nhất ' + PW_MIN + ' ký tự.');
+      if (newPw !== newPw2) throw new Error('Hai lần nhập mật khẩu mới không khớp.');
+      if (newPw === oldPw) throw new Error('Mật khẩu mới phải khác mật khẩu hiện tại.');
+      const verified = await supabaseClient.auth.signInWithPassword({ email: DB.me.email, password: oldPw });
+      if (verified.error) throw new Error('Mật khẩu hiện tại không đúng.');
+      const { error } = await supabaseClient.auth.updateUser({ password: newPw });
+      if (error) throw new Error('Không đổi được mật khẩu: ' + dbErrText(error));
+      toast('Đã đổi mật khẩu thành công.');
+    },
+  });
+};
+
+DB_ACT.aiKeySettings = async () => {
+  const status = await dbCall(EducMindDB.aiCredentials('status'));
+  dbOpenDialog({
+    title: 'API key Gemini',
+    okLabel: 'Lưu API key',
+    body: `<p class="lead">${status.configured ? `Đã lưu key kết thúc bằng <b>…${h(status.key_hint)}</b>.` : 'Chưa có API key Gemini được lưu.'}</p>
+      <p class="muted">Nhập key của dự án Google AI Studio. Key được mã hóa trên máy chủ; ứng dụng không gửi key này xuống màn hình sau khi lưu.</p>
+      ${dbField('API key Gemini', 'db-ai-key', `<input id="db-ai-key" name="api_key" type="password" maxlength="256" autocomplete="off" required>`, 'Để thay key hiện tại, nhập key mới vào đây.') }
+      ${status.configured ? `<div class="row">${dbBtn('Xóa API key đã lưu', 'aiKeyDelete', {}, 'light mini danger-soft')}</div>` : ''}`,
+    onOk: async (v) => {
+      const apiKey = (v.api_key || '').trim();
+      if (!apiKey) throw new Error('Hãy nhập API key Gemini cần lưu.');
+      await dbCall(EducMindDB.aiCredentials('save', apiKey));
+      toast('Đã lưu API key Gemini riêng cho tài khoản.');
+    },
+  });
+};
+
+DB_ACT.aiKeyDelete = () => dbConfirm(
+  'Xóa API key Gemini?',
+  'Bạn sẽ không thể tạo câu hỏi bằng AI cho đến khi lưu key mới.',
+  'Xóa API key',
+  async () => {
+    await dbCall(EducMindDB.aiCredentials('delete'));
+    toast('Đã xóa API key Gemini khỏi tài khoản.');
+  },
+  true,
+);

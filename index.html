@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EducMind</title>
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f1f6fd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)">
+<!-- Giao diện: các tệp CSS phải giữ đúng thứ tự này (tệp sau ghi đè tệp trước). -->
+<link rel="stylesheet" href="css/01-base.css">
+<link rel="stylesheet" href="css/02-assignment-builder.css">
+<link rel="stylesheet" href="css/03-lessons-folders.css">
+<link rel="stylesheet" href="css/04-sidebar.css">
+<link rel="stylesheet" href="css/05-grading-objectives.css">
+<link rel="stylesheet" href="css/06-floating-nav.css">
+<link rel="stylesheet" href="css/07-games.css">
+<link rel="stylesheet" href="css/08-liquid-glass.css">
+<link rel="stylesheet" href="css/09-responsive-nav.css">
+<link rel="stylesheet" href="css/10-student-dashboard.css">
+<link rel="stylesheet" href="css/11-calendar.css">
+<link rel="stylesheet" href="css/12-db.css">
+<link rel="stylesheet" href="css/12b-db-assignment-games.css">
+<link rel="stylesheet" href="css/12c-db-games.css">
+<link rel="stylesheet" href="css/13-teacher-dashboard.css">
+<link rel="stylesheet" href="css/14-ai-chat.css">
+</head>
+<body>
+<a class="skip" href="#pageTitle">Bỏ qua điều hướng</a>
+<div id="app"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<!-- Thư viện ngoài (đóng gói cục bộ): Supabase (tải sẵn), SheetJS & Mammoth (tải lười khi nhập tệp). -->
+<script src="js/vendor/supabase-js.min.js"></script>
+<!-- Mã ứng dụng: nạp ĐÚNG THỨ TỰ số ở đầu tên tệp. Tệp sau dùng hàm của tệp trước;
+     xem README.md, mục “Cấu trúc mã nguồn”. -->
+<script src="js/00-grade-config.js"></script>
+<script src="js/02-state.js"></script>
+<script src="js/00-environment.local.js"></script>
+<script src="js/03-supabase.js"></script>
+<script src="js/04-icons.js"></script>
+<script src="js/05-helpers.js"></script>
+<script src="js/06-shell.js"></script>
+<script src="js/08-theme.js"></script>
+<script src="js/09-render.js"></script>
+<script src="js/18-student-dashboard.js"></script>
+<script src="js/30-auth-session.js"></script>
+<script src="js/31-supabase-screens.js"></script>
+<script src="js/32-auth-flows.js"></script>
+<script src="js/33-login-screen.js"></script>
+<script src="js/37-avatar-ownership.js"></script>
+<script src="js/45-import-dialog.js"></script>
+<script src="js/46-file-readers.js"></script>
+<script src="js/67-teacher-dashboard.js"></script>
+<!-- Màn hình dữ liệu thật (đăng nhập bằng Supabase). Phải nạp sau các tệp ở trên và trước js/76-main.js. -->
+<script src="js/db/01-core.js"></script>
+<script src="js/db/01b-offline-drafts.js"></script>
+<script src="js/db/02-shell.js"></script>
+<script src="js/db/03-classes.js"></script>
+<script src="js/db/04-content.js"></script>
+<script src="js/db/04b-resources-trash.js"></script>
+<script src="js/db/05-assignments.js"></script>
+<script src="js/db/05b-assignment-grading.js"></script>
+<script src="js/db/05c-assignment-student.js"></script>
+<script src="js/db/06-questions.js"></script>
+<script src="js/db/07-assessments.js"></script>
+<script src="js/db/08-exam.js"></script>
+<script src="js/db/09-progress.js"></script>
+<script src="js/db/10-home.js"></script>
+<script src="js/db/11-transfer.js"></script>
+<script src="js/db/12-schedule.js"></script>
+<script src="js/db/13-report.js"></script>
+<script src="js/db/14-ai.js"></script>
+<script src="js/db/14b-ai-chat.js"></script>
+<script src="js/db/15-games.js"></script>
+<script src="js/db/16-live.js"></script>
+<script src="js/76-main.js"></script>
+<script src="js/77-liquid-glass.js"></script>
+</body>
+</html>

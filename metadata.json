@@ -1,0 +1,8 @@
+{
+  "name": "EducMind",
+  "description": "Hệ thống quản lý dạy học số phổ thông: quản lý lớp học, bài học, bài tập, kiểm tra tính giờ, phân tích lỗ hổng kiến thức và Trợ lý AI Gemini trên Firebase và Firestore.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
