@@ -738,9 +738,9 @@ body:has(.db-dock-wrap[data-context="assessments"]) #main .db-student-assessment
 /* Dock đã có mục "Danh sách": bỏ nút quay lại trùng lặp ở mọi trang chi tiết */
 body:has(.db-dock-wrap[data-context="assignments"]) #main .panel > .row [data-act="go"][data-page="assignments"]:not([data-id]),
 body:has(.db-dock-wrap[data-context="assessments"]) #main .panel > .row [data-act="go"][data-page="assessments"]:not([data-id]){display:none !important}
-/* Bước 1-2-3 của trình soạn bài tập/bài kiểm tra đã có trên dock */
-body:has(.db-dock-wrap[data-context="assignments"]) #main .db-workflow-steps .btn,
-body:has(.db-dock-wrap[data-context="assessments"]) #main .db-workflow-steps .btn{display:none !important}
+/* Bước 1-2-3 của trình soạn bài tập/bài kiểm tra đã có trên dock (giữ nút wizard Tiếp tục/Quay lại) */
+body:has(.db-dock-wrap[data-context="assignments"]) #main .db-workflow-steps .btn[data-act="go"],
+body:has(.db-dock-wrap[data-context="assessments"]) #main .db-workflow-steps .btn[data-act="go"]{display:none !important}
 /* Bài kiểm tra: thanh tab Câu hỏi/Xem trước/Lượt làm trùng mục trên dock */
 body:has(.db-dock-wrap[data-context="assessments"]) #main .seg[aria-label="Phần của bài kiểm tra"]{display:none !important}
 /* Bài kiểm tra: nút "Xem trước đề" cuối trình soạn đã có mục trên dock */
