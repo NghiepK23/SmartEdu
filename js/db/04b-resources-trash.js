@@ -93,7 +93,7 @@ function dbLessonResources(l, resources) {
   let coverageByRes = {};
   try { coverageByRes = window.__dbCoverageByRes || {}; } catch (_) {}
   const itemsWithTags = (resources || []).map((r) => {
-    const tags = (coverageByRes[r.id] || []).map((pur) => `<span class="pill ${pur === 'LEARN' ? 'good' : pur === 'PRACTICE' ? 'prog' : 'plain'} mini" title="${h(dbPurposeLabel(pur))}">${h(DB_PURPOSE_LABEL[pur] || pur)}</span>`).join(' ') || '<span class="muted mini">Chưa gắn mục tiêu</span>';
+    const tags = (coverageByRes[r.id] || []).map((pur) => `<span class="pill ${pur === 'LEARN' ? 'good' : pur === 'PRACTICE' ? 'prog' : 'plain'} mini" title="${h(dbPurposeLabel(pur))}">${h(DB_PURPOSE_SHORT[pur] || DB_PURPOSE_LABEL[pur] || pur)}</span>`).join(' ') || '<span class="muted mini">Chưa gắn mục tiêu</span>';
     return `<li class="db-file">
     <span class="db-file-name">${ic(r.kind === 'LINK' && dbYoutubeId(dbSafeHttpUrl(r.url)) ? 'play' : 'overview', 14)}<span class="db-file-title">${h(r.file_name)}</span>${r.kind === 'LINK' ? `<span class="muted db-file-url">${h(String(dbSafeHttpUrl(r.url) || r.url || '').replace(/^https?:\/\//, '').slice(0, 60))}</span>` : ''}</span>
     <span class="muted db-file-meta">${tags}</span>
