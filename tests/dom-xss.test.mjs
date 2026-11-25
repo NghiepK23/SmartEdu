@@ -1010,6 +1010,41 @@ test('Every page except the exam screen offers floating dock sub-tabs', async ()
   assert.equal(missing.length, 0, 'mọi trang (trừ màn làm bài) đều có tab bar nổi: ' + missing.join(', '));
 });
 
+test('Sidebar collapse handle does not shift when a nav or dock button is pressed', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  const src = fs.readFileSync(path.join(ROOT, 'js/09-render.js'), 'utf8');
+  assert.ok(!src.includes('--tog-x'), 'collapse handle position is not written by JS');
+  assert.ok(!/setProperty\('--tog-x'/.test(src), 'no runtime --tog-x writes');
+
+  const css = fs.readdirSync(path.join(ROOT, 'css')).filter((f) => f.endsWith('.css'))
+    .map((f) => fs.readFileSync(path.join(ROOT, 'css', f), 'utf8')).join('\n');
+  const flat = css.replace(/\s+/g, ' ');
+  assert.ok(flat.includes('left:calc(max(18px, 50vw - 702px) + 196px - 16px)'),
+    'handle position derives from the sidebar formula in CSS');
+  assert.ok(flat.includes('left:calc(max(18px, 50vw - 702px) + 74px - 16px)'),
+    'collapsed sidebar keeps the handle on its right edge');
+  assert.ok(!/left \.22s/.test(css), 'no left transition that animates the handle sideways');
+
+  evalExpr(`
+    logged = true; role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 't1' };
+    DB.me = { id: 't1', email: 'gv@edu.vn', full_name: 'GV', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1'; DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.notifs = []; DB.loading = false; DB.loadError = '';
+    DB.page = 'class_overview'; DB.arg = {};
+    DB.data = null;
+    dbRender();
+  `);
+  const before = String(document.querySelector('.side-toggle').getAttribute('style') || '');
+  // Bấm một mục ở thanh bên trái rồi một nút trên tab bar nổi.
+  evalExpr("DB_ACT.dockSubAction({ dataset: { sub: 'co-kpi' } })");
+  evalExpr("dbGo('class_overview', {})");
+  const after = String(document.querySelector('.side-toggle').getAttribute('style') || '');
+  assert.ok(!/--tog-x|-?\d+px/.test(before), 'handle starts with no JS-positioned offset: ' + before);
+  assert.equal(after.replace(/\s+/g, ' ').trim(), before.replace(/\s+/g, ' ').trim(), 'handle style unchanged after clicking nav/dock');
+});
+
 test('Class quality page uses Vietnamese labels (no Coverage Matrix / LEARN / PRACTICE / EXTEND in UI)', async () => {
   const { document, evalExpr } = createDomTestContext();
   evalExpr(`
