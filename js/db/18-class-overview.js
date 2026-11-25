@@ -2,8 +2,8 @@
    Bảng điều khiển lớp cho giáo viên: 4 chỉ số nhanh, mục tiêu cần chú ý, phân nhóm học sinh, chất lượng câu hỏi. */
 
 DB_PAGES.class_overview = {
-  title: 'Tổng quan lớp',
-  sub: 'Phân loại học sinh, mục tiêu cần dạy lại, độ phủ tài liệu và chất lượng câu hỏi.',
+  title: 'Bảng điều khiển lớp',
+  sub: 'Phân loại học sinh theo mức nắm vững, mục tiêu cần dạy lại, độ phủ tài liệu và chất lượng câu hỏi.',
   async load() {
     if (!dbIsTeacher()) throw new Error('Chỉ giáo viên mới xem tổng quan lớp.');
     if (!DB.course) await dbLoadCourse();
@@ -107,20 +107,20 @@ DB_PAGES.class_overview = {
     const covered = d.content.objectives.filter((o) => (d.linkCountByObj[o.id]?.LEARN || 0) > 0 && (d.qCountByObj[o.id] || 0) > 0).length;
     const coveragePct = coverageTotal ? Math.round((covered / coverageTotal) * 100) : 0;
 
-    return `<section class="panel" aria-labelledby="db-h-overview">
-      <div class="row between"><div><h2 id="db-h-overview">Tổng quan lớp ${h(dbClass()?.name || '')}</h2><p class="lead">Nhóm học sinh · Mục tiêu cần chú ý · Độ phủ tài liệu & câu hỏi · Chất lượng câu hỏi</p></div>
+    return `<section class="panel" id="db-co-kpi" aria-labelledby="db-h-overview">
+      <div class="row between"><div><h2 id="db-h-overview">Bảng điều khiển lớp ${h(dbClass()?.name || '')}</h2><p class="lead">Nhóm học sinh · Mục tiêu cần chú ý · Độ phủ tài liệu & câu hỏi · Chất lượng câu hỏi</p></div>
         <div class="row">${dbBtn(ic('spark', 16) + ' Tóm tắt AI', 'classOverviewAiSummary', {}, 'light mini')}${dbBtn('Làm mới', 'reload', {}, 'light mini')}</div>
       </div>
 
       <div class="db-overview-grid">
-        <div class="db-kpi"><b>${supportCount}</b><span>Cần hỗ trợ</span><small>${totalStudents ? Math.round((supportCount / totalStudents) * 100) : 0}% lớp</small></div>
-        <div class="db-kpi"><b>${openGaps}</b><span>Lỗ hổng đang mở</span><small>trong lớp</small></div>
-        <div class="db-kpi"><b>${practice7d}</b><span>Phiên luyện tập 7 ngày</span><small>thích ứng</small></div>
-        <div class="db-kpi"><b>${coveragePct}%</b><span>Độ phủ mục tiêu</span><small>${covered}/${coverageTotal} mục tiêu đủ tài liệu + câu hỏi</small></div>
+        <div class="db-kpi"><b>${supportCount}</b><span class="db-kpi-label">Cần hỗ trợ</span><small class="db-kpi-meta">${totalStudents ? Math.round((supportCount / totalStudents) * 100) : 0}% lớp</small></div>
+        <div class="db-kpi"><b>${openGaps}</b><span class="db-kpi-label">Lỗ hổng đang mở</span><small class="db-kpi-meta">trong lớp</small></div>
+        <div class="db-kpi"><b>${practice7d}</b><span class="db-kpi-label">Phiên luyện tập 7 ngày</span><small class="db-kpi-meta">luyện tập thích ứng</small></div>
+        <div class="db-kpi"><b>${coveragePct}%</b><span class="db-kpi-label">Độ phủ mục tiêu</span><small class="db-kpi-meta">${covered}/${coverageTotal} mục tiêu đủ tài liệu + câu hỏi</small></div>
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="db-co-reteach">
       <h3>Mục tiêu cần chú ý nhất</h3>
       <p class="lead">Mục tiêu có tỷ lệ học sinh mức nắm vững &lt; 50% cao nhất. Ngưỡng dạy lại: ${(cfg.dash_reteach_share * 100).toFixed(0)}% lớp.</p>
       ${d.reteach.length ? `<div class="tablewrap"><table><thead><tr><th>Mục tiêu</th><th>TB lớp</th><th>Cần hỗ trợ</th><th>Khuyến nghị</th></tr></thead><tbody>${d.reteach.map((r) => `<tr>
@@ -131,9 +131,9 @@ DB_PAGES.class_overview = {
       </tr>`).join('')}</tbody></table></div>` : `<p class="muted">Chưa có mục tiêu nào vượt ngưỡng cần chú ý. Tuyệt vời!</p>`}
     </section>
 
-    <section class="panel">
+    <section class="panel" id="db-co-groups">
       <h3>Phân nhóm học sinh</h3>
-      <div class="folder-tabs split-4" role="tablist">
+      <div class="folder-tabs db-co-tabs" role="tablist" aria-label="Phân nhóm học sinh">
         <button type="button" role="tab" data-act="classOverviewTab" data-tab="SUPPORT" aria-selected="${DB.arg.tab === 'SUPPORT' || !DB.arg.tab}"><span class="pill need">Cần củng cố</span> ${supportCount}</button>
         <button type="button" role="tab" data-act="classOverviewTab" data-tab="ON_TRACK" aria-selected="${DB.arg.tab === 'ON_TRACK'}"><span class="pill prog">Đạt chuẩn</span> ${onTrackCount}</button>
         <button type="button" role="tab" data-act="classOverviewTab" data-tab="ADVANCED" aria-selected="${DB.arg.tab === 'ADVANCED'}"><span class="pill good">Xuất sắc</span> ${advancedCount}</button>
@@ -145,27 +145,28 @@ DB_PAGES.class_overview = {
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="db-co-coverage">
       <h3>Bảng độ phủ mục tiêu (Coverage Matrix)</h3>
       <p class="lead">Số tài liệu theo mục đích (LEARN/PRACTICE/EXTEND) và số câu hỏi theo mức độ khó.</p>
       ${dbCoverageMatrix(d)}
     </section>
 
-    <section class="panel">
+    <section class="panel" id="db-co-questions">
       <h3>Chất lượng câu hỏi</h3>
       <p class="lead">Cảnh báo câu hỏi bị lệch (ví dụ: gắn nhãn Dễ nhưng học sinh làm sai trên 70% — gắn nhãn không khớp thực tế).</p>
       ${d.questionStats.length ? `<ul class="db-objectives">${d.questionStats.map((s) => `<li><span class="db-obj-text">${h(s.q.content.slice(0, 120))}</span><span class="pill need">${h(s.q.difficulty)} · ${h(s.reason)} (TB ${s.avg != null ? Math.round(s.avg * 100) + '%' : '—'})</span></li>`).join('')}</ul>` : `<p class="muted">Chưa phát hiện câu hỏi lệch đáng kể (cần ít nhất ${cfg.dash_question_min_answers} lượt trả lời).</p>`}
     </section>
 
-    <section class="panel">
-      <h3>Cài đặt tổng quan lớp</h3>
+    <section class="panel" id="db-co-settings">
+      <h3>Cài đặt bảng điều khiển lớp</h3>
       <div class="db-settings-grid">
-        <div class="field"><label>Tỷ lệ dạy lại (dash_reteach_share)</label><input id="db-dash-reteach" type="number" min="0" max="1" step="0.05" value="${cfg.dash_reteach_share}"></div>
-        <div class="field"><label>Số HS tối thiểu (dash_min_students)</label><input id="db-dash-min" type="number" min="1" max="200" value="${cfg.dash_min_students}"></div>
-        <div class="field"><label>Ngưỡng xuất sắc</label><input id="db-dash-adv" type="number" min="0" max="1" step="0.05" value="${cfg.dash_advanced_threshold}"></div>
-        <div class="field"><label>Ngày không hoạt động</label><input id="db-dash-inactive" type="number" min="1" max="365" value="${cfg.dash_inactive_days}"></div>
+        <div class="field"><label>Tỷ lệ dạy lại (dash_reteach_share)</label><input id="db-dash-reteach" type="number" min="0" max="1" step="0.05" value="${cfg.dash_reteach_share}" data-field="dash_reteach_share"></div>
+        <div class="field"><label>Số HS tối thiểu (dash_min_students)</label><input id="db-dash-min" type="number" min="1" max="200" value="${cfg.dash_min_students}" data-field="dash_min_students"></div>
+        <div class="field"><label>Ngưỡng xuất sắc</label><input id="db-dash-adv" type="number" min="0" max="1" step="0.05" value="${cfg.dash_advanced_threshold}" data-field="dash_advanced_threshold"></div>
+        <div class="field"><label>Ngày không hoạt động</label><input id="db-dash-inactive" type="number" min="1" max="365" value="${cfg.dash_inactive_days}" data-field="dash_inactive_days"></div>
       </div>
       <p class="muted">Lưu cài đặt sẽ cập nhật vào khóa học (courses).</p>
+      <div class="row">${dbBtn('Lưu cài đặt', 'saveDashSettings', {}, 'mini')}</div>
     </section>`;
   },
 };

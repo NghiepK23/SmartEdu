@@ -698,3 +698,36 @@
   .db-dialog.ov{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(10,20,22,.72)}
 }
 @media print{.db-dialog-host{display:none!important}}
+
+/* ===== Bổ sung các lớp còn thiếu định nghĩa (bảng cuộn, hàng bằng chứng, ô kết quả) ===== */
+/* Thuộc tính hidden phải luôn thắng các luật display của bảng/danh sách bên dưới. */
+[hidden]{display:none!important}
+
+/* Hàng bằng chứng trong trang Mức độ nắm vững */
+.db-evidence-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:baseline;padding:6px 8px;border-radius:8px;background:var(--surface)}
+.db-evidence-row>b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.db-evidence-row>small{color:var(--muted);white-space:nowrap;font-size:.74rem}
+.db-evidence-detail{margin-top:6px}
+.db-evidence-detail>summary{cursor:pointer;font-size:.8rem;font-weight:600;color:var(--muted);padding:4px 0}
+.db-evidence-detail>summary:hover{color:var(--ink)}
+.db-evidence-detail[open]>summary{margin-bottom:4px}
+
+/* Cột trong hàng mục tiêu */
+.db-mrow-text{min-width:0;overflow-wrap:break-word}
+.db-mrow-bar{min-width:0}
+@media(max-width:640px){
+  .db-evidence-row{grid-template-columns:minmax(0,1fr) auto}
+  .db-evidence-row>small{grid-column:1/-1}
+}
+
+/* Bảng dữ liệu: cuộn ngang thay vì tràn khung */
+.tablewrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+/* Khung chat: trạng thái rỗng và nhãn câu hỏi trắc nghiệm */
+.db-chat-empty{display:grid;place-items:center;min-height:120px;padding:16px;text-align:center}
+.db-chat-quiz-meta{font-size:.74rem;font-weight:600;color:var(--muted);white-space:nowrap}
+.db-chat-quiz-opttxt{min-width:0;overflow-wrap:break-word}
+.db-chat-msg.is-pending{opacity:.85}
+
+/* Nhãn lớp tĩnh ở thanh trên (học sinh không đổi lớp được) */
+.user-class-static{white-space:nowrap}

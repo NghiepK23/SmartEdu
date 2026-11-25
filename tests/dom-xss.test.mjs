@@ -154,6 +154,8 @@ function createDomTestContext(opts = {}) {
     'js/db/14b-ai-chat.js',
     'js/db/15-games.js',
     'js/db/16-live.js',
+    'js/db/17-practice.js',
+    'js/db/18-class-overview.js',
   ];
   for (const rel of scripts) {
     const code = fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -955,6 +957,68 @@ test('DOM & XSS interactive tests for Botanical Teal shell, user card, global se
   evalExpr(`DB.page = 'exam'; DBX = { assessment: { id: 'ex1', title: 'KT' }, attempt: { id: 'att1', status: 'IN_PROGRESS' }, questions: [], answers: {}, state: {}, debounce: {} }; dbRender();`);
   assert.equal(document.querySelector('.db-bottom-dock'), null, 'bottom dock is hidden during active exam');
   evalExpr(`DB_PAGES.exam && dbExamStop(false);`);
+});
+
+test('Class overview dashboard (18-class-overview.js) has dock sub-tabs and styled KPI cards', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  evalExpr(`
+    logged = true;
+    role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 'teacher-1' };
+    DB.me = { id: 'teacher-1', email: 'gv@edu.vn', full_name: 'GV', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1';
+    DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.notifs = [];
+    DB.page = 'class_overview';
+    DB.arg = {};
+    DB.loading = false;
+    DB.loadError = '';
+    DB.data = {
+      cfg: { dash_reteach_share: 0.4, dash_min_students: 5, dash_advanced_threshold: 0.8, dash_inactive_days: 14, dash_question_min_answers: 10 },
+      members: [{ student_id: 's1' }], profilesById: { s1: { full_name: 'An' } },
+      mastery: [], gaps: [], evidence: [], practiceSessions: [], questions: [],
+      content: { objectives: [], topics: [], lessons: [] },
+      reteach: [], groups: { SUPPORT: [], ON_TRACK: [], ADVANCED: [], INACTIVE: [] }, questionStats: [],
+      linkCountByObj: {}, qCountByObj: {},
+    };
+    dbRender();
+  `);
+
+  // Có tab bar nổi như mọi phân hệ khác
+  const dock = document.querySelector('.db-bottom-dock');
+  assert.ok(dock, 'class overview renders the floating bottom dock');
+  assert.equal(dock.dataset.context, 'class_overview', 'dock is scoped to the class overview page');
+  assert.ok(dock.querySelector('[data-sub="co-kpi"]'), 'dock has quick-metrics item');
+  assert.ok(dock.querySelector('[data-sub="co-groups"]'), 'dock has student-group item');
+  assert.equal(dock.querySelectorAll('.db-dock-item').length, 5, 'dock is compact like other feature pages');
+  assert.ok(document.getElementById('db-co-kpi') && document.getElementById('db-co-groups'), 'dock targets exist on the page');
+
+  // Nhãn chỉ số nằm trong phần tử riêng, không dính vào số
+
+  const kpis = [...document.querySelectorAll('.db-overview-grid .db-kpi')];
+  assert.equal(kpis.length, 4, 'renders four KPI cards');
+  kpis.forEach((kpi) => {
+    assert.ok(kpi.querySelector('b'), 'KPI has a value');
+    assert.ok(kpi.querySelector('.db-kpi-label'), 'KPI label is wrapped in its own element');
+    assert.ok(kpi.querySelector('.db-kpi-meta'), 'KPI hint is wrapped in its own element');
+    assert.equal(kpi.querySelector('span:not([class])'), null, 'no bare span label that could collide with the value');
+  });
+
+  // Mỗi lớp CSS dùng ở trang này phải tồn tại trong bundle CSS
+  const css = fs.readdirSync(path.join(ROOT, 'css'))
+    .filter((f) => f.endsWith('.css'))
+    .map((f) => fs.readFileSync(path.join(ROOT, 'css', f), 'utf8'))
+    .join('\n');
+  ['.db-overview-grid', '.db-kpi', '.db-kpi-label', '.db-kpi-meta', '.db-settings-grid', '.db-co-tabs'].forEach((sel) => {
+    assert.ok(css.includes(sel + '{') || css.includes(sel + ' '), `CSS defines ${sel}`);
+  });
+
+  // Cài đặt ngưỡng đọc được bằng data-field (saveDashSettings)
+  ['dash_reteach_share', 'dash_min_students', 'dash_advanced_threshold', 'dash_inactive_days'].forEach((k) => {
+    assert.ok(document.querySelector(`#db-co-settings [data-field="${k}"]`), `settings input exposes ${k}`);
+  });
+  assert.ok(document.querySelector('#db-co-settings [data-act="saveDashSettings"]'), 'settings panel can save');
 });
 
 test('Build script bundles & minifies assets, converts to WebP, runs minified runtime, and Express serves CSP + Brotli/Gzip', async () => {

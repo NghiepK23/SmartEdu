@@ -6,7 +6,7 @@
 const DB_NAV_T = [
   ['', [['home', 'Tổng quan', 'dashboard'], ['schedule', 'Lịch & việc cần làm', 'calendar']]],
   ['Dạy học', [['content', 'Thư mục học tập', 'lessons'], ['assignments', 'Bài tập', 'navAsg'], ['questions', 'Ngân hàng câu hỏi', 'questionBank'], ['assessments', 'Bài kiểm tra', 'exam'], ['ai', 'AI tạo câu hỏi', 'spark'], ['chat', 'Trợ lý AI', 'chat']]],
-  ['Đánh giá học tập', [['progress', 'Mức độ nắm vững', 'mastery'], ['gaps', 'Lỗ hổng kiến thức', 'gaps'], ['recommend', 'Gợi ý học tập', 'recommend'], ['report', 'Báo cáo tiến bộ', 'trend'], ['class_overview', 'Tổng quan lớp', 'classes']]],
+  ['Đánh giá học tập', [['progress', 'Mức độ nắm vững', 'mastery'], ['gaps', 'Lỗ hổng kiến thức', 'gaps'], ['recommend', 'Gợi ý học tập', 'recommend'], ['report', 'Báo cáo tiến bộ', 'trend'], ['class_overview', 'Bảng điều khiển lớp', 'classes']]],
   ['Quản lý', [['classes', 'Lớp học phụ trách', 'classes'], ['trash', 'Thùng rác', 'trash'], ['history', 'Lịch sử chỉnh sửa', 'history']]],
 ];
 const DB_NAV_S = [
@@ -246,6 +246,14 @@ function dbDockSubItems(T) {
       { sub: 'hist-top', label: 'Danh sách', icon: 'history', active: !sub || sub === 'hist-top' },
       { sub: 'hist-search', label: 'Tìm kiếm', icon: 'search', active: sub === 'hist-search' },
       { sub: 'hist-clear', label: 'Xóa lọc', icon: 'refresh', active: false },
+    );
+  } else if (p === 'class_overview') {
+    items.push(
+      { sub: 'co-kpi', label: 'Chỉ số', icon: 'dashboard', active: !sub || sub === 'co-kpi' },
+      { sub: 'co-reteach', label: 'Cần dạy lại', icon: 'alert', active: sub === 'co-reteach' },
+      { sub: 'co-groups', label: 'Nhóm HS', icon: 'students', active: sub === 'co-groups' },
+      { sub: 'co-coverage', label: 'Độ phủ', icon: 'target', active: sub === 'co-coverage' },
+      { sub: 'co-settings', label: 'Ngưỡng', icon: 'settings', active: sub === 'co-settings' },
     );
   } else if (p === 'games') {
     items.push(
@@ -933,6 +941,12 @@ DB_ACT.dockSubAction = async (el) => {
   if (sub === 'hist-top') { dbDockScrollTo('#db-h-h'); dbSyncDockActive(); return; }
   if (sub === 'hist-search') { dbDockScrollTo('#db-history-search', '#db-history-search'); dbSyncDockActive(); return; }
   if (sub === 'hist-clear' && typeof DB_ACT.clearHistoryFilters === 'function') { DB_UI.dockSub = ''; DB_ACT.clearHistoryFilters(); dbSyncDockActive(); return; }
+
+  if (sub === 'co-kpi') { dbDockScrollTo('#db-co-kpi'); dbSyncDockActive(); return; }
+  if (sub === 'co-reteach') { dbDockScrollTo('#db-co-reteach'); dbSyncDockActive(); return; }
+  if (sub === 'co-coverage') { dbDockScrollTo('#db-co-coverage'); dbSyncDockActive(); return; }
+  if (sub === 'co-settings') { dbDockScrollTo('#db-co-settings', '#db-dash-reteach'); dbSyncDockActive(); return; }
+  if (sub === 'co-groups') { dbDockScrollTo('#db-co-groups'); dbSyncDockActive(); return; }
 
   if (sub === 'game-modes') { dbDockScrollTo('#db-h-gl'); dbSyncDockActive(); return; }
   if (sub === 'game-src') { dbDockScrollTo('#db-game-src', '#db-game-src'); dbSyncDockActive(); return; }

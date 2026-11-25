@@ -91,7 +91,7 @@ function dbContentRootView(d, lessonsBy, objBy) {
       </div>
       <div class="row" style="margin-top:10px">${dbBtn('Lưu cài đặt luyện tập', 'savePracticeSettings', {}, 'mini')}${dbBtn('Khôi phục mặc định', 'resetPracticeSettings', {}, 'light mini')}</div>
     </details>
-    <details class="db-content-settings"><summary>Cài đặt bảng điều khiển lớp</summary>
+    <details class="db-content-settings"><summary>Ngưỡng tính bảng điều khiển lớp</summary>
       <div class="db-form-row" style="flex-wrap:wrap;gap:12px">
         <div class="field"><label>Tỷ lệ dạy lại</label><input type="number" min="0" max="1" step="0.05" value="${h(DB.course ? (DB.course.dash_reteach_share ?? 0.4) : 0.4)}" data-field="dash_reteach_share"></div>
         <div class="field"><label>Số HS tối thiểu</label><input type="number" min="1" max="200" value="${h(DB.course ? (DB.course.dash_min_students ?? 5) : 5)}" data-field="dash_min_students"></div>
@@ -99,7 +99,7 @@ function dbContentRootView(d, lessonsBy, objBy) {
         <div class="field"><label>Ngày không hoạt động</label><input type="number" min="1" max="365" value="${h(DB.course ? (DB.course.dash_inactive_days ?? 14) : 14)}" data-field="dash_inactive_days"></div>
         <div class="field"><label>Câu hỏi tối thiểu</label><input type="number" min="1" max="200" value="${h(DB.course ? (DB.course.dash_question_min_answers ?? 10) : 10)}" data-field="dash_question_min_answers"></div>
       </div>
-      <div class="row" style="margin-top:10px">${dbBtn('Lưu cài đặt bảng điều khiển', 'saveDashSettings', {}, 'mini')}</div>
+      <div class="row" style="margin-top:10px">${dbBtn('Lưu ngưỡng', 'saveDashSettings', {}, 'mini')}</div>
     </details>
   </section>`;
 }
