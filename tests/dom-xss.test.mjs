@@ -991,6 +991,25 @@ test('Adaptive practice page (17-practice.js) exposes a floating dock and styled
   assert.ok(document.querySelector('#db-practice-resources'), 'resources slot exists');
 });
 
+test('Every page except the exam screen offers floating dock sub-tabs', async () => {
+  const { evalExpr } = createDomTestContext();
+  const missing = evalExpr(`(() => {
+    const out = [];
+    const prev = DB.page;
+    for (const p of Object.keys(DB_PAGES)) {
+      if (p === 'exam') continue;
+      DB.page = p;
+      DB.arg = {};
+      DB_UI.dockSub = '';
+      if (!dbDockSubItems(true).length) out.push('GV:' + p);
+      if (!dbDockSubItems(false).length) out.push('HS:' + p);
+    }
+    DB.page = prev;
+    return out;
+  })()`);
+  assert.equal(missing.length, 0, 'mọi trang (trừ màn làm bài) đều có tab bar nổi: ' + missing.join(', '));
+});
+
 test('Class overview dashboard (18-class-overview.js) has dock sub-tabs and styled KPI cards', async () => {
   const { document, evalExpr } = createDomTestContext();
   evalExpr(`
