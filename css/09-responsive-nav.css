@@ -1,0 +1,149 @@
+/* EducMind · css/09-responsive-nav.css — Điều hướng trên màn hình nhỏ, phản hồi của nút, thứ tự lớp khi mở hộp thoại. */
+/* Responsive navigation: expanded = labelled grid; collapsed = compact icon rail. Both remain inside one framed nav.side. */
+@media(max-width:900px){
+  #app>.layout,#app>.layout.sidebar-collapsed{
+    position:relative!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;
+    grid-template-areas:"nav" "content"!important;grid-template-rows:auto 1fr!important;
+    width:100%!important;max-width:none!important;gap:0!important;padding:0 10px!important
+  }
+  #app .layout>.side{
+    grid-area:nav!important;position:relative!important;top:auto!important;left:auto!important;right:auto!important;bottom:auto!important;transform:none!important;
+    display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;grid-auto-flow:row!important;align-items:stretch!important;justify-items:stretch!important;
+    gap:5px!important;width:100%!important;max-width:none!important;height:auto!important;min-height:0!important;max-height:none!important;
+    margin:6px 0 12px!important;padding:10px 66px 10px 10px!important;overflow:hidden!important;
+    border:1px solid rgba(255,255,255,.14)!important;border-radius:22px!important;
+    background-color:#154946!important;
+    background-image:linear-gradient(168deg,#1b5c58 0%,#144542 100%)!important;
+    color:#f2faf8!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 14px 30px -16px rgba(12,42,40,.40)!important;
+    -webkit-backdrop-filter:var(--lg-blur-chrome)!important;backdrop-filter:var(--lg-blur-chrome)!important
+  }
+  :root[data-theme="dark"] #app .layout>.side{
+    background-color:#0e2021!important;
+    background-image:linear-gradient(168deg,#132c2d 0%,#0e2021 100%)!important;
+    border-color:rgba(212,235,232,.14)!important;
+  }
+  #app .layout>.side>.grp,#app .layout>.side>.grp>.items,
+  #app .layout>.side .grp,#app .layout>.side .items{display:contents!important;flex:none!important;width:auto!important;min-width:0!important}
+  #app .layout>.side .grp h2,#app .layout>.side .side-note,#app .layout>.side .side-brand,#app .layout>.side .side-user-card,#app .layout>.side .side-search,#app .layout>.side .nav-badge{display:none!important}
+  #app .layout:not(.sidebar-collapsed)>.side .items .nav .nav-label{display:block!important}
+  #app .layout>.side .nav,
+  #app .layout>.side .items .nav{
+    display:flex!important;flex:initial!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;
+    width:100%!important;min-width:0!important;max-width:none!important;height:auto!important;min-height:66px!important;margin:0!important;padding:7px 4px!important;gap:5px!important;
+    border-radius:14px!important;color:var(--lg-nav-ink)!important;text-align:center!important;white-space:normal!important;font-size:clamp(11px,2.8vw,12.5px)!important;line-height:1.22!important
+  }
+  #app .layout>.side .nav .nav-label,
+  #app .layout>.side .items .nav .nav-label{display:block!important;max-width:100%!important;white-space:normal!important;overflow-wrap:break-word!important;word-break:normal!important;color:var(--lg-nav-ink)!important}
+  #app .layout>.side .nav .nav-ic-tile,
+  #app .layout>.side .items .nav .nav-ic-tile{display:flex!important;align-items:center!important;justify-content:center!important;width:26px!important;height:26px!important;border-radius:8px!important;flex:none!important}
+  #app .layout>.side .nav .nav-ic-tile .ic,
+  #app .layout>.side .items .nav .nav-ic-tile .ic{display:block!important;width:14px!important;height:14px!important;margin:0!important;flex:none!important;color:#fff!important;stroke:#fff!important}
+  #app .layout>.side .nav[aria-current="page"],
+  #app .layout>.side .items .nav[aria-current="page"]{
+    background-image:linear-gradient(180deg,var(--lg-nav-active-a),var(--lg-nav-active-b))!important;
+    background-color:transparent!important;
+    color:var(--lg-nav-active-ink)!important;
+    box-shadow:var(--lg-nav-active-rim)!important;
+    font-weight:700!important
+  }
+  #app .layout>.side .nav[aria-current="page"] .nav-label,
+  #app .layout>.side .items .nav[aria-current="page"] .nav-label{color:var(--lg-nav-active-ink)!important}
+  #app .layout>.side .nav[aria-current="page"] .nav-ic-tile .ic,
+  #app .layout>.side .items .nav[aria-current="page"] .nav-ic-tile .ic{color:#fff!important;stroke:#fff!important}
+  #app .layout.sidebar-collapsed>.side{
+    display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-start!important;
+    gap:6px!important;height:68px!important;min-height:68px!important;max-height:68px!important;padding:8px 62px 8px 10px!important;
+    overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:none!important
+  }
+  #app .layout.sidebar-collapsed>.side::-webkit-scrollbar{display:none!important}
+  #app .layout.sidebar-collapsed>.side .nav,
+  #app .layout.sidebar-collapsed>.side .items .nav{
+    display:flex!important;flex-direction:column!important;flex:0 0 38px!important;width:38px!important;min-width:38px!important;max-width:38px!important;height:42px!important;min-height:42px!important;padding:0!important;gap:0!important;border-radius:12px!important
+  }
+  #app .layout.sidebar-collapsed>.side .nav .nav-label,
+  #app .layout.sidebar-collapsed>.side .items .nav .nav-label{display:none!important}
+  #app .layout.sidebar-collapsed>.side .nav .nav-ic-tile,
+  #app .layout.sidebar-collapsed>.side .items .nav .nav-ic-tile{display:flex!important;align-items:center!important;justify-content:center!important;width:28px!important;height:28px!important;border-radius:9px!important}
+  #app .layout>.side-toggle{
+    grid-area:nav!important;display:grid!important;position:relative!important;top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;
+    justify-self:end!important;align-self:center!important;z-index:2147483647!important;width:42px!important;height:42px!important;min-height:42px!important;margin:0 12px 0 0!important;
+    border-radius:999px!important;background-image:linear-gradient(180deg,var(--lg-control-a),var(--lg-control-b))!important;background-color:transparent!important;color:var(--ink)!important;border:1px solid var(--lg-edge)!important;
+    box-shadow:var(--lg-control-rim),var(--lg-control-shadow)!important;transform:none!important
+  }
+  #app .layout>.main{grid-area:content!important;grid-column:1!important;grid-row:2!important;min-width:0!important;padding:0 2px 76px!important}
+}
+@media(max-width:620px){
+  .top .db-student-top-title,.top .user-greeting,.top .user-role,.top .user-class-label{display:none!important}
+  .top .user-class-picker{padding:0 6px 0 8px}
+  .top .user-class-picker>select#classSelect{max-width:105px;font-size:.76rem}
+  .app-bg-trigger,.login-bg-trigger{right:10px;bottom:10px;padding:6px 10px;font-size:.74rem}
+}
+@media(max-width:380px){
+  #app .layout>.side{padding-right:58px!important}
+  #app .layout.sidebar-collapsed>.side{padding-right:58px!important;gap:2px!important}
+  #app .layout.sidebar-collapsed>.side .nav,
+  #app .layout.sidebar-collapsed>.side .items .nav{min-width:18px!important}
+  #app .layout>.side-toggle{width:38px!important;height:38px!important;min-height:38px!important;margin-right:8px!important}
+  #app .layout:not(.sidebar-collapsed)>.side .nav,
+  #app .layout:not(.sidebar-collapsed)>.side .items .nav{min-height:62px!important;font-size:9px!important}
+}
+
+/* System-wide button feedback: clearer hover, press and keyboard-focus states. */
+button:not(:disabled),.btn:not([disabled]),[role="button"]:not([aria-disabled="true"]){
+  cursor:pointer;
+  transition:transform .16s cubic-bezier(.2,.8,.2,1),filter .16s ease,box-shadow .16s ease,background-color .16s ease,color .16s ease,border-color .16s ease;
+}
+button:not(:disabled):hover,.btn:not([disabled]):hover,[role="button"]:not([aria-disabled="true"]):hover{
+  filter:brightness(1.06) saturate(1.06);
+  transform:translateY(-1px);
+}
+button:not(:disabled):active,.btn:not([disabled]):active,[role="button"]:not([aria-disabled="true"]):active{
+  filter:brightness(.95) saturate(1.06);
+  transform:scale(.96);
+  transition-duration:.07s;
+}
+button:focus-visible,.btn:focus-visible,[role="button"]:focus-visible{
+  outline:3px solid color-mix(in srgb,var(--brand) 78%,#fff);
+  outline-offset:2px;
+  z-index:2;
+}
+button:disabled,.btn[disabled],[role="button"][aria-disabled="true"]{cursor:not-allowed;filter:saturate(.55)}
+@media(prefers-reduced-motion:reduce){
+  button:not(:disabled),.btn:not([disabled]),[role="button"]:not([aria-disabled="true"]){transition:none!important}
+  button:not(:disabled):hover,.btn:not([disabled]):hover,[role="button"]:not([aria-disabled="true"]):hover,
+  button:not(:disabled):active,.btn:not([disabled]):active,[role="button"]:not([aria-disabled="true"]):active{transform:none!important}
+}
+/* When a dialog is open, raise the main stacking context above the fixed navigation rail. */
+#app .layout.has-dialog>.main{position:relative!important;z-index:2147483647!important}
+#app .layout.has-dialog .ov{z-index:2147483647!important}
+
+/* Keep the collapse handle aligned cleanly at top-right on desktop without Y-shift. */
+@media(min-width:901px){
+  #app .layout>.side-toggle,
+  #app .layout>.side-toggle:hover,
+  #app .layout>.side-toggle:active{
+    transform:none!important
+  }
+  #app .layout>.side-toggle:hover{
+    scale:1.06
+  }
+  #app .layout>.side-toggle:active{
+    scale:.96
+  }
+}
+@media(max-width:900px){
+  #app .layout>.side-toggle,
+  #app .layout>.side-toggle:hover,
+  #app .layout>.side-toggle:active{
+    transform:none!important
+  }
+  #app .layout>.side-toggle:hover{
+    scale:1.06
+  }
+  #app .layout>.side-toggle:active{
+    scale:.96
+  }
+}
+
+

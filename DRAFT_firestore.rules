@@ -1,0 +1,1945 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    /* ===== Global Security Primitives ===== */
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function isOptId(data, field) {
+      return !(field in data) || data[field] == null || isValidId(data[field]);
+    }
+    function isOptStr(data, field, maxLen) {
+      return !(field in data) || data[field] == null || (data[field] is string && data[field].size() <= maxLen);
+    }
+    function isOptInt(data, field) {
+      return !(field in data) || data[field] == null || data[field] is int;
+    }
+    function isOptNum(data, field) {
+      return !(field in data) || data[field] == null || data[field] is int || data[field] is float;
+    }
+    function isOptNumRange(data, field, minVal, maxVal) {
+      return !(field in data) || data[field] == null || ((data[field] is int || data[field] is float) && data[field] >= minVal && data[field] <= maxVal);
+    }
+    function isOptIntRange(data, field, minVal, maxVal) {
+      return !(field in data) || data[field] == null || (data[field] is int && data[field] >= minVal && data[field] <= maxVal);
+    }
+    function isOptBool(data, field) {
+      return !(field in data) || data[field] == null || data[field] is bool;
+    }
+    function isOptMap(data, field) {
+      return !(field in data) || data[field] == null || data[field] is map;
+    }
+    function isBoundedIdList(val, maxLen) {
+      return val is list && val.size() <= maxLen && (val.size() == 0 || isValidId(val[0]));
+    }
+    function isOptBoundedIdList(data, field, maxLen) {
+      return !(field in data) || data[field] == null || isBoundedIdList(data[field], maxLen);
+    }
+    function isOptOptions(data, field) {
+      return !(field in data) || data[field] == null
+        || (data[field] is list && data[field].size() <= 30)
+        || (data[field] is map && data[field].keys().hasOnly(['left', 'right']));
+    }
+    function isOptAnswerVal(data, field) {
+      return !(field in data) || data[field] == null
+        || (data[field] is string && data[field].size() <= 10000)
+        || data[field] is int
+        || data[field] is float
+        || data[field] is bool
+        || (data[field] is list && data[field].size() <= 40);
+    }
+    function isServerCreated(data) {
+      return data.createdAt == request.time && data.updatedAt == request.time;
+    }
+    function isServerUpdated(data) {
+      return data.createdAt == existing().createdAt && data.updatedAt == request.time;
+    }
+
+    function isTeacherAccount() {
+      return isVerifiedUser()
+        && exists(/databases/$(database)/documents/profiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'TEACHER';
+    }
+    function isClassTeacher(classId) {
+      return isVerifiedUser()
+        && isValidId(classId)
+        && exists(/databases/$(database)/documents/classes/$(classId))
+        && get(/databases/$(database)/documents/classes/$(classId)).data.owner_teacher_id == request.auth.uid;
+    }
+    function isClassStudent(classId) {
+      return isSignedIn()
+        && isValidId(classId)
+        && exists(/databases/$(database)/documents/class_members/$(classId + '_' + request.auth.uid));
+    }
+    function isClassParticipant(classId) {
+      return isClassTeacher(classId) || isClassStudent(classId);
+    }
+
+    /* ===== Validation Blueprints ===== */
+    function isValidProfile(data) {
+      return data.keys().hasAll(['id', 'email', 'full_name', 'role', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'email', 'full_name', 'role', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 320
+        && data.full_name is string && data.full_name.size() >= 1 && data.full_name.size() <= 120
+        && data.role in ['STUDENT', 'TEACHER']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEmailIndex(data) {
+      return data.keys().hasAll(['email_hash', 'user_id', 'role', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['email_hash', 'user_id', 'role', 'createdAt', 'updatedAt'])
+        && data.email_hash is string && data.email_hash.size() == 64 && data.email_hash.matches('^[a-f0-9]+$')
+        && isValidId(data.user_id)
+        && data.role in ['STUDENT', 'TEACHER']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidRosterLink(data) {
+      return data.keys().hasAll(['id', 'teacher_id', 'student_id', 'class_id', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'teacher_id', 'student_id', 'class_id', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.student_id)
+        && isValidId(data.class_id)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidClass(data) {
+      return data.keys().hasAll(['id', 'name', 'owner_teacher_id', 'created_at', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'name', 'grade', 'school_year', 'owner_teacher_id', 'created_at', 'deleted_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && isOptInt(data, 'grade')
+        && isOptStr(data, 'school_year', 20)
+        && isValidId(data.owner_teacher_id)
+        && data.created_at is string && data.created_at.size() <= 40
+        && isOptStr(data, 'deleted_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidClassInvite(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'code', 'created_at', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'code', 'created_at', 'expires_at', 'revoked_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && data.code is string && data.code.size() >= 6 && data.code.size() <= 12 && data.code.matches('^[A-Z0-9]+$')
+        && data.created_at is string && data.created_at.size() <= 40
+        && isOptStr(data, 'expires_at', 40)
+        && isOptStr(data, 'revoked_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidClassInviteCode(data) {
+      return data.keys().hasAll(['code', 'invite_id', 'class_id', 'teacher_id', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['code', 'invite_id', 'class_id', 'teacher_id', 'revoked_at', 'expires_at', 'createdAt', 'updatedAt'])
+        && data.code is string && data.code.size() >= 6 && data.code.size() <= 12 && data.code.matches('^[A-Z0-9]+$')
+        && isValidId(data.invite_id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isOptStr(data, 'revoked_at', 40)
+        && isOptStr(data, 'expires_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidClassMember(data) {
+      return data.keys().hasAll(['id', 'class_id', 'student_id', 'teacher_id', 'joined_at', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'student_id', 'teacher_id', 'joined_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.student_id)
+        && isValidId(data.teacher_id)
+        && data.joined_at is string && data.joined_at.size() <= 40
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCourse(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'title', 'created_at', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'class_id', 'teacher_id', 'title', 'description', 'sequential_unlock', 'student_ai_enabled',
+          'practice_weight', 'practice_unlock_min_official', 'practice_session_length', 'practice_daily_scored_sessions', 'practice_max_share',
+          'dash_reteach_share', 'dash_min_students', 'dash_advanced_threshold', 'dash_inactive_days', 'dash_question_min_answers',
+          'created_at', 'deleted_at', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+        && isOptStr(data, 'description', 4000)
+        && isOptBool(data, 'sequential_unlock')
+        && isOptBool(data, 'student_ai_enabled')
+        && isOptNumRange(data, 'practice_weight', 0, 1)
+        && isOptIntRange(data, 'practice_unlock_min_official', 0, 50)
+        && isOptIntRange(data, 'practice_session_length', 1, 50)
+        && isOptIntRange(data, 'practice_daily_scored_sessions', 0, 50)
+        && isOptNumRange(data, 'practice_max_share', 0, 0.95)
+        && isOptNumRange(data, 'dash_reteach_share', 0, 1)
+        && isOptIntRange(data, 'dash_min_students', 1, 200)
+        && isOptNumRange(data, 'dash_advanced_threshold', 0, 1)
+        && isOptIntRange(data, 'dash_inactive_days', 1, 365)
+        && isOptIntRange(data, 'dash_question_min_answers', 1, 200)
+        && data.created_at is string && data.created_at.size() <= 40
+        && isOptStr(data, 'deleted_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidClassIndex(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'topic_ids', 'lesson_ids', 'objective_ids', 'resource_ids', 'resource_objective_link_ids', 'assignment_ids', 'assessment_ids', 'question_ids', 'criterion_ids', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isOptBoundedIdList(data, 'topic_ids', 500)
+        && isOptBoundedIdList(data, 'lesson_ids', 500)
+        && isOptBoundedIdList(data, 'objective_ids', 1000)
+        && isOptBoundedIdList(data, 'resource_ids', 1000)
+        && isOptBoundedIdList(data, 'resource_objective_link_ids', 2000)
+        && isOptBoundedIdList(data, 'assignment_ids', 500)
+        && isOptBoundedIdList(data, 'assessment_ids', 500)
+        && isOptBoundedIdList(data, 'question_ids', 2000)
+        && isOptBoundedIdList(data, 'criterion_ids', 1000)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCourseTopic(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'course_id', 'title', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'course_id', 'title', 'description', 'display_order', 'status', 'created_at', 'deleted_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.course_id)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 300
+        && isOptStr(data, 'description', 8000)
+        && isOptInt(data, 'display_order')
+        && data.status in ['DRAFT', 'PUBLISHED']
+        && isOptStr(data, 'created_at', 40)
+        && isOptStr(data, 'deleted_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidLesson(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'course_id', 'title', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'course_id', 'topic_id', 'title', 'description', 'display_order', 'status', 'created_at', 'deleted_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.course_id)
+        && isOptId(data, 'topic_id')
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 300
+        && isOptStr(data, 'description', 8000)
+        && isOptInt(data, 'display_order')
+        && data.status in ['DRAFT', 'PUBLISHED']
+        && isOptStr(data, 'created_at', 40)
+        && isOptStr(data, 'deleted_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidObjective(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'course_id', 'lesson_id', 'code', 'description', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'course_id', 'lesson_id', 'code', 'description', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.course_id)
+        && isValidId(data.lesson_id)
+        && data.code is string && data.code.size() >= 1 && data.code.size() <= 80
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 2000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidResource(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'course_id', 'lesson_id', 'kind', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'course_id', 'lesson_id', 'kind', 'url', 'file_name', 'storage_path', 'file_size_bytes', 'mime_type', 'created_at', 'deleted_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.course_id)
+        && isValidId(data.lesson_id)
+        && data.kind is string && data.kind.size() <= 40
+        && isOptStr(data, 'url', 2000)
+        && isOptStr(data, 'file_name', 300)
+        && isOptStr(data, 'storage_path', 500)
+        && isOptInt(data, 'file_size_bytes')
+        && isOptStr(data, 'mime_type', 120)
+        && isOptStr(data, 'created_at', 40)
+        && isOptStr(data, 'deleted_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidResourceObjectiveLink(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'course_id', 'resource_id', 'objective_id', 'purpose', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'course_id', 'resource_id', 'objective_id', 'purpose', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.course_id)
+        && isValidId(data.resource_id)
+        && isValidId(data.objective_id)
+        && data.purpose in ['LEARN', 'PRACTICE', 'EXTEND']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidQuestion(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'course_id', 'created_by', 'content', 'kind', 'difficulty', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'course_id', 'created_by', 'content', 'kind', 'options', 'correct_answer', 'explain', 'difficulty', 'grade', 'bloom_level', 'objective_ids', 'deleted_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.course_id)
+        && isValidId(data.created_by)
+        && data.content is string && data.content.size() >= 1 && data.content.size() <= 5000
+        && data.kind in ['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE', 'FILL_IN_BLANK', 'MATCHING', 'SHORT_ANSWER', 'ESSAY']
+        && isOptOptions(data, 'options')
+        && isOptAnswerVal(data, 'correct_answer')
+        && isOptStr(data, 'explain', 5000)
+        && data.difficulty in ['EASY', 'MEDIUM', 'HARD']
+        && isOptInt(data, 'grade')
+        && isOptStr(data, 'bloom_level', 40)
+        && isOptBoundedIdList(data, 'objective_ids', 50)
+        && isOptStr(data, 'deleted_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidQuestionObjective(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'question_id', 'objective_id', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'question_id', 'objective_id', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.question_id)
+        && isValidId(data.objective_id)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAssignment(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'created_by', 'course_id', 'title', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'created_by', 'course_id', 'topic_id', 'lesson_id', 'title', 'description', 'due_at', 'allow_late', 'late_close_at', 'max_score', 'status', 'objective_ids', 'question_ids', 'target_mode', 'target_group', 'target_student_ids', 'created_at', 'deleted_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.created_by)
+        && isValidId(data.course_id)
+        && isOptId(data, 'topic_id')
+        && isOptId(data, 'lesson_id')
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 300
+        && isOptStr(data, 'description', 8000)
+        && isOptStr(data, 'due_at', 40)
+        && isOptBool(data, 'allow_late')
+        && isOptStr(data, 'late_close_at', 40)
+        && isOptNum(data, 'max_score')
+        && data.status in ['DRAFT', 'PUBLISHED']
+        && isOptBoundedIdList(data, 'objective_ids', 100)
+        && isOptBoundedIdList(data, 'question_ids', 200)
+        && (!('target_mode' in data) || data.target_mode == null || data.target_mode in ['ALL', 'TARGETED'])
+        && isOptStr(data, 'target_group', 40)
+        && isOptBoundedIdList(data, 'target_student_ids', 500)
+        && isOptStr(data, 'created_at', 40)
+        && isOptStr(data, 'deleted_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAssignmentTarget(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'assignment_id', 'student_id', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'assignment_id', 'student_id', 'target_group', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.assignment_id)
+        && isValidId(data.student_id)
+        && isOptStr(data, 'target_group', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAssignmentObjective(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'assignment_id', 'objective_id', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'assignment_id', 'objective_id', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.assignment_id)
+        && isValidId(data.objective_id)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAssignmentQuestion(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'assignment_id', 'question_id', 'display_order', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'assignment_id', 'question_id', 'display_order', 'weight', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.assignment_id)
+        && isValidId(data.question_id)
+        && data.display_order is int
+        && isOptNum(data, 'weight')
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAssignmentSubmission(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'assignment_id', 'student_id', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'assignment_id', 'student_id', 'text_content', 'storage_path', 'file_name', 'status', 'score', 'feedback', 'graded_by', 'graded_at', 'is_edited', 'question_grading_enabled', 'submitted_at', 'deleted_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.assignment_id)
+        && isValidId(data.student_id)
+        && isOptStr(data, 'text_content', 20000)
+        && isOptStr(data, 'storage_path', 500)
+        && isOptStr(data, 'file_name', 300)
+        && data.status in ['SUBMITTED', 'LATE', 'GRADED']
+        && isOptNum(data, 'score')
+        && isOptStr(data, 'feedback', 5000)
+        && isOptId(data, 'graded_by')
+        && isOptStr(data, 'graded_at', 40)
+        && isOptBool(data, 'is_edited')
+        && isOptBool(data, 'question_grading_enabled')
+        && isOptStr(data, 'submitted_at', 40)
+        && isOptStr(data, 'deleted_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAssignmentSubmissionAnswer(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'submission_id', 'student_id', 'question_id', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'submission_id', 'student_id', 'question_id', 'answer_content', 'score', 'feedback', 'graded_by', 'graded_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.submission_id)
+        && isValidId(data.student_id)
+        && isValidId(data.question_id)
+        && isOptAnswerVal(data, 'answer_content')
+        && isOptNum(data, 'score')
+        && isOptStr(data, 'feedback', 2000)
+        && isOptId(data, 'graded_by')
+        && isOptStr(data, 'graded_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidRubricCriterion(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'assignment_id', 'title', 'max_score', 'display_order', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'assignment_id', 'title', 'description', 'max_score', 'display_order', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.assignment_id)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 300
+        && isOptStr(data, 'description', 2000)
+        && (data.max_score is int || data.max_score is float) && data.max_score > 0
+        && data.display_order is int
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidRubricScore(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'submission_id', 'student_id', 'criterion_id', 'score', 'graded_by', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'submission_id', 'student_id', 'criterion_id', 'score', 'feedback', 'graded_by', 'updated_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.submission_id)
+        && isValidId(data.student_id)
+        && isValidId(data.criterion_id)
+        && (data.score is int || data.score is float)
+        && isOptStr(data, 'feedback', 2000)
+        && isValidId(data.graded_by)
+        && isOptStr(data, 'updated_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAssessment(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'created_by', 'course_id', 'title', 'duration_minutes', 'max_attempts', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'created_by', 'course_id', 'topic_id', 'lesson_id', 'title', 'duration_minutes', 'max_attempts', 'open_at', 'close_at', 'status', 'question_ids', 'created_at', 'deleted_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.created_by)
+        && isValidId(data.course_id)
+        && isOptId(data, 'topic_id')
+        && isOptId(data, 'lesson_id')
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 300
+        && data.duration_minutes is int && data.duration_minutes >= 1
+        && data.max_attempts is int && data.max_attempts >= 1
+        && isOptStr(data, 'open_at', 40)
+        && isOptStr(data, 'close_at', 40)
+        && data.status in ['DRAFT', 'PUBLISHED']
+        && isOptBoundedIdList(data, 'question_ids', 200)
+        && isOptStr(data, 'created_at', 40)
+        && isOptStr(data, 'deleted_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAssessmentQuestion(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'assessment_id', 'question_id', 'weight', 'display_order', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'assessment_id', 'question_id', 'weight', 'display_order', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.assessment_id)
+        && isValidId(data.question_id)
+        && (data.weight is int || data.weight is float) && data.weight > 0
+        && data.display_order is int
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAssessmentAttempt(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'assessment_id', 'student_id', 'attempt_number', 'status', 'started_at', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'assessment_id', 'student_id', 'attempt_number', 'status', 'started_at', 'submitted_at', 'graded_at', 'total_score', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.assessment_id)
+        && isValidId(data.student_id)
+        && data.attempt_number is int && data.attempt_number >= 1
+        && data.status in ['IN_PROGRESS', 'SUBMITTED', 'GRADED']
+        && data.started_at is string && data.started_at.size() <= 40
+        && isOptStr(data, 'submitted_at', 40)
+        && isOptStr(data, 'graded_at', 40)
+        && isOptNum(data, 'total_score')
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidExtraAttempt(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'assessment_id', 'student_id', 'extra', 'granted_by', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'assessment_id', 'student_id', 'extra', 'reason', 'granted_by', 'created_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.assessment_id)
+        && isValidId(data.student_id)
+        && data.extra is int && data.extra >= 1
+        && isOptStr(data, 'reason', 500)
+        && isValidId(data.granted_by)
+        && isOptStr(data, 'created_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSubmissionAnswer(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'attempt_id', 'student_id', 'question_id', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'attempt_id', 'student_id', 'question_id', 'answer_content', 'score', 'feedback', 'graded_by', 'graded_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.attempt_id)
+        && isValidId(data.student_id)
+        && isValidId(data.question_id)
+        && isOptAnswerVal(data, 'answer_content')
+        && isOptNum(data, 'score')
+        && isOptStr(data, 'feedback', 2000)
+        && isOptId(data, 'graded_by')
+        && isOptStr(data, 'graded_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMastery(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'student_id', 'objective_id', 'mastery_score', 'evidence_count', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'student_id', 'objective_id', 'mastery_score', 'evidence_count', 'updated_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.student_id)
+        && isValidId(data.objective_id)
+        && (data.mastery_score is int || data.mastery_score is float) && data.mastery_score >= 0 && data.mastery_score <= 1
+        && data.evidence_count is int && data.evidence_count >= 0
+        && isOptStr(data, 'updated_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEvidence(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'student_id', 'objective_id', 'source_type', 'source_id', 'score', 'observed_at', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'student_id', 'objective_id', 'source_type', 'source_id', 'score', 'weight', 'observed_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.student_id)
+        && isValidId(data.objective_id)
+        && data.source_type in ['ASSIGNMENT', 'ASSESSMENT', 'PRACTICE']
+        && isValidId(data.source_id)
+        && (data.score is int || data.score is float) && data.score >= 0 && data.score <= 1
+        && isOptNumRange(data, 'weight', 0, 10)
+        && data.observed_at is string && data.observed_at.size() <= 40
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMasterySnapshot(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'student_id', 'objective_id', 'mastery_score', 'evidence_count', 'recorded_at', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'student_id', 'objective_id', 'mastery_score', 'evidence_count', 'recorded_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.student_id)
+        && isValidId(data.objective_id)
+        && (data.mastery_score is int || data.mastery_score is float) && data.mastery_score >= 0 && data.mastery_score <= 1
+        && data.evidence_count is int && data.evidence_count >= 0
+        && data.recorded_at is string && data.recorded_at.size() <= 40
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPracticeSession(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'course_id', 'student_id', 'objective_id', 'status', 'start_level', 'current_level', 'consecutive_correct', 'target_count', 'answered_count', 'started_at', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'course_id', 'student_id', 'objective_id', 'recommendation_id', 'status', 'start_level', 'current_level', 'consecutive_correct', 'target_count', 'answered_count', 'weighted_score', 'evidence_recorded', 'started_at', 'completed_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.course_id)
+        && isValidId(data.student_id)
+        && isValidId(data.objective_id)
+        && isOptId(data, 'recommendation_id')
+        && data.status in ['ACTIVE', 'COMPLETED', 'ABANDONED']
+        && data.start_level in ['EASY', 'MEDIUM', 'HARD']
+        && data.current_level in ['EASY', 'MEDIUM', 'HARD']
+        && data.consecutive_correct is int && data.consecutive_correct >= 0 && data.consecutive_correct <= 100
+        && data.target_count is int && data.target_count >= 1 && data.target_count <= 50
+        && data.answered_count is int && data.answered_count >= 0 && data.answered_count <= 50
+        && isOptNumRange(data, 'weighted_score', 0, 1)
+        && isOptBool(data, 'evidence_recorded')
+        && data.started_at is string && data.started_at.size() <= 40
+        && isOptStr(data, 'completed_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPracticeAnswer(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'session_id', 'student_id', 'objective_id', 'seq', 'question_id', 'level', 'served_at', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'session_id', 'student_id', 'objective_id', 'seq', 'question_id', 'level', 'served_at', 'answer', 'is_correct', 'score', 'answered_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.session_id)
+        && isValidId(data.student_id)
+        && isValidId(data.objective_id)
+        && data.seq is int && data.seq >= 1 && data.seq <= 100
+        && isValidId(data.question_id)
+        && data.level in ['EASY', 'MEDIUM', 'HARD']
+        && data.served_at is string && data.served_at.size() <= 40
+        && isOptAnswerVal(data, 'answer')
+        && isOptBool(data, 'is_correct')
+        && isOptNumRange(data, 'score', 0, 1)
+        && isOptStr(data, 'answered_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidKnowledgeGap(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'student_id', 'objective_id', 'status', 'opened_at', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'student_id', 'objective_id', 'status', 'reason', 'dismiss_reason', 'opened_at', 'resolved_at', 'dismissed_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.student_id)
+        && isValidId(data.objective_id)
+        && data.status in ['OPEN', 'RESOLVED', 'DISMISSED']
+        && isOptStr(data, 'reason', 500)
+        && isOptStr(data, 'dismiss_reason', 500)
+        && data.opened_at is string && data.opened_at.size() <= 40
+        && isOptStr(data, 'resolved_at', 40)
+        && isOptStr(data, 'dismissed_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidRecommendation(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'student_id', 'kind', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'student_id', 'objective_id', 'assessment_id', 'kind', 'reason', 'status', 'created_at', 'responded_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.student_id)
+        && isOptId(data, 'objective_id')
+        && isOptId(data, 'assessment_id')
+        && data.kind is string && data.kind.size() <= 40
+        && isOptStr(data, 'reason', 500)
+        && data.status in ['ACTIVE', 'ACCEPTED', 'DISMISSED']
+        && isOptStr(data, 'created_at', 40)
+        && isOptStr(data, 'responded_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['id', 'user_id', 'actor_id', 'type', 'title', 'is_read', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'user_id', 'actor_id', 'type', 'title', 'content', 'is_read', 'payload', 'read_at', 'deleted_at', 'created_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.user_id)
+        && isValidId(data.actor_id)
+        && data.type is string && data.type.size() <= 60
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 300
+        && isOptStr(data, 'content', 1000)
+        && data.is_read is bool
+        && isOptMap(data, 'payload')
+        && isOptStr(data, 'read_at', 40)
+        && isOptStr(data, 'deleted_at', 40)
+        && isOptStr(data, 'created_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidContentRevision(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'entity_type', 'entity_id', 'action', 'actor_id', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'entity_type', 'entity_id', 'action', 'actor_id', 'before_state', 'after_state', 'created_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && data.entity_type is string && data.entity_type.size() <= 60
+        && isValidId(data.entity_id)
+        && data.action is string && data.action.size() <= 40
+        && isValidId(data.actor_id)
+        && isOptMap(data, 'before_state')
+        && isOptMap(data, 'after_state')
+        && isOptStr(data, 'created_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAiRequest(data) {
+      return data.keys().hasAll(['id', 'teacher_id', 'lesson_id', 'quantity', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'teacher_id', 'lesson_id', 'quantity', 'parameters', 'status', 'error_message', 'created_at', 'completed_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.lesson_id)
+        && data.quantity is int && data.quantity >= 1 && data.quantity <= 20
+        && isOptMap(data, 'parameters')
+        && data.status in ['PROCESSING', 'COMPLETED', 'FAILED']
+        && isOptStr(data, 'error_message', 1000)
+        && isOptStr(data, 'created_at', 40)
+        && isOptStr(data, 'completed_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAiOutput(data) {
+      return data.keys().hasAll(['id', 'teacher_id', 'request_id', 'content', 'kind', 'difficulty', 'review_status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'teacher_id', 'request_id', 'content', 'kind', 'objective_id', 'difficulty', 'bloom_level', 'options', 'correct_answer', 'review_status', 'review_note', 'approved_question_id', 'reviewed_by', 'reviewed_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.request_id)
+        && data.content is string && data.content.size() >= 1 && data.content.size() <= 5000
+        && data.kind in ['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE', 'FILL_IN_BLANK', 'MATCHING', 'SHORT_ANSWER', 'ESSAY']
+        && isOptId(data, 'objective_id')
+        && data.difficulty in ['EASY', 'MEDIUM', 'HARD']
+        && isOptStr(data, 'bloom_level', 40)
+        && isOptOptions(data, 'options')
+        && isOptAnswerVal(data, 'correct_answer')
+        && data.review_status in ['PENDING_REVIEW', 'APPROVED', 'REJECTED', 'EDITED_AND_APPROVED']
+        && isOptStr(data, 'review_note', 300)
+        && isOptId(data, 'approved_question_id')
+        && isOptId(data, 'reviewed_by')
+        && isOptStr(data, 'reviewed_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAiJob(data) {
+      return data.keys().hasAll(['id', 'teacher_id', 'request_id', 'ordinal', 'question_count', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'teacher_id', 'request_id', 'ordinal', 'question_count', 'status', 'error_message', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.request_id)
+        && data.ordinal is int && data.ordinal >= 0
+        && data.question_count is int && data.question_count >= 1
+        && data.status in ['PROCESSING', 'COMPLETED', 'FAILED']
+        && isOptStr(data, 'error_message', 1000)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidGameSession(data) {
+      return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'student_id', 'course_id', 'mode', 'question_count', 'correct_count', 'score', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'student_id', 'course_id', 'mode', 'source', 'question_count', 'correct_count', 'score', 'duration_seconds', 'played_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.class_id)
+        && isValidId(data.teacher_id)
+        && isValidId(data.student_id)
+        && isValidId(data.course_id)
+        && data.mode is string && data.mode.size() <= 40
+        && isOptStr(data, 'source', 40)
+        && data.question_count is int && data.question_count >= 1
+        && data.correct_count is int && data.correct_count >= 0
+        && (data.score is int || data.score is float) && data.score >= 0
+        && isOptInt(data, 'duration_seconds')
+        && isOptStr(data, 'played_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAiChatThread(data) {
+      return data.keys().hasAll(['id', 'user_id', 'role', 'mode', 'title', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'user_id', 'class_id', 'role', 'mode', 'title', 'created_at', 'updated_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.user_id)
+        && isOptId(data, 'class_id')
+        && data.role in ['STUDENT', 'TEACHER']
+        && data.mode in ['tutor', 'lesson_plan', 'gap_analysis', 'quiz']
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && isOptStr(data, 'created_at', 40)
+        && isOptStr(data, 'updated_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAiChatMessage(data) {
+      return data.keys().hasAll(['id', 'user_id', 'thread_id', 'sender', 'content', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'user_id', 'thread_id', 'sender', 'model', 'content', 'artifacts', 'context_summary', 'created_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.user_id)
+        && isValidId(data.thread_id)
+        && data.sender in ['user', 'model']
+        && isOptStr(data, 'model', 100)
+        && data.content is string && data.content.size() >= 1 && data.content.size() <= 30000
+        && isOptMap(data, 'artifacts')
+        && isOptMap(data, 'context_summary')
+        && isOptStr(data, 'created_at', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    /* ===== Collection Match Rules ===== */
+    match /test/{docId} {
+      allow get: if isSignedIn() && isValidId(docId) && docId == 'connection';
+      allow list, create, update, delete: if false;
+    }
+
+    match /profiles/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (
+        userId == request.auth.uid
+        || exists(/databases/$(database)/documents/teacher_students/$(request.auth.uid + '_' + userId))
+        || exists(/databases/$(database)/documents/student_teachers/$(request.auth.uid + '_' + userId))
+      );
+      allow list: if false;
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidProfile(incoming())
+        && userId == request.auth.uid
+        && incoming().id == request.auth.uid
+        && isServerCreated(incoming());
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidProfile(incoming())
+        && userId == request.auth.uid
+        && existing().id == request.auth.uid
+        && incoming().id == existing().id
+        && incoming().role == existing().role
+        && incoming().email == existing().email
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['full_name', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /email_index/{emailHash} {
+      allow get: if isVerifiedUser() && isValidId(emailHash) && (
+        isTeacherAccount() || (resource != null && existing().user_id == request.auth.uid)
+      );
+      allow list: if false;
+      allow create: if isVerifiedUser()
+        && isValidId(emailHash)
+        && isValidEmailIndex(incoming())
+        && incoming().email_hash == emailHash
+        && incoming().user_id == request.auth.uid
+        && isServerCreated(incoming());
+      allow update, delete: if false;
+    }
+
+    match /teacher_students/{linkId} {
+      allow get: if isSignedIn() && isValidId(linkId) && (
+        existing().teacher_id == request.auth.uid || existing().student_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(linkId)
+        && isValidRosterLink(incoming())
+        && linkId == incoming().teacher_id + '_' + incoming().student_id
+        && incoming().id == linkId
+        && isServerCreated(incoming())
+        && (incoming().teacher_id == request.auth.uid || incoming().student_id == request.auth.uid)
+        && existsAfter(/databases/$(database)/documents/class_members/$(incoming().class_id + '_' + incoming().student_id));
+      allow update: if isVerifiedUser()
+        && isValidId(linkId)
+        && isValidRosterLink(incoming())
+        && isServerUpdated(incoming())
+        && (existing().teacher_id == request.auth.uid || existing().student_id == request.auth.uid)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['class_id', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(linkId) && (
+        existing().teacher_id == request.auth.uid || existing().student_id == request.auth.uid
+      );
+    }
+
+    match /student_teachers/{linkId} {
+      allow get: if isSignedIn() && isValidId(linkId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && existing().student_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(linkId)
+        && isValidRosterLink(incoming())
+        && linkId == incoming().student_id + '_' + incoming().teacher_id
+        && incoming().id == linkId
+        && isServerCreated(incoming())
+        && (incoming().teacher_id == request.auth.uid || incoming().student_id == request.auth.uid)
+        && existsAfter(/databases/$(database)/documents/class_members/$(incoming().class_id + '_' + incoming().student_id));
+      allow update: if isVerifiedUser()
+        && isValidId(linkId)
+        && isValidRosterLink(incoming())
+        && isServerUpdated(incoming())
+        && (existing().teacher_id == request.auth.uid || existing().student_id == request.auth.uid)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['class_id', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(linkId) && (
+        existing().teacher_id == request.auth.uid || existing().student_id == request.auth.uid
+      );
+    }
+
+    match /classes/{classId} {
+      allow get: if isSignedIn() && isValidId(classId) && (
+        existing().owner_teacher_id == request.auth.uid || isClassStudent(classId)
+      );
+      allow list: if isSignedIn() && existing().owner_teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(classId)
+        && isValidClass(incoming())
+        && incoming().id == classId
+        && incoming().owner_teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isTeacherAccount();
+      allow update: if isVerifiedUser()
+        && isValidId(classId)
+        && isValidClass(incoming())
+        && existing().owner_teacher_id == request.auth.uid
+        && incoming().id == existing().id
+        && incoming().owner_teacher_id == existing().owner_teacher_id
+        && isServerUpdated(incoming())
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'grade', 'school_year', 'updatedAt'])
+          || incoming().diff(existing()).affectedKeys().hasOnly(['deleted_at', 'updatedAt'])
+        );
+      allow delete: if false;
+    }
+
+    match /class_invites/{inviteId} {
+      allow get: if isSignedIn() && isValidId(inviteId) && existing().teacher_id == request.auth.uid;
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(inviteId)
+        && isValidClassInvite(incoming())
+        && incoming().id == inviteId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(inviteId)
+        && isValidClassInvite(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['revoked_at', 'expires_at', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /class_invite_codes/{code} {
+      allow get: if isVerifiedUser() && isValidId(code);
+      allow list: if false;
+      allow create: if isVerifiedUser()
+        && isValidId(code)
+        && isValidClassInviteCode(incoming())
+        && incoming().code == code
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(code)
+        && isValidClassInviteCode(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['revoked_at', 'expires_at', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /class_members/{memberId} {
+      allow get: if isSignedIn() && isValidId(memberId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(memberId)
+        && isValidClassMember(incoming())
+        && memberId == incoming().class_id + '_' + incoming().student_id
+        && incoming().id == memberId
+        && isServerCreated(incoming())
+        && exists(/databases/$(database)/documents/classes/$(incoming().class_id))
+        && get(/databases/$(database)/documents/classes/$(incoming().class_id)).data.owner_teacher_id == incoming().teacher_id
+        && existsAfter(/databases/$(database)/documents/teacher_students/$(incoming().teacher_id + '_' + incoming().student_id))
+        && existsAfter(/databases/$(database)/documents/student_teachers/$(incoming().student_id + '_' + incoming().teacher_id))
+        && (
+          incoming().teacher_id == request.auth.uid
+          || (
+            incoming().student_id == request.auth.uid
+            && get(/databases/$(database)/documents/classes/$(incoming().class_id)).data.deleted_at == null
+          )
+        );
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(memberId) && (
+        existing().teacher_id == request.auth.uid || existing().student_id == request.auth.uid
+      );
+    }
+
+    match /courses/{courseId} {
+      allow get: if isSignedIn() && isValidId(courseId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(courseId)
+        && isValidCourse(incoming())
+        && incoming().id == courseId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(courseId)
+        && isValidCourse(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'description', 'sequential_unlock', 'student_ai_enabled',
+          'practice_weight', 'practice_unlock_min_official', 'practice_session_length', 'practice_daily_scored_sessions', 'practice_max_share',
+          'dash_reteach_share', 'dash_min_students', 'dash_advanced_threshold', 'dash_inactive_days', 'dash_question_min_answers',
+          'deleted_at', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    match /class_indexes/{classId} {
+      allow get: if isSignedIn() && isValidId(classId) && (
+        isClassTeacher(classId) || isClassStudent(classId) || (resource != null && existing().teacher_id == request.auth.uid)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(classId)
+        && isValidClassIndex(incoming())
+        && incoming().id == classId
+        && incoming().class_id == classId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && existsAfter(/databases/$(database)/documents/classes/$(classId));
+      allow update: if isVerifiedUser()
+        && isValidId(classId)
+        && isValidClassIndex(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['topic_ids', 'lesson_ids', 'objective_ids', 'resource_ids', 'resource_objective_link_ids', 'assignment_ids', 'assessment_ids', 'question_ids', 'criterion_ids', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /course_topics/{topicId} {
+      allow get: if isSignedIn() && isValidId(topicId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(topicId)
+        && isValidCourseTopic(incoming())
+        && incoming().id == topicId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(topicId)
+        && isValidCourseTopic(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && incoming().course_id == existing().course_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'display_order', 'status', 'deleted_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(topicId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /lessons/{lessonId} {
+      allow get: if isSignedIn() && isValidId(lessonId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(lessonId)
+        && isValidLesson(incoming())
+        && incoming().id == lessonId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(lessonId)
+        && isValidLesson(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && incoming().course_id == existing().course_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['topic_id', 'title', 'description', 'display_order', 'status', 'deleted_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(lessonId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /learning_objectives/{objectiveId} {
+      allow get: if isSignedIn() && isValidId(objectiveId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(objectiveId)
+        && isValidObjective(incoming())
+        && incoming().id == objectiveId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(objectiveId)
+        && isValidObjective(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && incoming().lesson_id == existing().lesson_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['code', 'description', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(objectiveId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /resources/{resourceId} {
+      allow get: if isSignedIn() && isValidId(resourceId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(resourceId)
+        && isValidResource(incoming())
+        && incoming().id == resourceId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(resourceId)
+        && isValidResource(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['url', 'file_name', 'deleted_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(resourceId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /resource_objective_links/{linkId} {
+      allow get: if isSignedIn() && isValidId(linkId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(linkId)
+        && isValidResourceObjectiveLink(incoming())
+        && incoming().id == linkId
+        && linkId == incoming().resource_id + '_' + incoming().objective_id
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(linkId)
+        && isValidResourceObjectiveLink(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && incoming().resource_id == existing().resource_id
+        && incoming().objective_id == existing().objective_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['purpose', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(linkId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /questions/{questionId} {
+      allow get: if isSignedIn() && isValidId(questionId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(questionId)
+        && isValidQuestion(incoming())
+        && incoming().id == questionId
+        && incoming().teacher_id == request.auth.uid
+        && incoming().created_by == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(questionId)
+        && isValidQuestion(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && incoming().course_id == existing().course_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['content', 'kind', 'options', 'correct_answer', 'explain', 'difficulty', 'grade', 'bloom_level', 'objective_ids', 'deleted_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(questionId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /question_objectives/{linkId} {
+      allow get: if isSignedIn() && isValidId(linkId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(linkId)
+        && isValidQuestionObjective(incoming())
+        && incoming().id == linkId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(linkId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /assignments/{assignmentId} {
+      allow get: if isSignedIn() && isValidId(assignmentId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(assignmentId)
+        && isValidAssignment(incoming())
+        && incoming().id == assignmentId
+        && incoming().teacher_id == request.auth.uid
+        && incoming().created_by == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(assignmentId)
+        && isValidAssignment(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && incoming().course_id == existing().course_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['topic_id', 'lesson_id', 'title', 'description', 'due_at', 'allow_late', 'late_close_at', 'max_score', 'status', 'objective_ids', 'question_ids', 'target_mode', 'target_group', 'target_student_ids', 'deleted_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(assignmentId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /assignment_targets/{targetId} {
+      allow get: if isSignedIn() && isValidId(targetId) && (
+        existing().teacher_id == request.auth.uid || existing().student_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().teacher_id == request.auth.uid || existing().student_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(targetId)
+        && isValidAssignmentTarget(incoming())
+        && incoming().id == targetId
+        && targetId == incoming().assignment_id + '_' + incoming().student_id
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(targetId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /assignment_objectives/{linkId} {
+      allow get: if isSignedIn() && isValidId(linkId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(linkId)
+        && isValidAssignmentObjective(incoming())
+        && incoming().id == linkId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(linkId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /assignment_questions/{linkId} {
+      allow get: if isSignedIn() && isValidId(linkId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(linkId)
+        && isValidAssignmentQuestion(incoming())
+        && incoming().id == linkId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(linkId)
+        && isValidAssignmentQuestion(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['display_order', 'weight', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(linkId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /assignment_submissions/{submissionId} {
+      allow get: if isSignedIn() && isValidId(submissionId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(submissionId)
+        && isValidAssignmentSubmission(incoming())
+        && incoming().id == submissionId
+        && incoming().student_id == request.auth.uid
+        && incoming().status in ['SUBMITTED', 'LATE']
+        && (!('score' in incoming()) || incoming().score == null)
+        && (!('graded_by' in incoming()) || incoming().graded_by == null)
+        && isServerCreated(incoming())
+        && isClassStudent(incoming().class_id)
+        && exists(/databases/$(database)/documents/assignments/$(incoming().assignment_id))
+        && (
+          get(/databases/$(database)/documents/assignments/$(incoming().assignment_id)).data.get('target_mode', 'ALL') != 'TARGETED'
+          || request.auth.uid in get(/databases/$(database)/documents/assignments/$(incoming().assignment_id)).data.get('target_student_ids', [])
+        );
+      allow update: if isVerifiedUser()
+        && isValidId(submissionId)
+        && isValidAssignmentSubmission(incoming())
+        && incoming().student_id == existing().student_id
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && incoming().assignment_id == existing().assignment_id
+        && isServerUpdated(incoming())
+        && (
+          (
+            existing().teacher_id == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['score', 'feedback', 'status', 'graded_by', 'graded_at', 'question_grading_enabled', 'updatedAt'])
+          )
+          || (
+            existing().student_id == request.auth.uid
+            && existing().status != 'GRADED'
+            && incoming().status in ['SUBMITTED', 'LATE']
+            && incoming().score == existing().score
+            && incoming().diff(existing()).affectedKeys().hasOnly(['text_content', 'storage_path', 'file_name', 'status', 'is_edited', 'submitted_at', 'question_grading_enabled', 'updatedAt'])
+          )
+        );
+      allow delete: if isVerifiedUser() && isValidId(submissionId) && (
+        (existing().student_id == request.auth.uid && existing().status != 'GRADED' && existing().score == null)
+        || existing().teacher_id == request.auth.uid
+      );
+    }
+
+    match /assignment_submission_answers/{answerId} {
+      allow get: if isSignedIn() && isValidId(answerId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(answerId)
+        && isValidAssignmentSubmissionAnswer(incoming())
+        && incoming().id == answerId
+        && incoming().student_id == request.auth.uid
+        && (!('score' in incoming()) || incoming().score == null)
+        && isServerCreated(incoming())
+        && isClassStudent(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(answerId)
+        && isValidAssignmentSubmissionAnswer(incoming())
+        && incoming().student_id == existing().student_id
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && isServerUpdated(incoming())
+        && (
+          (
+            existing().teacher_id == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['score', 'feedback', 'graded_by', 'graded_at', 'updatedAt'])
+          )
+          || (
+            existing().student_id == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['answer_content', 'updatedAt'])
+          )
+        );
+      allow delete: if isVerifiedUser() && isValidId(answerId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+    }
+
+    match /rubric_criteria/{criterionId} {
+      allow get: if isSignedIn() && isValidId(criterionId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(criterionId)
+        && isValidRubricCriterion(incoming())
+        && incoming().id == criterionId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(criterionId)
+        && isValidRubricCriterion(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'max_score', 'display_order', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(criterionId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /rubric_scores/{scoreId} {
+      allow get: if isSignedIn() && isValidId(scoreId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(scoreId)
+        && isValidRubricScore(incoming())
+        && incoming().id == scoreId
+        && incoming().teacher_id == request.auth.uid
+        && incoming().graded_by == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(scoreId)
+        && isValidRubricScore(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['score', 'feedback', 'graded_by', 'updated_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(scoreId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /assessments/{assessmentId} {
+      allow get: if isSignedIn() && isValidId(assessmentId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(assessmentId)
+        && isValidAssessment(incoming())
+        && incoming().id == assessmentId
+        && incoming().teacher_id == request.auth.uid
+        && incoming().created_by == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(assessmentId)
+        && isValidAssessment(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && incoming().course_id == existing().course_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['topic_id', 'lesson_id', 'title', 'duration_minutes', 'max_attempts', 'open_at', 'close_at', 'status', 'question_ids', 'deleted_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(assessmentId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /assessment_questions/{linkId} {
+      allow get: if isSignedIn() && isValidId(linkId) && (
+        existing().teacher_id == request.auth.uid || isClassStudent(existing().class_id)
+      );
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(linkId)
+        && isValidAssessmentQuestion(incoming())
+        && incoming().id == linkId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(linkId)
+        && isValidAssessmentQuestion(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['weight', 'display_order', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(linkId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /assessment_attempts/{attemptId} {
+      allow get: if isSignedIn() && isValidId(attemptId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(attemptId)
+        && isValidAssessmentAttempt(incoming())
+        && incoming().id == attemptId
+        && incoming().student_id == request.auth.uid
+        && incoming().status == 'IN_PROGRESS'
+        && isServerCreated(incoming())
+        && isClassStudent(incoming().class_id)
+        && exists(/databases/$(database)/documents/assessments/$(incoming().assessment_id));
+      allow update: if isVerifiedUser()
+        && isValidId(attemptId)
+        && isValidAssessmentAttempt(incoming())
+        && incoming().student_id == existing().student_id
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && incoming().assessment_id == existing().assessment_id
+        && incoming().attempt_number == existing().attempt_number
+        && incoming().started_at == existing().started_at
+        && isServerUpdated(incoming())
+        && (
+          (
+            existing().teacher_id == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'submitted_at', 'graded_at', 'total_score', 'updatedAt'])
+          )
+          || (
+            existing().student_id == request.auth.uid
+            && existing().status == 'IN_PROGRESS'
+            && incoming().status in ['SUBMITTED', 'GRADED']
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'submitted_at', 'graded_at', 'total_score', 'updatedAt'])
+          )
+        );
+      allow delete: if isVerifiedUser() && isValidId(attemptId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /assessment_extra_attempts/{grantId} {
+      allow get: if isSignedIn() && isValidId(grantId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(grantId)
+        && isValidExtraAttempt(incoming())
+        && incoming().id == grantId
+        && incoming().teacher_id == request.auth.uid
+        && incoming().granted_by == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(grantId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /submission_answers/{answerId} {
+      allow get: if isSignedIn() && isValidId(answerId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(answerId)
+        && isValidSubmissionAnswer(incoming())
+        && incoming().id == answerId
+        && incoming().student_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassStudent(incoming().class_id)
+        && exists(/databases/$(database)/documents/assessment_attempts/$(incoming().attempt_id));
+      allow update: if isVerifiedUser()
+        && isValidId(answerId)
+        && isValidSubmissionAnswer(incoming())
+        && incoming().student_id == existing().student_id
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && incoming().attempt_id == existing().attempt_id
+        && incoming().question_id == existing().question_id
+        && isServerUpdated(incoming())
+        && (
+          (
+            existing().teacher_id == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['score', 'feedback', 'graded_by', 'graded_at', 'updatedAt'])
+          )
+          || (
+            existing().student_id == request.auth.uid
+            && get(/databases/$(database)/documents/assessment_attempts/$(existing().attempt_id)).data.status == 'IN_PROGRESS'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['answer_content', 'score', 'graded_at', 'updatedAt'])
+          )
+        );
+      allow delete: if isVerifiedUser() && isValidId(answerId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /mastery/{masteryId} {
+      allow get: if isSignedIn() && isValidId(masteryId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(masteryId)
+        && isValidMastery(incoming())
+        && incoming().id == masteryId
+        && isServerCreated(incoming())
+        && (
+          (incoming().teacher_id == request.auth.uid && isClassTeacher(incoming().class_id))
+          || (incoming().student_id == request.auth.uid && isClassStudent(incoming().class_id))
+        );
+      allow update: if isVerifiedUser()
+        && isValidId(masteryId)
+        && isValidMastery(incoming())
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().student_id == existing().student_id
+        && incoming().class_id == existing().class_id
+        && isServerUpdated(incoming())
+        && (existing().teacher_id == request.auth.uid || existing().student_id == request.auth.uid)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['mastery_score', 'evidence_count', 'updated_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(masteryId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /learning_evidence/{evidenceId} {
+      allow get: if isSignedIn() && isValidId(evidenceId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(evidenceId)
+        && isValidEvidence(incoming())
+        && incoming().id == evidenceId
+        && isServerCreated(incoming())
+        && (
+          (incoming().teacher_id == request.auth.uid && isClassTeacher(incoming().class_id))
+          || (incoming().student_id == request.auth.uid && isClassStudent(incoming().class_id))
+        );
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(evidenceId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /mastery_snapshots/{snapshotId} {
+      allow get: if isSignedIn() && isValidId(snapshotId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(snapshotId)
+        && isValidMasterySnapshot(incoming())
+        && incoming().id == snapshotId
+        && isServerCreated(incoming())
+        && (
+          (incoming().teacher_id == request.auth.uid && isClassTeacher(incoming().class_id))
+          || (incoming().student_id == request.auth.uid && isClassStudent(incoming().class_id))
+        );
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(snapshotId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /practice_sessions/{sessionId} {
+      allow get: if isSignedIn() && isValidId(sessionId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(sessionId)
+        && isValidPracticeSession(incoming())
+        && incoming().id == sessionId
+        && incoming().student_id == request.auth.uid
+        && incoming().status == 'ACTIVE'
+        && isServerCreated(incoming())
+        && isClassStudent(incoming().class_id);
+      allow update: if isVerifiedUser()
+        && isValidId(sessionId)
+        && isValidPracticeSession(incoming())
+        && existing().student_id == request.auth.uid
+        && incoming().student_id == existing().student_id
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().class_id == existing().class_id
+        && incoming().course_id == existing().course_id
+        && incoming().objective_id == existing().objective_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'current_level', 'consecutive_correct', 'answered_count', 'weighted_score', 'evidence_recorded', 'completed_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(sessionId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /practice_answers/{answerId} {
+      allow get: if isSignedIn() && isValidId(answerId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(answerId)
+        && isValidPracticeAnswer(incoming())
+        && incoming().id == answerId
+        && incoming().student_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassStudent(incoming().class_id)
+        && exists(/databases/$(database)/documents/practice_sessions/$(incoming().session_id));
+      allow update: if isVerifiedUser()
+        && isValidId(answerId)
+        && isValidPracticeAnswer(incoming())
+        && existing().student_id == request.auth.uid
+        && incoming().student_id == existing().student_id
+        && incoming().session_id == existing().session_id
+        && incoming().question_id == existing().question_id
+        && existing().answered_at == null
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['answer', 'is_correct', 'score', 'answered_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(answerId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /knowledge_gaps/{gapId} {
+      allow get: if isSignedIn() && isValidId(gapId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(gapId)
+        && isValidKnowledgeGap(incoming())
+        && incoming().id == gapId
+        && isServerCreated(incoming())
+        && (
+          (incoming().teacher_id == request.auth.uid && isClassTeacher(incoming().class_id))
+          || (incoming().student_id == request.auth.uid && isClassStudent(incoming().class_id))
+        );
+      allow update: if isVerifiedUser()
+        && isValidId(gapId)
+        && isValidKnowledgeGap(incoming())
+        && incoming().teacher_id == existing().teacher_id
+        && incoming().student_id == existing().student_id
+        && incoming().class_id == existing().class_id
+        && isServerUpdated(incoming())
+        && (
+          (
+            existing().teacher_id == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reason', 'dismiss_reason', 'resolved_at', 'dismissed_at', 'updatedAt'])
+          )
+          || (
+            existing().student_id == request.auth.uid
+            && existing().status == 'OPEN'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reason', 'resolved_at', 'updatedAt'])
+          )
+        );
+      allow delete: if isVerifiedUser() && isValidId(gapId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /recommendations/{recId} {
+      allow get: if isSignedIn() && isValidId(recId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(recId)
+        && isValidRecommendation(incoming())
+        && incoming().id == recId
+        && isServerCreated(incoming())
+        && (
+          (incoming().teacher_id == request.auth.uid && isClassTeacher(incoming().class_id))
+          || (incoming().student_id == request.auth.uid && isClassStudent(incoming().class_id))
+        );
+      allow update: if isVerifiedUser()
+        && isValidId(recId)
+        && isValidRecommendation(incoming())
+        && existing().student_id == request.auth.uid
+        && existing().status == 'ACTIVE'
+        && incoming().status in ['ACCEPTED', 'DISMISSED']
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'responded_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(recId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /notifications/{notifId} {
+      allow get: if isSignedIn() && isValidId(notifId) && existing().user_id == request.auth.uid;
+      allow list: if isSignedIn() && existing().user_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(notifId)
+        && isValidNotification(incoming())
+        && incoming().id == notifId
+        && incoming().actor_id == request.auth.uid
+        && isServerCreated(incoming())
+        && (
+          incoming().user_id == request.auth.uid
+          || exists(/databases/$(database)/documents/teacher_students/$(request.auth.uid + '_' + incoming().user_id))
+          || exists(/databases/$(database)/documents/student_teachers/$(request.auth.uid + '_' + incoming().user_id))
+        );
+      allow update: if isVerifiedUser()
+        && isValidId(notifId)
+        && isValidNotification(incoming())
+        && existing().user_id == request.auth.uid
+        && incoming().user_id == existing().user_id
+        && incoming().actor_id == existing().actor_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['is_read', 'read_at', 'deleted_at', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /content_revisions/{revId} {
+      allow get: if isSignedIn() && isValidId(revId) && existing().teacher_id == request.auth.uid;
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(revId)
+        && isValidContentRevision(incoming())
+        && incoming().id == revId
+        && incoming().teacher_id == request.auth.uid
+        && incoming().actor_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassTeacher(incoming().class_id);
+      allow update, delete: if false;
+    }
+
+    match /ai_generation_requests/{reqId} {
+      allow get: if isSignedIn() && isValidId(reqId) && existing().teacher_id == request.auth.uid;
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(reqId)
+        && isValidAiRequest(incoming())
+        && incoming().id == reqId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isTeacherAccount();
+      allow update: if isVerifiedUser()
+        && isValidId(reqId)
+        && isValidAiRequest(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'error_message', 'completed_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(reqId) && existing().teacher_id == request.auth.uid && existing().status != 'PROCESSING';
+    }
+
+    match /ai_generation_outputs/{outId} {
+      allow get: if isSignedIn() && isValidId(outId) && existing().teacher_id == request.auth.uid;
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(outId)
+        && isValidAiOutput(incoming())
+        && incoming().id == outId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isTeacherAccount();
+      allow update: if isVerifiedUser()
+        && isValidId(outId)
+        && isValidAiOutput(incoming())
+        && existing().teacher_id == request.auth.uid
+        && existing().review_status == 'PENDING_REVIEW'
+        && incoming().teacher_id == existing().teacher_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['content', 'options', 'correct_answer', 'difficulty', 'bloom_level', 'review_status', 'review_note', 'approved_question_id', 'reviewed_by', 'reviewed_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(outId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /ai_generation_jobs/{jobId} {
+      allow get: if isSignedIn() && isValidId(jobId) && existing().teacher_id == request.auth.uid;
+      allow list: if isSignedIn() && existing().teacher_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(jobId)
+        && isValidAiJob(incoming())
+        && incoming().id == jobId
+        && incoming().teacher_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isTeacherAccount();
+      allow update: if isVerifiedUser()
+        && isValidId(jobId)
+        && isValidAiJob(incoming())
+        && existing().teacher_id == request.auth.uid
+        && incoming().teacher_id == existing().teacher_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'error_message', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(jobId) && existing().teacher_id == request.auth.uid;
+    }
+
+    match /game_sessions/{sessionId} {
+      allow get: if isSignedIn() && isValidId(sessionId) && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
+      );
+      allow create: if isVerifiedUser()
+        && isValidId(sessionId)
+        && isValidGameSession(incoming())
+        && incoming().id == sessionId
+        && incoming().student_id == request.auth.uid
+        && isServerCreated(incoming())
+        && isClassStudent(incoming().class_id);
+      allow update, delete: if false;
+    }
+
+    match /ai_chat_threads/{threadId} {
+      allow get: if isSignedIn() && isValidId(threadId) && existing().user_id == request.auth.uid;
+      allow list: if isSignedIn() && existing().user_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(threadId)
+        && isValidAiChatThread(incoming())
+        && incoming().id == threadId
+        && incoming().user_id == request.auth.uid
+        && isServerCreated(incoming());
+      allow update: if isVerifiedUser()
+        && isValidId(threadId)
+        && isValidAiChatThread(incoming())
+        && existing().user_id == request.auth.uid
+        && incoming().user_id == existing().user_id
+        && isServerUpdated(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'mode', 'class_id', 'updated_at', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(threadId) && existing().user_id == request.auth.uid;
+    }
+
+    match /ai_chat_messages/{messageId} {
+      allow get: if isSignedIn() && isValidId(messageId) && existing().user_id == request.auth.uid;
+      allow list: if isSignedIn() && existing().user_id == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(messageId)
+        && isValidAiChatMessage(incoming())
+        && incoming().id == messageId
+        && incoming().user_id == request.auth.uid
+        && isServerCreated(incoming())
+        && existsAfter(/databases/$(database)/documents/ai_chat_threads/$(incoming().thread_id));
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(messageId) && existing().user_id == request.auth.uid;
+    }
+  }
+}

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kiểm thử cấu hình khối lớp · EducMind</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 780px; margin: 32px auto; padding: 0 16px; color: #161b2e; background: #f5f7fc; }
+  h1 { margin: 0 0 8px; font-size: 1.5rem; }
+  .summary { padding: 14px 16px; border-radius: 10px; font-weight: 600; margin: 16px 0; }
+  .summary.ok { background: #e6f6ec; color: #146c38; border: 1px solid #a9dfc0; }
+  .summary.bad { background: #fdecec; color: #9c1c1c; border: 1px solid #f4b3b3; }
+  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+  li { background: #fff; border: 1px solid #dce2f0; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; gap: 12px; }
+  .pass { color: #146c38; font-weight: 700; }
+  .fail { color: #9c1c1c; font-weight: 700; }
+</style>
+</head>
+<body>
+<h1>Kiểm thử đơn vị · Cấu hình khối lớp</h1>
+<p>Kiểm tra trực tiếp <code>js/00-grade-config.js</code> ngay trên trình duyệt, không cần kết nối backend.</p>
+<div id="summary" class="summary" role="status">Đang chạy kiểm thử…</div>
+<ul id="results"></ul>
+<script src="../js/00-grade-config.js"></script>
+<script>
+(() => {
+  const cases = [];
+  function test(name, fn) {
+    try {
+      fn();
+      cases.push({ name, ok: true });
+    } catch (err) {
+      cases.push({ name, ok: false, error: err && err.message ? err.message : String(err) });
+    }
+  }
+  function eq(actual, expected, msg) {
+    if (actual !== expected) throw new Error(`${msg || 'Mismatch'}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+  }
+
+  test('Khoảng khối lớp mặc định là 3–12', () => {
+    eq(EDUCMIND_GRADE_MIN, 3, 'EDUCMIND_GRADE_MIN');
+    eq(EDUCMIND_GRADE_MAX, 12, 'EDUCMIND_GRADE_MAX');
+    eq(EDUCMIND_GRADE_RANGE_LABEL, '3–12', 'EDUCMIND_GRADE_RANGE_LABEL');
+  });
+
+  test('educmindGradeValues() trả về đủ 10 khối từ 3 đến 12', () => {
+    const vals = educmindGradeValues();
+    eq(JSON.stringify(vals), JSON.stringify([3, 4, 5, 6, 7, 8, 9, 10, 11, 12]), 'gradeValues');
+  });
+
+  test('educmindGradeOptions(10) đánh dấu selected đúng cho Khối 10', () => {
+    const html = educmindGradeOptions(10);
+    if (!html.includes('<option value="10" selected>Khối 10</option>')) {
+      throw new Error('Thiếu selected cho Khối 10');
+    }
+    const selectedCount = (html.match(/ selected/g) || []).length;
+    eq(selectedCount, 1, 'selectedCount');
+  });
+
+  test('educmindGradeOptions() không chọn sẵn khi không truyền tham số', () => {
+    const html = educmindGradeOptions();
+    eq((html.match(/ selected/g) || []).length, 0, 'no selected');
+    eq((html.match(/<option /g) || []).length, 10, 'option count');
+  });
+
+  test('educmindGradeIsValid() chấp nhận số nguyên 3..12 và từ chối ngoài biên', () => {
+    eq(educmindGradeIsValid(3), true, 'grade 3');
+    eq(educmindGradeIsValid(12), true, 'grade 12');
+    eq(educmindGradeIsValid(2), false, 'grade 2');
+    eq(educmindGradeIsValid(13), false, 'grade 13');
+    eq(educmindGradeIsValid(3.5), false, 'grade 3.5');
+    eq(educmindGradeIsValid('10'), false, 'string 10');
+    eq(educmindGradeIsValid(null), false, 'null');
+    eq(educmindGradeIsValid(NaN), false, 'NaN');
+  });
+
+  const passed = cases.filter((c) => c.ok).length;
+  const failed = cases.length - passed;
+  const sum = document.getElementById('summary');
+  sum.className = 'summary ' + (failed ? 'bad' : 'ok');
+  sum.textContent = `Kết quả: ${passed}/${cases.length} kiểm thử đạt${failed ? `, ${failed} lỗi` : ''}.`;
+
+  const list = document.getElementById('results');
+  list.innerHTML = cases.map((c) => {
+    const row = document.createElement('li');
+    const left = document.createElement('span');
+    left.textContent = c.ok ? c.name : `${c.name} — ${c.error}`;
+    const right = document.createElement('span');
+    right.className = c.ok ? 'pass' : 'fail';
+    right.textContent = c.ok ? 'ĐẠT' : 'LỖI';
+    row.append(left, right);
+    return row.outerHTML;
+  }).join('');
+})();
+</script>
+</body>
+</html>
