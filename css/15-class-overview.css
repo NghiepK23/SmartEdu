@@ -1,7 +1,7 @@
 /* EducMind · css/15-class-overview.css
-   Bảng điều khiển lớp (Tổng quan lớp): thẻ chỉ số nhanh, tab nhóm học sinh, cài đặt ngưỡng.
+   Trang Chất lượng lớp học: thẻ chỉ số nhanh, tab nhóm học sinh, bảng độ phủ tài liệu, ngưỡng đánh giá.
    Trước đây các lớp .db-kpi / .db-overview-grid / .db-settings-grid chưa có CSS nên nhãn bị
-   dính vào số (xem ảnh lỗi) và các khối chồng lên nhau. */
+   dính vào số và các khối chồng lên nhau. */
 
 /* ----- Hàng chỉ số nhanh ----- */
 .db-overview-grid{
