@@ -642,11 +642,22 @@ function dbUploadHide() {
 function dbOpenDialog(d) { DB.dialog = d; render(); const f = document.querySelector('.db-dialog [autofocus], .db-dialog input, .db-dialog textarea, .db-dialog select, .db-dialog #db-dlg-ok'); if (f) f.focus(); }
 function dbCloseDialog() { DB.dialog = null; render(); }
 function dbConfirm(title, text, okLabel, onOk, danger) { dbOpenDialog({ title, body: `<p class="muted">${text}</p>`, okLabel, danger, onOk }); }
+/* Hộp thoại được đặt trong cổng riêng nằm NGOÀI #main: #main là khung kính có
+   backdrop-filter nên sẽ trở thành containing block, khiến lớp phủ .ov bị kẹt
+   trong hình chữ nhật của #main thay vì phủ toàn màn hình. */
+function dbDialogHostHtml() {
+  const d = DB.dialog;
+  const raw = d ? [d.title || '', d.okLabel || '', d.body || '', d.danger ? '1' : '0', d.wide ? '1' : '0', d.compact ? '1' : '0'].join('\u0001') : '';
+  let mark = '';
+  for (let i = 0; i < raw.length; i++) mark = (mark * 31 + raw.charCodeAt(i)) % 2147483647;
+  return `<div class="db-dialog-host" data-mark="${raw ? mark : ''}">${dbDialogHtml()}</div>`;
+}
+
 function dbDialogHtml() {
   const d = DB.dialog;
   if (!d) return '';
   const sizeCls = d.wide ? ' db-dlg-wide' : d.compact ? ' db-dlg-compact' : '';
-  return `<div class="ov db-dialog"><form class="dlg${sizeCls}" role="dialog" aria-modal="true" aria-labelledby="db-dlg-t" data-act="dialogOk" novalidate>
+  return `<div class="ov db-dialog" role="presentation"><form class="dlg${sizeCls}" role="dialog" aria-modal="true" aria-labelledby="db-dlg-t" data-act="dialogOk" novalidate>
     <h2 id="db-dlg-t" class="db-dlg-title">${d.title}</h2>${d.body || ''}${dbFormError()}
     <div class="row db-dlg-actions"><button type="button" class="btn light" data-act="dialogClose">${d.onOk ? 'Hủy' : 'Đóng'}</button>${d.onOk ? `<button type="submit" id="db-dlg-ok" class="btn ${d.danger ? 'danger' : ''}">${d.okLabel || 'Lưu'}</button>` : ''}</div>
   </form></div>`;
@@ -718,6 +729,26 @@ app.addEventListener('submit', (ev) => {
   ev.preventDefault();
   dbDispatch(form.dataset.act, form, ev);
 });
+/* Cổng hộp thoại (#db-dialog-root) được gắn vào body nên nằm ngoài #app:
+   cần listener riêng để nút Hủy/Lưu và submit của biểu mẫu trong hộp thoại hoạt động. */
+function dbOnDialogRoot(ev) {
+  if (!dbActive()) return;
+  const root = ev.target.closest && ev.target.closest('#db-dialog-root');
+  if (!root) return;
+  if (ev.type === 'submit') {
+    const form = ev.target.closest('form[data-act]');
+    if (!form) return;
+    ev.preventDefault();
+    dbDispatch(form.dataset.act, form, ev);
+    return;
+  }
+  const el = ev.target.closest('[data-act]');
+  if (!el || el.tagName === 'FORM' || el.disabled) return;
+  ev.preventDefault();
+  dbDispatch(el.dataset.act, el, ev);
+}
+document.addEventListener('click', dbOnDialogRoot);
+document.addEventListener('submit', dbOnDialogRoot);
 /* Popup được gắn trực tiếp vào body nên nằm ngoài #app. Lắng nghe riêng
    các thao tác của popup để chọn ngày, đổi tháng, đặt lại và xác nhận đều hoạt động. */
 document.addEventListener('click', (ev) => {

@@ -821,6 +821,13 @@ test('DOM & XSS interactive tests for Botanical Teal shell, user card, global se
   // Test opening background dialog from settings menu
   bgItem.click();
   assert.ok(document.querySelector('.db-dialog'), 'clicking change background opens background dialog');
+  {
+    const ov = document.querySelector('.db-dialog.ov');
+    const root = document.getElementById('db-dialog-root');
+    assert.ok(ov && root && root.contains(ov), 'dialog overlay is portaled into #db-dialog-root');
+    assert.equal(ov.closest('#main'), null, 'dialog overlay is outside #main so backdrop-filter cannot trap it');
+    assert.equal(ov.closest('#app'), null, 'dialog overlay portals out of #app to cover the whole viewport');
+  }
   assert.ok(document.getElementById('app-bg-url'), 'background dialog contains image URL input');
   assert.ok(document.getElementById('app-bg-file'), 'background dialog contains file upload input');
   evalExpr('dbCloseDialog();');

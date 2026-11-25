@@ -638,3 +638,63 @@
   }
 }
 
+
+/* ----- Cổng hộp thoại: luôn nằm ngoài #main nên lớp phủ phủ đúng toàn khung nhìn -----
+   Trước đây hộp thoại render bên trong #main; #main có backdrop-filter nên trở thành
+   containing block, khiến .ov bị kẹt trong hình chữ nhật xám, góc sắc, không bo góc. */
+.db-dialog-host{display:contents}
+#db-dialog-root.db-dialog-host{display:block}
+/* Cổng nằm sau #app trong DOM: cùng mức z-index nhưng vẽ trên thanh trên, sidebar và dock */
+#db-dialog-root .ov{z-index:2147483647!important}
+/* Lớp phủ: nền gradient mờ theo bảng màu thay cho hình chữ nhật xám đặc */
+.db-dialog.ov{
+  background:
+    radial-gradient(120% 90% at 50% 0%,rgba(255,255,255,.16),transparent 62%),
+    color-mix(in srgb,var(--brand) 12%,rgba(15,23,42,.42));
+  -webkit-backdrop-filter:blur(26px) saturate(140%);
+  backdrop-filter:blur(26px) saturate(140%);
+  animation:dbDlgScrimIn .26s var(--ease) both;
+}
+:root[data-theme="dark"] .db-dialog.ov{
+  background:
+    radial-gradient(120% 90% at 50% 0%,rgba(120,224,215,.10),transparent 62%),
+    rgba(4,12,14,.62);
+}
+.db-dialog.ov.enter{animation:none}
+@keyframes dbDlgScrimIn{from{opacity:0}to{opacity:1}}
+/* Hộp thoại: hiện lên mềm như sheet kính (không còn khối xám thô, góc sắc) */
+.db-dialog .dlg{animation:dbDlgIn .36s var(--ease-spring) both}
+@keyframes dbDlgIn{
+  from{opacity:0;transform:translateY(10px) scale(.965)}
+  to{opacity:1;transform:none}
+}
+@media(max-width:620px){
+  @keyframes dbDlgIn{
+    from{opacity:0;transform:translateY(18px) scale(.99)}
+    to{opacity:1;transform:none}
+  }
+}
+/* Hộp thoại: bo góc mềm, viền sáng mảnh, bóng mềm — hoà với chất liệu kính */
+.db-dialog .dlg{
+  max-width:420px;
+  padding:22px 24px;
+  border-radius:28px!important;
+  border:1px solid var(--lg-edge);
+  box-shadow:var(--lg-content-rim),0 6px 16px -6px rgba(19,34,38,.18),0 48px 96px -40px rgba(19,34,38,.46);
+  overflow:auto;
+  overscroll-behavior:contain;
+}
+.db-dialog .dlg:focus-visible{outline:none}
+.db-dialog .dlg.db-dlg-wide{border-radius:30px!important}
+.db-dialog .dlg.db-dlg-compact{border-radius:26px!important}
+@media(max-width:560px){
+  .db-dialog .dlg{width:100%;max-width:none;border-radius:26px!important}
+}
+@media(prefers-reduced-motion:reduce){
+  .db-dialog.ov,.db-dialog .dlg{animation:none!important}
+}
+/* Chế độ tương phản cao: giữ lớp phủ đục nhưng vẫn bo góc, không còn khối xám thô */
+@media(prefers-contrast:more),(forced-colors:active){
+  .db-dialog.ov{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(10,20,22,.72)}
+}
+@media print{.db-dialog-host{display:none!important}}

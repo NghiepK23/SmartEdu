@@ -499,10 +499,11 @@ function dbShell(P, body) {
       ${typeof dbNetBannerHtml === 'function' ? dbNetBannerHtml() : ''}
       ${setupNotice}
       ${studentHero}
-      <div class="view">${body}</div>${dbDialogHtml()}
+      <div class="view">${body}</div>
     </main>
-  </div>${dbBottomDockHtml(T)}${typeof dbChatDrawerHtml === 'function' ? dbChatDrawerHtml() : ''}<div class="db-settings-global-wrap" aria-hidden="true">${dbSettingsMenuHtml()}</div>`;
+  </div>${dbDialogHostHtml()}${dbBottomDockHtml(T)}${typeof dbChatDrawerHtml === 'function' ? dbChatDrawerHtml() : ''}<div class="db-settings-global-wrap" aria-hidden="true">${dbSettingsMenuHtml()}</div>`;
   applyLayer4Background();
+  dbMountDialogHost();
   // iOS 26 adaptive morph — trigger morph animation khi đổi ngữ cảnh
   requestAnimationFrame(()=>{
     const w=document.querySelector('.db-dock-wrap');
@@ -517,6 +518,46 @@ function dbShell(P, body) {
   }
   // Đánh dấu body có dock để CSS ẩn nút trùng lặp trong khung chính
   document.body.classList.toggle('has-db-dock', !!document.querySelector('.db-bottom-dock'));
+}
+
+/* Đưa hộp thoại ra khỏi #app (về body) để lớp phủ .ov phủ đúng toàn khung nhìn.
+   Nếu để trong #app/#main, backdrop-filter của khung kính biến #main thành
+   containing block khiến lớp phủ chỉ còn hình chữ nhật của #main (góc sắc, xám thô). */
+function dbMountDialogHost() {
+  if (typeof document === 'undefined' || !document.body) return;
+  const host = document.querySelector('#app .db-dialog-host');
+  if (!host) {
+    document.querySelectorAll('body > .db-dialog-host').forEach((n) => n.remove());
+    return;
+  }
+  let fixed = document.getElementById('db-dialog-root');
+  if (!fixed) {
+    fixed = document.createElement('div');
+    fixed.id = 'db-dialog-root';
+    fixed.className = 'db-dialog-host';
+    document.body.appendChild(fixed);
+  }
+  if (fixed.dataset.mark !== host.dataset.mark) {
+    /* Giữ nguyên giá trị người dùng đã gõ khi hộp thoại được vẽ lại (ví dụ sau lỗi). */
+    const typed = {};
+    fixed.querySelectorAll('.db-dialog input, .db-dialog textarea, .db-dialog select').forEach((f) => {
+      if (f.name) typed[f.name] = f.value;
+    });
+    fixed.innerHTML = host.innerHTML;
+    fixed.dataset.mark = host.dataset.mark;
+    Object.entries(typed).forEach(([name, value]) => {
+      const f = fixed.querySelector(`.db-dialog [name="${name}"]`);
+      if (f && !f.value) f.value = value;
+    });
+    /* Đưa tiêu điểm vào ô đầu tiên / nút Lưu: hộp thoại vừa được dời sang cổng ngoài #app. */
+    const target = fixed.querySelector('.db-dialog [autofocus], .db-dialog input, .db-dialog textarea, .db-dialog select, .db-dialog #db-dlg-ok');
+    if (target && fixed.contains(document.activeElement) === false) {
+      const active = document.activeElement;
+      const wasInside = active && active.closest && active.closest('#db-dialog-root');
+      if (!wasInside) target.focus({ preventScroll: true });
+    }
+  }
+  host.remove();
 }
 
 function dbFoldSearch(s) {
