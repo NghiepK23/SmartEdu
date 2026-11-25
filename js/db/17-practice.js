@@ -127,7 +127,7 @@ function dbPracticeWorkspace(d) {
       </form>
       <div id="db-practice-feedback" class="db-practice-feedback"></div>
     </div>
-    <div class="db-practice-trail">${DB_PRACTICE.levelPath.map((lv, i) => `<span class="pill ${PRACTICE_LEVEL_CLASS[lv] || 'plain'}" title="Câu ${i + 1}">${lv}</span>`).join(' → ') || '<span class="muted">Lộ trình cấp độ sẽ hiện ở đây.</span>'}</div>
+    <div class="db-practice-trail">${DB_PRACTICE.levelPath.map((lv, i) => `<span class="pill ${PRACTICE_LEVEL_CLASS[lv] || 'plain'}" title="Câu ${i + 1}">${h(PRACTICE_LEVEL_LABEL[lv] || lv)}</span>`).join(' → ') || '<span class="muted">Lộ trình cấp độ sẽ hiện ở đây.</span>'}</div>
   </section>`;
 }
 
@@ -277,7 +277,7 @@ DB_ACT.practiceSubmit = (form) => dbRun(form, async () => {
         const masteryPct = Math.round((fin.mastery_score || 0) * 100);
         dbOpenDialog({
           title: 'Hoàn thành phiên luyện tập!',
-          body: `<div class="db-practice-summary"><div class="db-stat">Đúng ${fin.correct || 0}/${fin.total || 8} (${rate}%)</div><div class="db-stat">Mức nắm vững mới: ${masteryPct}%</div><p class="muted">${h(fin.message || '')}</p><div class="db-practice-trail">${DB_PRACTICE.levelPath.map((lv) => `<span class="pill">${lv}</span>`).join(' → ')}</div></div>`,
+          body: `<div class="db-practice-summary"><div class="db-stat">Đúng ${fin.correct || 0}/${fin.total || 8} (${rate}%)</div><div class="db-stat">Mức nắm vững mới: ${masteryPct}%</div><p class="muted">${h(fin.message || '')}</p><div class="db-practice-trail">${DB_PRACTICE.levelPath.map((lv) => `<span class="pill">${h(PRACTICE_LEVEL_LABEL[lv] || lv)}</span>`).join(' → ')}</div></div>`,
           okLabel: 'Về trang tiến độ',
           onOk: async () => { DB_PRACTICE = { session: null, objectiveId: '', questions: [], idx: 0, answers: [], levelPath: [], loading: false }; await dbGo('progress', {}); },
         });

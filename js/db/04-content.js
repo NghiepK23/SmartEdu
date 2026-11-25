@@ -91,7 +91,7 @@ function dbContentRootView(d, lessonsBy, objBy) {
       </div>
       <div class="row" style="margin-top:10px">${dbBtn('Lưu cài đặt luyện tập', 'savePracticeSettings', {}, 'mini')}${dbBtn('Khôi phục mặc định', 'resetPracticeSettings', {}, 'light mini')}</div>
     </details>
-    <details class="db-content-settings"><summary>Ngưỡng tính chỉ số lớp học</summary>
+    <details class="db-content-settings"><summary>Ngưỡng đánh giá chất lượng lớp</summary>
       <div class="db-form-row" style="flex-wrap:wrap;gap:12px">
         <div class="field"><label>Tỷ lệ dạy lại</label><input type="number" min="0" max="1" step="0.05" value="${h(DB.course ? (DB.course.dash_reteach_share ?? 0.4) : 0.4)}" data-field="dash_reteach_share"></div>
         <div class="field"><label>Số HS tối thiểu</label><input type="number" min="1" max="200" value="${h(DB.course ? (DB.course.dash_min_students ?? 5) : 5)}" data-field="dash_min_students"></div>
@@ -154,7 +154,7 @@ function dbContentLessonView(d, topic, lesson, objectives) {
       </div>
       <div class="lesson-workspace-body">${body}</div>
     </section>
-    <section class="panel" id="db-coverage-matrix"><h3>Bảng độ phủ mục tiêu</h3><div id="db-coverage-body" class="muted">Đang tải độ phủ tài liệu/câu hỏi…</div></section>
+    <section class="panel" id="db-coverage-matrix"><h3>Bảng độ phủ tài liệu theo mục tiêu</h3><div id="db-coverage-body" class="muted">Đang tải độ phủ tài liệu/câu hỏi…</div></section>
   </div>`;
 }
 
@@ -609,6 +609,20 @@ DB_PAGES.lessons = {
 };
 
 /* ===== Phase 1 & 2 — Coverage matrix loader + Practice/Dash settings ===== */
+/* Nhãn tiếng Việt cho mục đích sử dụng tài liệu (giá trị lưu trong CSDL vẫn là LEARN/PRACTICE/EXTEND). */
+const DB_PURPOSE_LABEL = { LEARN: 'Học kiến thức mới', PRACTICE: 'Luyện tập', EXTEND: 'Mở rộng' };
+const DB_PURPOSE_SHORT = { LEARN: 'Học mới', PRACTICE: 'Luyện tập', EXTEND: 'Mở rộng' };
+const DB_PURPOSE_ORDER = ['LEARN', 'PRACTICE', 'EXTEND'];
+
+/* Nhãn tiếng Việt cho bốn nhóm học sinh dùng ở trang chất lượng lớp và khi giao bài theo nhóm. */
+const DB_GROUP_LABEL = {
+  SUPPORT: 'Cần củng cố',
+  ON_TRACK: 'Đạt chuẩn',
+  ADVANCED: 'Xuất sắc',
+  INACTIVE: 'Chưa hoạt động',
+};
+function dbPurposeLabel(p) { return DB_PURPOSE_LABEL[p] || String(p || ''); }
+
 async function dbRenderCoverageMatrix() {
   const body = document.getElementById('db-coverage-body');
   if (!body || !DB.course) return;
@@ -616,13 +630,16 @@ async function dbRenderCoverageMatrix() {
     const cov = await dbCall(EducMindDB.getObjectiveCoverage(DB.course.id));
     const objs = (cov.objectives || []).slice();
     if (!objs.length) { body.innerHTML = '<p class="muted">Chưa có mục tiêu.</p>'; return; }
-    body.innerHTML = '<div class="tablewrap"><table><thead><tr><th>Mục tiêu</th><th>LEARN</th><th>PRACTICE</th><th>EXTEND</th><th>Câu hỏi</th><th>Cảnh báo</th></tr></thead><tbody>' + objs.map((o) => {
+    body.innerHTML = '<div class="tablewrap"><table><thead><tr><th>Mục tiêu</th>'
+      + DB_PURPOSE_ORDER.map((p) => '<th>' + h(DB_PURPOSE_LABEL[p]) + '</th>').join('')
+      + '<th>Câu hỏi</th><th>Cảnh báo</th></tr></thead><tbody>' + objs.map((o) => {
       const c = (cov.linkByObj && cov.linkByObj[o.id]) || { LEARN: 0, PRACTICE: 0, EXTEND: 0 };
       const q = (cov.qByObj && cov.qByObj[o.id]) || 0;
       const warn = [];
-      if (!c.LEARN) warn.push('Thiếu LEARN');
+      if (!c.LEARN) warn.push('Thiếu tài liệu học kiến thức mới');
       if (!q) warn.push('Thiếu câu hỏi');
-      return '<tr><th scope="row">' + h(o.code) + '</th><td>' + c.LEARN + '</td><td>' + c.PRACTICE + '</td><td>' + c.EXTEND + '</td><td>' + q + '</td><td>' + (warn.length ? '<span class="pill need">' + h(warn.join(' · ')) + '</span>' : '<span class="pill good">Đủ</span>') + '</td></tr>';
+      const cells = DB_PURPOSE_ORDER.map((p) => '<td>' + Number(c[p] || 0) + '</td>').join('');
+      return '<tr><th scope="row">' + h(o.code) + '</th>' + cells + '<td>' + q + '</td><td>' + (warn.length ? '<span class="pill need">' + h(warn.join(' · ')) + '</span>' : '<span class="pill good">Đủ</span>') + '</td></tr>';
     }).join('') + '</tbody></table></div>';
   } catch (e) { body.innerHTML = '<p class="muted">Không tải được độ phủ: ' + h(dbErrText(e)) + '</p>'; }
 }

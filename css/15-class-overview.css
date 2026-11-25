@@ -98,9 +98,15 @@
   .db-overview-grid{break-inside:avoid}
 }
 
-/* ----- Bảng "Mục tiêu cần chú ý": cuộn ngang thay vì bóp chữ ----- */
-#db-co-reteach .tablewrap{max-width:100%;overflow-x:auto}
+/* ----- Bảng trong trang: cuộn ngang thay vì bóp chữ ----- */
+#db-co-reteach .tablewrap,
+#db-co-coverage .tablewrap,
+#db-co-groups .tablewrap{max-width:100%;overflow-x:auto}
 #db-co-reteach .tablewrap table{min-width:520px}
+/* Nhãn "Học kiến thức mới / Luyện tập / Mở rộng" dài nên giữ tiêu đề trên một dòng */
+#db-co-coverage .tablewrap table{min-width:640px}
+#db-co-coverage .tablewrap th{white-space:nowrap}
+#db-co-groups .tablewrap table{min-width:560px}
 
 /* ----- Danh sách cảnh báo câu hỏi (dùng .db-objectives có sẵn) ----- */
 #db-co-questions .db-objectives>li{align-items:flex-start;gap:10px}

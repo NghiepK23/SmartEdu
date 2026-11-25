@@ -76,7 +76,7 @@ function dbAssignmentSteps(a, active, creating = false) {
   if (_origDetail) {
     window.dbAssignmentTeacherDetail = function (d, a) {
       let html = _origDetail(d, a);
-      html += '<section class="panel"><h3>Giao bài phân hóa (Targeting)</h3><div class="muted">Giao bài cho nhóm SUPPORT / ON_TRACK / ADVANCED / INACTIVE hoặc từng học sinh.</div><div class="row"><button type="button" class="btn light mini" data-act="openAssignmentTargeting" data-id="' + h(a.id) + '">Mở giao bài phân hóa</button></div></section>';
+      html += '<section class="panel"><h3>Giao bài theo nhóm học sinh</h3><div class="muted">Giao bài riêng cho từng nhóm (cần củng cố, đạt chuẩn, xuất sắc, chưa hoạt động) hoặc cho từng học sinh.</div><div class="row"><button type="button" class="btn light mini" data-act="openAssignmentTargeting" data-id="' + h(a.id) + '">Mở giao bài theo nhóm</button></div></section>';
       return html;
     };
   }
@@ -86,10 +86,10 @@ DB_ACT.openAssignmentTargeting = async (el) => {
   const overview = await dbCall(EducMindDB.getClassOverview(DB.course.id)).catch(() => null);
   if (!overview) return toast('Không tải được dữ liệu lớp.');
   const groups = overview.groups || { SUPPORT: [], ON_TRACK: [], ADVANCED: [], INACTIVE: [] };
-  const opts = Object.keys(groups).map((g) => '<option value="' + g + '">' + g + ' (' + (groups[g] || []).length + ' HS)</option>').join('');
+  const opts = Object.keys(groups).map((g) => '<option value="' + g + '">' + h(DB_GROUP_LABEL[g] || g) + ' (' + (groups[g] || []).length + ' học sinh)</option>').join('');
   dbOpenDialog({
-    title: 'Giao bài phân hóa', okLabel: 'Giao bài', wide: true,
-    body: '<p class="muted">Chọn nhóm hoặc nhập mã HS (ngăn cách dấu phẩy).</p><select id="db-target-group"><option value="">— Chọn nhóm —</option>' + opts + '</select><input id="db-target-students" placeholder="Hoặc nhập student_id, cách nhau dấu phẩy" style="width:100%;margin-top:8px">',
+    title: 'Giao bài theo nhóm học sinh', okLabel: 'Giao bài', wide: true,
+    body: '<p class="muted">Chọn nhóm học sinh hoặc nhập mã học sinh (ngăn cách bằng dấu phẩy).</p><select id="db-target-group"><option value="">— Chọn nhóm —</option>' + opts + '</select><input id="db-target-students" placeholder="Hoặc nhập mã học sinh, cách nhau dấu phẩy" style="width:100%;margin-top:8px">',
     onOk: async () => {
       const grp = document.getElementById('db-target-group').value;
       const raw = document.getElementById('db-target-students').value.trim();

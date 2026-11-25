@@ -6,7 +6,7 @@
 const DB_NAV_T = [
   ['', [['home', 'Tổng quan', 'dashboard'], ['schedule', 'Lịch & việc cần làm', 'calendar']]],
   ['Dạy học', [['content', 'Thư mục học tập', 'lessons'], ['assignments', 'Bài tập', 'navAsg'], ['questions', 'Ngân hàng câu hỏi', 'questionBank'], ['assessments', 'Bài kiểm tra', 'exam'], ['ai', 'AI tạo câu hỏi', 'spark'], ['chat', 'Trợ lý AI', 'chat']]],
-  ['Đánh giá học tập', [['progress', 'Mức độ nắm vững', 'mastery'], ['gaps', 'Lỗ hổng kiến thức', 'gaps'], ['recommend', 'Gợi ý học tập', 'recommend'], ['report', 'Báo cáo tiến bộ', 'trend'], ['class_overview', 'Sức khoẻ lớp học', 'classes']]],
+  ['Đánh giá học tập', [['progress', 'Mức độ nắm vững', 'mastery'], ['gaps', 'Lỗ hổng kiến thức', 'gaps'], ['recommend', 'Gợi ý học tập', 'recommend'], ['report', 'Báo cáo tiến bộ', 'trend'], ['class_overview', 'Chất lượng lớp học', 'classes']]],
   ['Quản lý', [['classes', 'Lớp học phụ trách', 'classes'], ['trash', 'Thùng rác', 'trash'], ['history', 'Lịch sử chỉnh sửa', 'history']]],
 ];
 const DB_NAV_S = [
@@ -249,11 +249,11 @@ function dbDockSubItems(T) {
     );
   } else if (p === 'class_overview') {
     items.push(
-      { sub: 'co-kpi', label: 'Chỉ số', icon: 'dashboard', active: !sub || sub === 'co-kpi' },
+      { sub: 'co-kpi', label: 'Chỉ số nhanh', icon: 'dashboard', active: !sub || sub === 'co-kpi' },
       { sub: 'co-reteach', label: 'Cần dạy lại', icon: 'alert', active: sub === 'co-reteach' },
-      { sub: 'co-groups', label: 'Nhóm HS', icon: 'students', active: sub === 'co-groups' },
-      { sub: 'co-coverage', label: 'Độ phủ', icon: 'target', active: sub === 'co-coverage' },
-      { sub: 'co-settings', label: 'Ngưỡng', icon: 'settings', active: sub === 'co-settings' },
+      { sub: 'co-groups', label: 'Nhóm học sinh', icon: 'students', active: sub === 'co-groups' },
+      { sub: 'co-coverage', label: 'Độ phủ tài liệu', icon: 'target', active: sub === 'co-coverage' },
+      { sub: 'co-settings', label: 'Ngưỡng đánh giá', icon: 'settings', active: sub === 'co-settings' },
     );
   } else if (p === 'practice') {
     const pr = typeof DB_PRACTICE !== 'undefined' ? DB_PRACTICE : null;

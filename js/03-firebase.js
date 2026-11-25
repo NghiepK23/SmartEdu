@@ -2987,7 +2987,7 @@ const EducMindDB = (() => {
     }, OperationType.DELETE, 'assignment_targets'),
 
     getClassOverview: (courseId) => safeWrap(async () => {
-      if (!dbIsTeacher()) throw new Error('Chỉ giáo viên mới xem được sức khoẻ lớp học.');
+      if (!dbIsTeacher()) throw new Error('Chỉ giáo viên mới xem được trang chất lượng lớp học.');
       const cfg = EducMindDB.getCoursePracticeConfig(courseId);
       const content = await dbLoadContent();
       const objIds = content.objectives.map((o) => o.id);

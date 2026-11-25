@@ -1010,6 +1010,77 @@ test('Every page except the exam screen offers floating dock sub-tabs', async ()
   assert.equal(missing.length, 0, 'mọi trang (trừ màn làm bài) đều có tab bar nổi: ' + missing.join(', '));
 });
 
+test('Class quality page uses Vietnamese labels (no Coverage Matrix / LEARN / PRACTICE / EXTEND in UI)', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  evalExpr(`
+    logged = true; role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 'teacher-1' };
+    DB.me = { id: 'teacher-1', email: 'gv@edu.vn', full_name: 'GV', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1';
+    DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.notifs = [];
+    DB.loading = false; DB.loadError = '';
+    DB.page = 'class_overview'; DB.arg = {};
+    DB.data = {
+      cfg: { dash_reteach_share: 0.4, dash_min_students: 5, dash_advanced_threshold: 0.8, dash_inactive_days: 14, dash_question_min_answers: 10 },
+      members: [{ student_id: 's1' }], profilesById: { s1: { full_name: 'An' } },
+      mastery: [], gaps: [], evidence: [], practiceSessions: [], questions: [],
+      content: { objectives: [{ id: 'o1', code: 'O1', description: 'Mục tiêu một' }], topics: [], lessons: [] },
+      reteach: [], groups: { SUPPORT: [], ON_TRACK: [], ADVANCED: [], INACTIVE: [] }, questionStats: [],
+      linkCountByObj: { o1: { LEARN: 1, PRACTICE: 1, EXTEND: 0 } }, qCountByObj: { o1: 3 },
+    };
+    dbRender();
+  `);
+
+  assert.equal(evalExpr("DB_PAGES.class_overview.title"), 'Chất lượng lớp học', 'nav title uses a descriptive Vietnamese name');
+
+  const view = document.getElementById('main').textContent;
+  ['Coverage Matrix', 'LEARN', 'PRACTICE', 'EXTEND'].forEach((en) => {
+    assert.ok(!new RegExp('\\b' + en + '\\b').test(view), `no English label "${en}" rendered`);
+  });
+  ['Chất lượng lớp', 'Bảng độ phủ tài liệu theo mục tiêu', 'Học kiến thức mới', 'Luyện tập', 'Mở rộng'].forEach((vi) => {
+    assert.ok(view.includes(vi), `Vietnamese label present: ${vi}`);
+  });
+  // Nhãn dock dùng tiếng Việt đầy đủ, không viết tắt kiểu "HS" hay "KPI"
+  const dockLabels = [...document.querySelectorAll('.db-bottom-dock .db-dock-item')].map((b) => b.getAttribute('aria-label') || '');
+  assert.equal(dockLabels.length, 5, 'dock keeps five sub-tabs');
+  dockLabels.forEach((label) => {
+    assert.ok(label.trim().length > 2, `dock label not empty: ${label}`);
+    assert.ok(!/(^|\s)(HS|KPI|GV)(\s|$)/.test(label), `dock label avoids abbreviations: ${label}`);
+  });
+});
+
+test('Assignment targeting dialog and class-quality groups use Vietnamese labels', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  evalExpr(`
+    logged = true; role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 'teacher-1' };
+    DB.me = { id: 'teacher-1', email: 'gv@edu.vn', full_name: 'GV', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1';
+    DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.notifs = [];
+    DB.loading = false; DB.loadError = '';
+    DB.page = 'assignments'; DB.arg = {};
+    EducMindDB.getClassOverview = async () => ({ data: { groups: { SUPPORT: [1, 2], ON_TRACK: [3], ADVANCED: [], INACTIVE: [4] } }, error: null });
+  `);
+
+  assert.equal(evalExpr('DB_GROUP_LABEL.SUPPORT'), 'Cần củng cố', 'group labels are Vietnamese');
+  assert.equal(evalExpr('dbPurposeLabel("EXTEND")'), 'Mở rộng', 'resource purpose labels are Vietnamese');
+  assert.ok(evalExpr('DB_PURPOSE_ORDER.length') === 3);
+
+  // Hộp thoại giao bài theo nhóm: nhãn nhóm + câu chữ đều tiếng Việt
+  return evalExpr('DB_ACT.openAssignmentTargeting({ dataset: { id: "a1" } })').then(() => {
+    // Chỉ kiểm tra chữ HIỂN THỊ; giá trị kỹ thuật (value="SUPPORT") vẫn được phép nằm trong DOM.
+    const text = (document.body.textContent || '') + [...document.querySelectorAll('.db-dialog option')].map((o) => o.textContent || '').join(' ');
+    ['SUPPORT', 'ON_TRACK', 'ADVANCED', 'INACTIVE', 'Targeting'].forEach((en) => {
+      assert.ok(!text.includes(en), `no English token "${en}" in targeting dialog`);
+    });
+    assert.ok(text.includes('Cần củng cố'), 'dialog lists Vietnamese group names');
+  });
+});
+
 test('Class overview dashboard (18-class-overview.js) has dock sub-tabs and styled KPI cards', async () => {
   const { document, evalExpr } = createDomTestContext();
   evalExpr(`

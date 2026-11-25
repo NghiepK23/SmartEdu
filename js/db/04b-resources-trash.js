@@ -93,7 +93,7 @@ function dbLessonResources(l, resources) {
   let coverageByRes = {};
   try { coverageByRes = window.__dbCoverageByRes || {}; } catch (_) {}
   const itemsWithTags = (resources || []).map((r) => {
-    const tags = (coverageByRes[r.id] || []).map((pur) => `<span class="pill ${pur === 'LEARN' ? 'good' : pur === 'PRACTICE' ? 'prog' : 'plain'} mini">${pur}</span>`).join(' ') || '<span class="muted mini">Chưa gắn mục tiêu</span>';
+    const tags = (coverageByRes[r.id] || []).map((pur) => `<span class="pill ${pur === 'LEARN' ? 'good' : pur === 'PRACTICE' ? 'prog' : 'plain'} mini" title="${h(dbPurposeLabel(pur))}">${h(DB_PURPOSE_LABEL[pur] || pur)}</span>`).join(' ') || '<span class="muted mini">Chưa gắn mục tiêu</span>';
     return `<li class="db-file">
     <span class="db-file-name">${ic(r.kind === 'LINK' && dbYoutubeId(dbSafeHttpUrl(r.url)) ? 'play' : 'overview', 14)}<span class="db-file-title">${h(r.file_name)}</span>${r.kind === 'LINK' ? `<span class="muted db-file-url">${h(String(dbSafeHttpUrl(r.url) || r.url || '').replace(/^https?:\/\//, '').slice(0, 60))}</span>` : ''}</span>
     <span class="muted db-file-meta">${tags}</span>
@@ -257,10 +257,10 @@ DB_ACT.openResourceLinking = async (el) => {
   const links = await dbCall(EducMindDB.listResourceObjectiveLinks(courseId)).catch(() => []);
   const cur = links.filter((x) => x.resource_id === rid);
   const curSet = new Set(cur.map((x) => x.objective_id + '|' + x.purpose));
-  const purposes = ['LEARN', 'PRACTICE', 'EXTEND'];
+  const purposes = (typeof DB_PURPOSE_ORDER !== 'undefined' ? DB_PURPOSE_ORDER : ['LEARN', 'PRACTICE', 'EXTEND']);
   const body = content.objectives.map((o) => {
     return '<fieldset class="db-link-field"><legend>' + h(o.code) + ' · ' + h(o.description) + '</legend>' +
-      purposes.map((p) => '<label class="db-check"><input type="checkbox" data-link data-obj="' + h(o.id) + '" data-purpose="' + p + '"' + (curSet.has(o.id + '|' + p) ? ' checked' : '') + '> ' + p + '</label>').join(' ') + '</fieldset>';
+      purposes.map((p) => '<label class="db-check"><input type="checkbox" data-link data-obj="' + h(o.id) + '" data-purpose="' + p + '"' + (curSet.has(o.id + '|' + p) ? ' checked' : '') + '> ' + h(dbPurposeLabel(p)) + '</label>').join(' ') + '</fieldset>';
   }).join('') || '<p class="muted">Chưa có mục tiêu.</p>';
   dbOpenDialog({
     title: 'Gắn tài nguyên với mục tiêu', wide: true, okLabel: 'Lưu',

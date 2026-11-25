@@ -1,11 +1,12 @@
 /* EducMind · js/db/18-class-overview.js
-   Sức khoẻ lớp học (dành cho giáo viên): 4 chỉ số nhanh, mục tiêu cần chú ý, phân nhóm học sinh, chất lượng câu hỏi. */
+   Chất lượng lớp học (dành cho giáo viên): 4 chỉ số nhanh, mục tiêu cần chú ý, phân nhóm học sinh,
+   độ phủ tài liệu theo mục tiêu và chất lượng câu hỏi. */
 
 DB_PAGES.class_overview = {
-  title: 'Sức khoẻ lớp học',
-  sub: 'Phân loại học sinh theo mức nắm vững, mục tiêu cần dạy lại, độ phủ tài liệu và chất lượng câu hỏi.',
+  title: 'Chất lượng lớp học',
+  sub: 'Chia học sinh theo mức nắm vững, chỉ ra mục tiêu cần dạy lại, độ phủ tài liệu và câu hỏi cần xem lại.',
   async load() {
-    if (!dbIsTeacher()) throw new Error('Chỉ giáo viên mới xem được sức khoẻ lớp học.');
+    if (!dbIsTeacher()) throw new Error('Chỉ giáo viên mới xem được trang chất lượng lớp học.');
     if (!DB.course) await dbLoadCourse();
     const overview = await dbCall(EducMindDB.getClassOverview(DB.course.id));
     // Compute derived metrics
@@ -108,7 +109,7 @@ DB_PAGES.class_overview = {
     const coveragePct = coverageTotal ? Math.round((covered / coverageTotal) * 100) : 0;
 
     return `<section class="panel" id="db-co-kpi" aria-labelledby="db-h-overview">
-      <div class="row between"><div><h2 id="db-h-overview">Sức khoẻ lớp ${h(dbClass()?.name || '')}</h2><p class="lead">Bốn chỉ số nhanh về mức nắm vững, lỗ hổng, luyện tập và độ phủ tài liệu của lớp.</p></div>
+      <div class="row between"><div><h2 id="db-h-overview">Chất lượng lớp ${h(dbClass()?.name || '')}</h2><p class="lead">Bốn chỉ số nhanh về mức nắm vững, lỗ hổng kiến thức, luyện tập và độ phủ tài liệu của lớp.</p></div>
         <div class="row">${dbBtn(ic('spark', 16) + ' Tóm tắt AI', 'classOverviewAiSummary', {}, 'light mini')}${dbBtn('Làm mới', 'reload', {}, 'light mini')}</div>
       </div>
 
@@ -132,29 +133,29 @@ DB_PAGES.class_overview = {
     </section>
 
     <section class="panel" id="db-co-groups">
-      <h3>Phân nhóm học sinh</h3>
-      <div class="folder-tabs db-co-tabs" role="tablist" aria-label="Phân nhóm học sinh">
-        <button type="button" role="tab" data-act="classOverviewTab" data-tab="SUPPORT" aria-selected="${DB.arg.tab === 'SUPPORT' || !DB.arg.tab}"><span class="pill need">Cần củng cố</span> ${supportCount}</button>
-        <button type="button" role="tab" data-act="classOverviewTab" data-tab="ON_TRACK" aria-selected="${DB.arg.tab === 'ON_TRACK'}"><span class="pill prog">Đạt chuẩn</span> ${onTrackCount}</button>
-        <button type="button" role="tab" data-act="classOverviewTab" data-tab="ADVANCED" aria-selected="${DB.arg.tab === 'ADVANCED'}"><span class="pill good">Xuất sắc</span> ${advancedCount}</button>
-        <button type="button" role="tab" data-act="classOverviewTab" data-tab="INACTIVE" aria-selected="${DB.arg.tab === 'INACTIVE'}"><span class="pill plain">Chưa hoạt động</span> ${inactiveCount}</button>
+      <h3>Phân nhóm học sinh theo mức nắm vững</h3>
+      <div class="folder-tabs db-co-tabs" role="tablist" aria-label="Phân nhóm học sinh theo mức nắm vững">
+        <button type="button" role="tab" data-act="classOverviewTab" data-tab="SUPPORT" aria-selected="${DB.arg.tab === 'SUPPORT' || !DB.arg.tab}"><span class="pill need">${h(DB_GROUP_LABEL.SUPPORT)}</span> ${supportCount}</button>
+        <button type="button" role="tab" data-act="classOverviewTab" data-tab="ON_TRACK" aria-selected="${DB.arg.tab === 'ON_TRACK'}"><span class="pill prog">${h(DB_GROUP_LABEL.ON_TRACK)}</span> ${onTrackCount}</button>
+        <button type="button" role="tab" data-act="classOverviewTab" data-tab="ADVANCED" aria-selected="${DB.arg.tab === 'ADVANCED'}"><span class="pill good">${h(DB_GROUP_LABEL.ADVANCED)}</span> ${advancedCount}</button>
+        <button type="button" role="tab" data-act="classOverviewTab" data-tab="INACTIVE" aria-selected="${DB.arg.tab === 'INACTIVE'}"><span class="pill plain">${h(DB_GROUP_LABEL.INACTIVE)}</span> ${inactiveCount}</button>
       </div>
       ${dbClassOverviewGroup(d, DB.arg.tab || 'SUPPORT')}
       <div class="row" style="margin-top:12px">
-        ${dbBtn(ic('plus', 14) + ' Giao bài tập cho nhóm này', 'classOverviewAssignGroup', { group: DB.arg.tab || 'SUPPORT' }, 'light mini')}
+        ${dbBtn(ic('plus', 14) + ' Giao bài cho nhóm này', 'classOverviewAssignGroup', { group: DB.arg.tab || 'SUPPORT' }, 'light mini')}
       </div>
     </section>
 
     <section class="panel" id="db-co-coverage">
-      <h3>Bảng độ phủ mục tiêu (Coverage Matrix)</h3>
-      <p class="lead">Số tài liệu theo mục đích (LEARN/PRACTICE/EXTEND) và số câu hỏi theo mức độ khó.</p>
+      <h3>Bảng độ phủ tài liệu theo mục tiêu</h3>
+      <p class="lead">Số tài liệu đã gắn cho mỗi mục tiêu theo mục đích sử dụng (học kiến thức mới, luyện tập, mở rộng) và số câu hỏi hiện có.</p>
       ${dbCoverageMatrix(d)}
     </section>
 
     <section class="panel" id="db-co-questions">
       <h3>Chất lượng câu hỏi</h3>
       <p class="lead">Cảnh báo câu hỏi bị lệch (ví dụ: gắn nhãn Dễ nhưng học sinh làm sai trên 70% — gắn nhãn không khớp thực tế).</p>
-      ${d.questionStats.length ? `<ul class="db-objectives">${d.questionStats.map((s) => `<li><span class="db-obj-text">${h(s.q.content.slice(0, 120))}</span><span class="pill need">${h(s.q.difficulty)} · ${h(s.reason)} (TB ${s.avg != null ? Math.round(s.avg * 100) + '%' : '—'})</span></li>`).join('')}</ul>` : `<p class="muted">Chưa phát hiện câu hỏi lệch đáng kể (cần ít nhất ${cfg.dash_question_min_answers} lượt trả lời).</p>`}
+      ${d.questionStats.length ? `<ul class="db-objectives">${d.questionStats.map((s) => `<li><span class="db-obj-text">${h(s.q.content.slice(0, 120))}</span><span class="pill need">${h(DB_QDIFF[s.q.difficulty] || s.q.difficulty)} · ${h(s.reason)} (TB ${s.avg != null ? Math.round(s.avg * 100) + '%' : '—'})</span></li>`).join('')}</ul>` : `<p class="muted">Chưa phát hiện câu hỏi lệch đáng kể (cần ít nhất ${cfg.dash_question_min_answers} lượt trả lời).</p>`}
     </section>
 
     <section class="panel" id="db-co-settings">
@@ -192,13 +193,15 @@ function dbClassOverviewGroup(d, tab) {
 }
 
 function dbCoverageMatrix(d) {
-  return `<div class="tablewrap"><table><thead><tr><th>Mục tiêu</th><th>LEARN</th><th>PRACTICE</th><th>EXTEND</th><th>Câu hỏi</th><th>Cảnh báo</th></tr></thead><tbody>${d.content.objectives.map((o) => {
+  const head = `<th scope="col">Mục tiêu</th>${DB_PURPOSE_ORDER.map((p) => `<th scope="col">${h(DB_PURPOSE_LABEL[p])}</th>`).join('')}<th scope="col">Câu hỏi</th><th scope="col">Cảnh báo</th>`;
+  return `<div class="tablewrap"><table><thead><tr>${head}</tr></thead><tbody>${d.content.objectives.map((o) => {
     const cov = d.linkCountByObj[o.id] || { LEARN: 0, PRACTICE: 0, EXTEND: 0 };
     const qCount = d.qCountByObj[o.id] || 0;
     const warn = [];
-    if (!cov.LEARN) warn.push('Thiếu tài liệu lý thuyết');
+    if (!cov.LEARN) warn.push('Thiếu tài liệu học kiến thức mới');
     if (!qCount) warn.push('Thiếu câu hỏi luyện tập');
-    return `<tr><th scope="row">${h(o.code)}</th><td>${cov.LEARN}</td><td>${cov.PRACTICE}</td><td>${cov.EXTEND}</td><td>${qCount}</td><td>${warn.length ? `<span class="pill need">${warn.join(' · ')}</span>` : '<span class="pill good">Đủ</span>'}</td></tr>`;
+    const cells = DB_PURPOSE_ORDER.map((p) => `<td>${Number(cov[p] || 0)}</td>`).join('');
+    return `<tr><th scope="row">${h(o.code)}</th>${cells}<td>${qCount}</td><td>${warn.length ? `<span class="pill need">${warn.join(' · ')}</span>` : '<span class="pill good">Đủ</span>'}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
