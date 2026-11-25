@@ -349,6 +349,22 @@ test('URL hash routing, role normalization, F5 restore, and auth hash protection
   assert.equal(locationObj.hash, '#access_token=tok&type=recovery');
 });
 
+test('Course config thresholds are persisted and clamped (js/03-firebase.js)', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'js/03-firebase.js'), 'utf8');
+  assert.ok(src.includes('COURSE_CONFIG_NUMERIC'), 'updateCourse whitelists config thresholds');
+  for (const key of ['practice_weight', 'practice_session_length', 'dash_reteach_share', 'dash_inactive_days']) {
+    assert.ok(src.includes(`'${key}'`), `threshold ${key} can be saved`);
+  }
+  assert.ok(/COURSE_CONFIG_RANGE\[k\]/.test(src), 'values are clamped to a valid range');
+  // saveDashSettings đọc input theo data-field, nên mọi ô cài đặt phải có thuộc tính này.
+  const content = fs.readFileSync(path.join(ROOT, 'js/db/04-content.js'), 'utf8');
+  const overview = fs.readFileSync(path.join(ROOT, 'js/db/18-class-overview.js'), 'utf8');
+  for (const key of ['dash_reteach_share', 'dash_min_students', 'dash_advanced_threshold', 'dash_inactive_days']) {
+    assert.ok(overview.includes(`data-field="${key}"`), `class overview input exposes ${key}`);
+  }
+  assert.ok(content.includes("data-field=\"dash_reteach_share\""), 'content page exposes the same thresholds');
+});
+
 test('Exam F5 auto-resume guard and timer formatting (js/db/08-exam.js)', async () => {
   let startAttemptCalled = 0;
   let attemptList = [];

@@ -8,6 +8,26 @@ const firebaseAuth = FirebaseRuntime ? FirebaseRuntime.auth : null;
 const firebaseDb = FirebaseRuntime ? FirebaseRuntime.db : null;
 const firebaseStorage = FirebaseRuntime ? FirebaseRuntime.storage : null;
 
+/* Ngưỡng cấu hình của khóa học (luyện tập thích ứng + chỉ số lớp học) và miền giá trị hợp lệ. */
+const COURSE_CONFIG_NUMERIC = [
+  'practice_weight', 'practice_unlock_min_official', 'practice_session_length',
+  'practice_daily_scored_sessions', 'practice_max_share',
+  'dash_reteach_share', 'dash_min_students', 'dash_advanced_threshold',
+  'dash_inactive_days', 'dash_question_min_answers',
+];
+const COURSE_CONFIG_RANGE = {
+  practice_weight: { min: 0, max: 0.95 },
+  practice_unlock_min_official: { min: 0, max: 20 },
+  practice_session_length: { min: 4, max: 40 },
+  practice_daily_scored_sessions: { min: 1, max: 10 },
+  practice_max_share: { min: 0, max: 0.95 },
+  dash_reteach_share: { min: 0, max: 1 },
+  dash_min_students: { min: 1, max: 200 },
+  dash_advanced_threshold: { min: 0, max: 1 },
+  dash_inactive_days: { min: 1, max: 365 },
+  dash_question_min_answers: { min: 1, max: 200 },
+};
+
 const OperationType = {
   CREATE: 'create',
   UPDATE: 'update',
@@ -923,6 +943,14 @@ const EducMindDB = (() => {
       const patch = { updatedAt: serverTimestamp() };
       for (const k of ['title', 'description', 'sequential_unlock', 'student_ai_enabled', 'deleted_at']) {
         if (k in row) patch[k] = row[k];
+      }
+      /* Ngưỡng cấu hình: trước đây bị bỏ qua nên nút "Lưu" ở phần cài đặt không ghi được gì. */
+      for (const k of COURSE_CONFIG_NUMERIC) {
+        if (!(k in row)) continue;
+        const v = Number(row[k]);
+        if (!Number.isFinite(v)) continue;
+        const r = COURSE_CONFIG_RANGE[k];
+        patch[k] = Math.min(r.max, Math.max(r.min, v));
       }
       await updateDoc(doc(firebaseDb, 'courses', id), patch);
       return await getById('courses', id);
