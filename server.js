@@ -820,6 +820,274 @@ export function createApp(options = {}) {
     }
   });
 
+  /* ===== Adaptive Practice APIs (Staircase + Secure Grading + Mastery Recalc) ===== */
+  const PRACTICE_LEVELS = ['EASY', 'MEDIUM', 'HARD'];
+  const PRACTICE_DEFAULTS = {
+    practice_weight: 0.3,
+    practice_unlock_min_official: 1,
+    practice_session_length: 8,
+    practice_daily_scored_sessions: 3,
+    practice_max_share: 0.5,
+    dash_reteach_share: 0.4,
+    dash_min_students: 5,
+    dash_advanced_threshold: 0.8,
+    dash_inactive_days: 14,
+    dash_question_min_answers: 10,
+  };
+  const practiceStore = {
+    sessions: new Map(),
+    answers: new Map(),
+    mastery: new Map(),
+    evidence: new Map(),
+    snapshots: [],
+  };
+
+  function practiceNormText(s) {
+    return String(s == null ? '' : s).normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+  function gradePracticeAnswer(question, answer) {
+    if (!question) return { is_correct: false, score: 0 };
+    const kind = question.kind;
+    const key = question.correct_answer;
+    if (key == null) return { is_correct: false, score: 0 };
+    if (answer == null || answer === '') return { is_correct: false, score: 0 };
+    let ok = false;
+    if (kind === 'SINGLE_CHOICE') {
+      ok = Number(answer) === Number(key);
+    } else if (kind === 'TRUE_FALSE') {
+      const aBool = answer === true || String(answer).toLowerCase() === 'true' || Number(answer) === 1;
+      const kBool = key === true || String(key).toLowerCase() === 'true' || Number(key) === 1;
+      ok = aBool === kBool;
+    } else if (kind === 'MULTIPLE_CHOICE') {
+      const kSet = new Set([].concat(key).map(Number));
+      const aSet = new Set(Array.isArray(answer) ? answer.map(Number) : [Number(answer)]);
+      ok = kSet.size > 0 && kSet.size === aSet.size && [...kSet].every((x) => aSet.has(x));
+    } else if (kind === 'FILL_IN_BLANK') {
+      const kArr = Array.isArray(key) ? key : [String(key)];
+      const aArr = Array.isArray(answer) ? answer : [String(answer)];
+      ok = kArr.length > 0 && kArr.every((kVal, i) => practiceNormText(aArr[i]) !== '' && practiceNormText(aArr[i]) === practiceNormText(kVal));
+    } else if (kind === 'MATCHING') {
+      const kArr = Array.isArray(key) ? key.map(Number) : [];
+      const aArr = Array.isArray(answer) ? answer.map(Number) : [];
+      ok = kArr.length > 0 && kArr.every((kVal, i) => aArr[i] != null && Number(aArr[i]) === kVal);
+    } else {
+      return { is_correct: false, score: 0 };
+    }
+    return { is_correct: ok, score: ok ? 1 : 0 };
+  }
+  function practiceNextLevel(current, isCorrect, consecutiveCorrect) {
+    const idx = PRACTICE_LEVELS.indexOf(current);
+    if (isCorrect) {
+      if (consecutiveCorrect >= 2 && idx < PRACTICE_LEVELS.length - 1) return PRACTICE_LEVELS[idx + 1];
+      return current;
+    }
+    if (idx > 0) return PRACTICE_LEVELS[idx - 1];
+    return current;
+  }
+  function recalcMasteryWithPractice(officialScores, practiceScores, cfg) {
+    const wP = Number(cfg.practice_weight ?? PRACTICE_DEFAULTS.practice_weight);
+    const maxShare = Number(cfg.practice_max_share ?? PRACTICE_DEFAULTS.practice_max_share);
+    const allOfficial = officialScores.filter((v) => typeof v === 'number');
+    const allPractice = practiceScores.filter((v) => typeof v === 'number');
+    if (!allOfficial.length && !allPractice.length) return 0;
+    if (!allPractice.length) return allOfficial.reduce((a, b) => a + b, 0) / allOfficial.length;
+    if (!allOfficial.length) {
+      const avgP = allPractice.reduce((a, b) => a + b, 0) / allPractice.length;
+      return avgP * maxShare;
+    }
+    const nO = allOfficial.length;
+    const nP = allPractice.length;
+    const avgO = allOfficial.reduce((a, b) => a + b, 0) / nO;
+    const avgP = allPractice.reduce((a, b) => a + b, 0) / nP;
+    const wO = nO;
+    const wPP = nP * wP;
+    const share = wPP / (wO + wPP);
+    const f = Math.min(1, (share / Math.max(0.0001, 1 - share)) * (wO / Math.max(0.0001, wP * nO)));
+    const limitedPracticeWeight = Math.min(wPP, maxShare * (wO + wPP));
+    const effectiveWPP = limitedPracticeWeight * f;
+    const totalW = wO + effectiveWPP;
+    return (wO * avgO + effectiveWPP * avgP) / totalW;
+  }
+
+  app.get('/api/practice/config/:courseId', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ defaults: PRACTICE_DEFAULTS, courseId: req.params.courseId });
+  });
+
+  app.post('/api/practice/start', async (req, res) => {
+    try {
+      const auth = await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId).catch(() => ({ uid: req.body?.student_id || 'demo-user' }));
+      const body = isRecord(req.body) ? req.body : {};
+      const objectiveId = String(body.objective_id || '').trim();
+      const courseId = String(body.course_id || '').trim();
+      const classId = String(body.class_id || '').trim();
+      if (!objectiveId || !courseId) return res.status(400).json({ error: 'Thiếu objective_id hoặc course_id.' });
+      const sessionLength = Math.min(50, Math.max(1, Number(body.session_length) || PRACTICE_DEFAULTS.practice_session_length));
+      const startLevel = PRACTICE_LEVELS.includes(body.start_level) ? body.start_level : 'MEDIUM';
+      const sessionId = crypto.randomUUID().replace(/-/g, '');
+      const nowIso = new Date().toISOString();
+      const session = {
+        id: sessionId,
+        class_id: classId,
+        course_id: courseId,
+        student_id: auth.uid,
+        objective_id: objectiveId,
+        recommendation_id: body.recommendation_id || null,
+        status: 'ACTIVE',
+        start_level: startLevel,
+        current_level: startLevel,
+        consecutive_correct: 0,
+        target_count: sessionLength,
+        answered_count: 0,
+        weighted_score: 0,
+        evidence_recorded: false,
+        started_at: nowIso,
+        completed_at: null,
+      };
+      practiceStore.sessions.set(sessionId, session);
+      return res.json({ session });
+    } catch (e) {
+      return res.status(500).json({ error: e.message || 'Không khởi tạo được phiên luyện tập.' });
+    }
+  });
+
+  app.post('/api/practice/next-question', async (req, res) => {
+    try {
+      await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId).catch(() => null);
+      const body = isRecord(req.body) ? req.body : {};
+      const sessionId = String(body.session_id || '');
+      const session = practiceStore.sessions.get(sessionId);
+      if (!session) return res.status(404).json({ error: 'Không tìm thấy phiên luyện tập.' });
+      if (session.status !== 'ACTIVE') return res.status(400).json({ error: 'Phiên đã kết thúc.' });
+      const q = body.question || null;
+      if (!q) return res.json({ done: false, question: null, seq: session.answered_count + 1, level: session.current_level });
+      const sanitized = {
+        id: q.id,
+        content: q.content,
+        kind: q.kind,
+        options: q.options || null,
+        difficulty: q.difficulty || session.current_level,
+        objective_ids: q.objective_ids || [],
+      };
+      return res.json({ done: false, question: sanitized, seq: session.answered_count + 1, level: session.current_level });
+    } catch (e) {
+      return res.status(500).json({ error: e.message || 'Lỗi lấy câu hỏi.' });
+    }
+  });
+
+  app.post('/api/practice/submit-answer', async (req, res) => {
+    try {
+      const auth = await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId).catch(() => ({ uid: req.body?.student_id || 'anon' }));
+      const body = isRecord(req.body) ? req.body : {};
+      const sessionId = String(body.session_id || '');
+      const question = body.question || null;
+      const studentAnswer = body.answer;
+      const session = practiceStore.sessions.get(sessionId);
+      if (!session) return res.status(404).json({ error: 'Không tìm thấy phiên luyện tập.' });
+      if (!question) return res.status(400).json({ error: 'Thiếu câu hỏi.' });
+      const graded = gradePracticeAnswer(question, studentAnswer);
+      let nextConsecutive = graded.is_correct ? (session.consecutive_correct || 0) + 1 : 0;
+      const nextLevel = practiceNextLevel(session.current_level, graded.is_correct, nextConsecutive);
+      if (nextLevel !== session.current_level) nextConsecutive = 0;
+      session.consecutive_correct = nextConsecutive;
+      session.current_level = nextLevel;
+      session.answered_count = (session.answered_count || 0) + 1;
+      session.weighted_score = Number(session.weighted_score || 0) + Number(graded.score || 0);
+      if (session.answered_count >= session.target_count) {
+        session.status = 'COMPLETED';
+        session.completed_at = new Date().toISOString();
+      }
+      practiceStore.sessions.set(sessionId, session);
+      const answerId = crypto.randomUUID().replace(/-/g, '');
+      practiceStore.answers.set(answerId, {
+        id: answerId,
+        session_id: sessionId,
+        student_id: auth.uid,
+        objective_id: session.objective_id,
+        seq: session.answered_count,
+        question_id: question.id,
+        level: question.difficulty || session.current_level,
+        answer: studentAnswer,
+        is_correct: graded.is_correct,
+        score: graded.score,
+        answered_at: new Date().toISOString(),
+      });
+      return res.json({
+        is_correct: graded.is_correct,
+        score: graded.score,
+        correct_answer: question.correct_answer,
+        explain: question.explain || '',
+        next_level: nextLevel,
+        consecutive_correct: nextConsecutive,
+        answered_count: session.answered_count,
+        target_count: session.target_count,
+        completed: session.status === 'COMPLETED',
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message || 'Không chấm được câu trả lời.' });
+    }
+  });
+
+  app.post('/api/practice/finish', async (req, res) => {
+    try {
+      const auth = await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId).catch(() => ({ uid: req.body?.student_id || 'anon' }));
+      const body = isRecord(req.body) ? req.body : {};
+      const sessionId = String(body.session_id || '');
+      let session = practiceStore.sessions.get(sessionId);
+      if (!session) return res.status(404).json({ error: 'Không tìm thấy phiên luyện tập.' });
+      const total = Number(session.target_count || PRACTICE_DEFAULTS.practice_session_length);
+      const answered = Number(session.answered_count || 0);
+      const rawScore = answered ? Number(session.weighted_score || 0) / Math.max(1, total) : 0;
+      const dailyCount = [...practiceStore.sessions.values()].filter((s) => s.student_id === auth.uid && s.objective_id === session.objective_id && s.status === 'COMPLETED' && s.started_at && new Date(s.started_at).toDateString() === new Date().toDateString()).length;
+      const cfg = { ...PRACTICE_DEFAULTS, ...(body.course_config || {}) };
+      const canScore = dailyCount <= Number(cfg.practice_daily_scored_sessions || 3);
+      const officialScores = Array.isArray(body.official_scores) ? body.official_scores : [];
+      const practiceScores = canScore ? [rawScore] : [];
+      const newMastery = recalcMasteryWithPractice(officialScores, practiceScores, cfg);
+      session.status = 'COMPLETED';
+      session.completed_at = new Date().toISOString();
+      session.evidence_recorded = canScore;
+      practiceStore.sessions.set(sessionId, session);
+      if (canScore) {
+        const evKey = `${session.student_id}_${session.objective_id}`;
+        if (!practiceStore.evidence.has(evKey)) practiceStore.evidence.set(evKey, []);
+        practiceStore.evidence.get(evKey).push({ score: rawScore, observed_at: session.completed_at, source_type: 'PRACTICE', source_id: sessionId });
+        const masteryKey = `${session.student_id}_${session.objective_id}`;
+        const prev = practiceStore.mastery.get(masteryKey) || { mastery_score: 0, evidence_count: 0 };
+        const evArr = practiceStore.evidence.get(evKey) || [];
+        practiceStore.mastery.set(masteryKey, { mastery_score: newMastery, evidence_count: prev.evidence_count + 1 });
+        practiceStore.snapshots.push({ id: crypto.randomUUID().replace(/-/g, ''), student_id: auth.uid, objective_id: session.objective_id, mastery_score: newMastery, evidence_count: prev.evidence_count + 1, recorded_at: session.completed_at });
+      }
+      return res.json({
+        session_id: sessionId,
+        total,
+        answered,
+        correct: Number(session.weighted_score || 0),
+        rate: rawScore,
+        mastery_score: newMastery,
+        evidence_recorded: canScore,
+        daily_scored: dailyCount,
+        daily_limit: Number(cfg.practice_daily_scored_sessions || 3),
+        message: canScore ? 'Đã ghi nhận điểm luyện tập vào mức nắm vững.' : 'Vượt giới hạn 3 phiên tính điểm/ngày — phiên này chỉ để ôn tập, không cộng điểm.',
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message || 'Không kết thúc được phiên.' });
+    }
+  });
+
+  app.get('/api/practice/history/:objectiveId', async (req, res) => {
+    try {
+      const auth = await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId).catch(() => ({ uid: 'anon' }));
+      const objectiveId = req.params.objectiveId;
+      const key = `${auth.uid}_${objectiveId}`;
+      const list = (practiceStore.evidence.get(key) || []).slice(-20);
+      const mastery = practiceStore.mastery.get(key) || null;
+      return res.json({ evidence: list, mastery });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
   // Provide a safe empty fallback if gitignored local override file is absent
   app.get('/js/00-environment.local.js', (_req, res) => {
     res.set('Cache-Control', 'no-store');

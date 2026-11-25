@@ -70,6 +70,38 @@ function dbAssignmentSteps(a, active, creating = false) {
       : dbBtn(`<span><b>${s.n}</b> ${s.title}</span>`, 'go', s.arg, 'light mini')}
   </li>`).join('')}</ol>`;
 }
+// Inject assignment-targeting hook into detail view
+(function () {
+  const _origDetail = typeof dbAssignmentTeacherDetail === 'function' ? dbAssignmentTeacherDetail : null;
+  if (_origDetail) {
+    window.dbAssignmentTeacherDetail = function (d, a) {
+      let html = _origDetail(d, a);
+      html += '<section class="panel"><h3>Giao bài phân hóa (Targeting)</h3><div class="muted">Giao bài cho nhóm SUPPORT / ON_TRACK / ADVANCED / INACTIVE hoặc từng học sinh.</div><div class="row"><button type="button" class="btn light mini" data-act="openAssignmentTargeting" data-id="' + h(a.id) + '">Mở giao bài phân hóa</button></div></section>';
+      return html;
+    };
+  }
+})();
+DB_ACT.openAssignmentTargeting = async (el) => {
+  const aid = el.dataset.id;
+  const overview = await dbCall(EducMindDB.getClassOverview(DB.course.id)).catch(() => null);
+  if (!overview) return toast('Không tải được dữ liệu lớp.');
+  const groups = overview.groups || { SUPPORT: [], ON_TRACK: [], ADVANCED: [], INACTIVE: [] };
+  const opts = Object.keys(groups).map((g) => '<option value="' + g + '">' + g + ' (' + (groups[g] || []).length + ' HS)</option>').join('');
+  dbOpenDialog({
+    title: 'Giao bài phân hóa', okLabel: 'Giao bài', wide: true,
+    body: '<p class="muted">Chọn nhóm hoặc nhập mã HS (ngăn cách dấu phẩy).</p><select id="db-target-group"><option value="">— Chọn nhóm —</option>' + opts + '</select><input id="db-target-students" placeholder="Hoặc nhập student_id, cách nhau dấu phẩy" style="width:100%;margin-top:8px">',
+    onOk: async () => {
+      const grp = document.getElementById('db-target-group').value;
+      const raw = document.getElementById('db-target-students').value.trim();
+      let sids = raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+      if (!sids.length && grp) sids = (groups[grp] || []).map((x) => x.member.student_id);
+      if (!sids.length) throw new Error('Chọn nhóm hoặc nhập danh sách học sinh.');
+      await dbCall(EducMindDB.createAssignmentTargets(sids.map((sid) => ({ assignment_id: aid, student_id: sid, target_group: grp || null }))));
+      toast('Đã giao bài cho ' + sids.length + ' học sinh.');
+    },
+  });
+};
+
 function dbAssignmentPreviewResponse(q) {
   const options = Array.isArray(q.options) ? q.options : [];
   if (q.kind === 'FILL_IN_BLANK') return '';

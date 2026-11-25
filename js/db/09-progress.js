@@ -255,9 +255,12 @@ function dbMasteryStudent(d, c) {
             : (assessmentById[e.source_id] ? 'Bài kiểm tra: ' + assessmentById[e.source_id].title : 'Bài kiểm tra đã xóa');
           return `<div class="db-evidence-row"><span>${h(source)}</span><b>${pct(Number(e.score))}%</b><small>${dbDateTime(e.observed_at)}</small></div>`;
         }).join('');
+        const cfg = (EducMindDB.PRACTICE_DEFAULTS || { practice_unlock_min_official: 1 });
+        const offCount = (d.evidence || []).filter((e) => e.objective_id === o.id && e.source_type !== 'PRACTICE').length;
+        const canPractice = offCount >= (cfg.practice_unlock_min_official ?? 1);
         return `<div class="db-mrow"><div class="db-mrow-text"><span class="db-obj-code">${h(o.code)}</span> ${h(o.description)}</div>
           <div class="db-mrow-bar">${v == null ? '' : bar(v, tier(v) === 'good' ? 'good' : tier(v) === 'need' ? 'need' : '', 'Mức nắm vững ' + pct(v) + '%')}</div>
-          <div class="db-mrow-val">${dbMasteryPill(v)}${m ? `<span class="muted"> · ${m.evidence_count} kết quả</span>` : ''}</div>
+          <div class="db-mrow-val">${dbMasteryPill(v)}${m ? `<span class="muted"> · ${m.evidence_count} kết quả</span>` : ''} ${canPractice ? dbBtn('Luyện tập 8 câu', 'go', { page: 'practice', objectiveId: o.id }, 'mini') : `<span class="pill plain" title="Cần ${cfg.practice_unlock_min_official} KQ chính thức để mở luyện tập">Chưa mở luyện tập</span>`}</div>
           ${evidenceRows ? `<details class="db-evidence-detail"><summary>Xem bằng chứng gần đây</summary>${evidenceRows}</details>` : `<div class="muted">Chưa có bằng chứng cho mục tiêu này.</div>`}</div>`; }).join('');
       return dbPfGroup('progress', g.key, g.title, i, dbPfOpen(st, g.key, i, f), g.items.length + ' mục tiêu · ' + gv.length + ' có kết quả', gv.length ? dbMasteryPill(dbMean(gv)) : '', inner, 'm');
     }).join('')}

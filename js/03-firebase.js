@@ -2711,6 +2711,271 @@ const EducMindDB = (() => {
     approveAiOutputForAssignment: (id, content, options, correct, difficulty, bloom, grade, assignmentId) =>
       EducMindDB.approveAiOutput(id, content, options, correct, difficulty, bloom, grade, assignmentId),
 
+    /* ===== Phase 1: Resource-Objective Linking ===== */
+    listResourceObjectiveLinks: (courseId) => safeWrap(async () => {
+      if (isTeacherRole()) {
+        return (await queryByField('resource_objective_links', 'teacher_id', me())).filter((x) => x.course_id === courseId);
+      }
+      const ids = await getClassIndexIds(courseId, 'resource_objective_link_ids').catch(() => []);
+      return ids.length ? await getByIds('resource_objective_links', ids) : [];
+    }, OperationType.LIST, 'resource_objective_links'),
+
+    createResourceObjectiveLink: (row) => safeWrap(async () => {
+      const meta = await resolveCourseMeta(row.course_id);
+      const { doc, setDoc, serverTimestamp, arrayUnion } = api();
+      const id = `${row.resource_id}_${row.objective_id}`;
+      const ts = serverTimestamp();
+      const item = {
+        id,
+        class_id: meta.class_id,
+        teacher_id: meta.teacher_id,
+        course_id: row.course_id,
+        resource_id: row.resource_id,
+        objective_id: row.objective_id,
+        purpose: row.purpose || 'LEARN',
+        createdAt: ts,
+        updatedAt: ts,
+      };
+      await setDoc(doc(firebaseDb, 'resource_objective_links', id), item);
+      await updateClassIndex(meta.class_id, 'resource_objective_link_ids', [id]).catch(() => {});
+      return item;
+    }, OperationType.CREATE, 'resource_objective_links'),
+
+    deleteResourceObjectiveLink: (linkId) => safeWrap(async () => {
+      const { doc, deleteDoc } = api();
+      const link = await getById('resource_objective_links', linkId).catch(() => null);
+      await deleteDoc(doc(firebaseDb, 'resource_objective_links', linkId));
+      if (link) await updateClassIndex(link.class_id, 'resource_objective_link_ids', [], [linkId]).catch(() => {});
+      return { id: linkId };
+    }, OperationType.DELETE, 'resource_objective_links'),
+
+    getObjectiveCoverage: (courseId) => safeWrap(async () => {
+      const [resources, objectives, questions, links, members] = await Promise.all([
+        dbCall(EducMindDB.listResources(courseId)).catch(() => []),
+        (async () => {
+          const c = await dbLoadContent().catch(() => ({ objectives: [] }));
+          return c.objectives || [];
+        })(),
+        dbCall(EducMindDB.listQuestions(courseId)).catch(() => []),
+        dbCall(EducMindDB.listResourceObjectiveLinks(courseId)).catch(() => []),
+        dbIsTeacher() ? dbCallIn(EducMindDB.listMembers, [DB.classId]).catch(() => []) : [],
+      ]);
+      const qByObj = {};
+      for (const q of questions) {
+        for (const oid of (q.objective_ids || [])) {
+          qByObj[oid] = (qByObj[oid] || 0) + 1;
+        }
+      }
+      const linkByObj = {};
+      for (const l of links) {
+        if (!linkByObj[l.objective_id]) linkByObj[l.objective_id] = { LEARN: 0, PRACTICE: 0, EXTEND: 0 };
+        linkByObj[l.objective_id][l.purpose] = (linkByObj[l.objective_id][l.purpose] || 0) + 1;
+      }
+      return { resources, objectives, questions, links, linkByObj, qByObj, membersCount: members.length };
+    }, OperationType.GET, 'resource_objective_links'),
+
+    getStudentObjectiveSupport: (objectiveId, kind) => safeWrap(async () => {
+      const allLinks = await dbCall(EducMindDB.listResourceObjectiveLinks(DB.course ? DB.course.id : '')).catch(() => []);
+      const filtered = allLinks.filter((l) => l.objective_id === objectiveId && (!kind || l.purpose === kind));
+      const resourceIds = [...new Set(filtered.map((l) => l.resource_id))];
+      const resources = resourceIds.length ? await getByIds('resources', resourceIds) : [];
+      return resources.filter((r) => !r.deleted_at);
+    }, OperationType.GET, 'resource_objective_links'),
+
+    /* ===== Phase 2: Adaptive Practice ===== */
+    PRACTICE_DEFAULTS: {
+      practice_weight: 0.3,
+      practice_unlock_min_official: 1,
+      practice_session_length: 8,
+      practice_daily_scored_sessions: 3,
+      practice_max_share: 0.5,
+      dash_reteach_share: 0.4,
+      dash_min_students: 5,
+      dash_advanced_threshold: 0.8,
+      dash_inactive_days: 14,
+      dash_question_min_answers: 10,
+    },
+
+    listPracticeSessions: (objectiveId) => safeWrap(async () => {
+      const field = isTeacherRole() ? 'teacher_id' : 'student_id';
+      const list = await queryByField('practice_sessions', field, me());
+      return list.filter((s) => !objectiveId || s.objective_id === objectiveId)
+        .sort((a, b) => String(b.started_at || '').localeCompare(String(a.started_at || '')));
+    }, OperationType.LIST, 'practice_sessions'),
+
+    listPracticeAnswers: (sessionIds) => safeWrap(async () => {
+      const set = new Set(sessionIds || []);
+      if (!set.size) return [];
+      const field = isTeacherRole() ? 'teacher_id' : 'student_id';
+      return (await queryByField('practice_answers', field, me())).filter((a) => set.has(a.session_id));
+    }, OperationType.LIST, 'practice_answers'),
+
+    listMasterySnapshots: (objectiveIds) => safeWrap(async () => {
+      const set = new Set(objectiveIds || []);
+      const field = isTeacherRole() ? 'teacher_id' : 'student_id';
+      const list = await queryByField('mastery_snapshots', field, me());
+      return list.filter((s) => !set.size || set.has(s.objective_id))
+        .sort((a, b) => String(a.recorded_at || '').localeCompare(String(b.recorded_at || '')));
+    }, OperationType.LIST, 'mastery_snapshots'),
+
+    getCoursePracticeConfig: (courseId) => {
+      const course = (typeof DB !== 'undefined' && DB.course && DB.course.id === courseId) ? DB.course : null;
+      const d = EducMindDB.PRACTICE_DEFAULTS || { practice_weight: 0.3, practice_unlock_min_official: 1, practice_session_length: 8, practice_daily_scored_sessions: 3, practice_max_share: 0.5 };
+      if (!course) return d;
+      return {
+        practice_weight: course.practice_weight ?? d.practice_weight,
+        practice_unlock_min_official: course.practice_unlock_min_official ?? d.practice_unlock_min_official,
+        practice_session_length: course.practice_session_length ?? d.practice_session_length,
+        practice_daily_scored_sessions: course.practice_daily_scored_sessions ?? d.practice_daily_scored_sessions,
+        practice_max_share: course.practice_max_share ?? d.practice_max_share,
+        dash_reteach_share: course.dash_reteach_share ?? 0.4,
+        dash_min_students: course.dash_min_students ?? 5,
+        dash_advanced_threshold: course.dash_advanced_threshold ?? 0.8,
+        dash_inactive_days: course.dash_inactive_days ?? 14,
+        dash_question_min_answers: course.dash_question_min_answers ?? 10,
+      };
+    },
+
+    practiceStart: (objectiveId, courseId, classId) => safeWrap(async () => {
+      const cfg = EducMindDB.getCoursePracticeConfig(courseId);
+      const official = await dbCall(EducMindDB.listEvidence([objectiveId])).catch(() => []);
+      if (official.length < (cfg.practice_unlock_min_official || 1)) {
+        const err = new Error(`Cần ít nhất ${cfg.practice_unlock_min_official} kết quả chính thức trước khi luyện tập.`);
+        err.code = 'PRACTICE_LOCKED';
+        throw err;
+      }
+      const todaySessions = (await queryByField('practice_sessions', 'student_id', me()))
+        .filter((s) => s.objective_id === objectiveId && s.started_at && new Date(s.started_at).toDateString() === new Date().toDateString() && s.status === 'COMPLETED');
+      if (todaySessions.length >= Number(cfg.practice_daily_scored_sessions || 3)) {
+        // Still allow practice but mark as non-scored; inform UI via flag
+      }
+      const res = await apiRequest('POST', '/api/practice/start', { objective_id: objectiveId, course_id: courseId, class_id: classId, session_length: cfg.practice_session_length });
+      return res.session || res;
+    }, OperationType.CREATE, 'practice_sessions'),
+
+    practiceNextQuestion: (sessionId) => safeWrap(async () => {
+      return await apiRequest('POST', '/api/practice/next-question', { session_id: sessionId });
+    }, OperationType.GET, 'practice_answers'),
+
+    practiceSubmitAnswer: (sessionId, question, answer) => safeWrap(async () => {
+      return await apiRequest('POST', '/api/practice/submit-answer', { session_id: sessionId, question, answer });
+    }, OperationType.WRITE, 'practice_answers'),
+
+    practiceFinish: (sessionId, objectiveId) => safeWrap(async () => {
+      const courseId = (typeof DB !== 'undefined' && DB.course) ? DB.course.id : '';
+      const cfg = EducMindDB.getCoursePracticeConfig(courseId);
+      const officialScores = (await dbCall(EducMindDB.listEvidence([objectiveId])).catch(() => [])).map((e) => Number(e.score || 0));
+      const res = await apiRequest('POST', '/api/practice/finish', { session_id: sessionId, official_scores: officialScores, course_config: cfg });
+      if (res.evidence_recorded) {
+        // Also record snapshot locally
+        try {
+          const { doc, setDoc, serverTimestamp } = api();
+          const snapId = genId();
+          const ts = serverTimestamp();
+          await setDoc(doc(firebaseDb, 'mastery_snapshots', snapId), {
+            id: snapId,
+            class_id: DB.classId || '',
+            teacher_id: DB.course ? DB.course.teacher_id : me(),
+            student_id: me(),
+            objective_id: objectiveId,
+            mastery_score: Number(res.mastery_score || 0),
+            evidence_count: officialScores.length + 1,
+            recorded_at: nowIso(),
+            createdAt: ts,
+            updatedAt: ts,
+          });
+        } catch (_) {}
+      }
+      return res;
+    }, OperationType.WRITE, 'practice_sessions'),
+
+    /* ===== Phase 3: Class Overview & Assignment Targeting ===== */
+    listAssignmentTargets: (assignmentIds) => safeWrap(async () => {
+      const set = new Set(assignmentIds || []);
+      if (!set.size) return [];
+      const field = isTeacherRole() ? 'teacher_id' : 'student_id';
+      return (await queryByField('assignment_targets', field, me())).filter((t) => set.has(t.assignment_id));
+    }, OperationType.LIST, 'assignment_targets'),
+
+    createAssignmentTarget: (row) => safeWrap(async () => {
+      const asg = await getById('assignments', row.assignment_id);
+      if (!asg) throw new Error('Assignment not found');
+      const { doc, setDoc, serverTimestamp, arrayUnion } = api();
+      const id = `${row.assignment_id}_${row.student_id}`;
+      const ts = serverTimestamp();
+      const item = {
+        id,
+        class_id: asg.class_id,
+        teacher_id: asg.teacher_id,
+        assignment_id: row.assignment_id,
+        student_id: row.student_id,
+        target_group: row.target_group || null,
+        createdAt: ts,
+        updatedAt: ts,
+      };
+      await setDoc(doc(firebaseDb, 'assignment_targets', id), item);
+      await setDoc(doc(firebaseDb, 'assignments', asg.id), { target_mode: 'TARGETED', target_group: row.target_group || null, target_student_ids: arrayUnion(row.student_id) }, { merge: true }).catch(async () => {
+        const { updateDoc } = api();
+        await updateDoc(doc(firebaseDb, 'assignments', asg.id), { target_mode: 'TARGETED', target_group: row.target_group || null, updatedAt: ts });
+      });
+      return item;
+    }, OperationType.CREATE, 'assignment_targets'),
+
+    createAssignmentTargets: (rows) => safeWrap(async () => {
+      if (!rows || !rows.length) return [];
+      const asgId = rows[0].assignment_id;
+      const asg = await getById('assignments', asgId);
+      if (!asg) throw new Error('Assignment not found');
+      const { doc, writeBatch, serverTimestamp, arrayUnion } = api();
+      const batch = writeBatch(firebaseDb);
+      const ts = serverTimestamp();
+      const ids = [];
+      for (const r of rows) {
+        const id = `${r.assignment_id}_${r.student_id}`;
+        ids.push(r.student_id);
+        batch.set(doc(firebaseDb, 'assignment_targets', id), {
+          id,
+          class_id: asg.class_id,
+          teacher_id: asg.teacher_id,
+          assignment_id: r.assignment_id,
+          student_id: r.student_id,
+          target_group: r.target_group || null,
+          createdAt: ts,
+          updatedAt: ts,
+        });
+      }
+      batch.update(doc(firebaseDb, 'assignments', asgId), { target_mode: 'TARGETED', target_group: rows[0].target_group || null, target_student_ids: arrayUnion(...ids), updatedAt: ts });
+      await batch.commit();
+      return rows;
+    }, OperationType.CREATE, 'assignment_targets'),
+
+    deleteAssignmentTargets: (assignmentId, studentIds) => safeWrap(async () => {
+      const { doc, writeBatch, serverTimestamp, arrayRemove } = api();
+      const batch = writeBatch(firebaseDb);
+      for (const sid of (studentIds || [])) batch.delete(doc(firebaseDb, 'assignment_targets', `${assignmentId}_${sid}`));
+      if (studentIds && studentIds.length) batch.update(doc(firebaseDb, 'assignments', assignmentId), { target_student_ids: arrayRemove(...studentIds), updatedAt: serverTimestamp() });
+      await batch.commit();
+      return studentIds;
+    }, OperationType.DELETE, 'assignment_targets'),
+
+    getClassOverview: (courseId) => safeWrap(async () => {
+      if (!dbIsTeacher()) throw new Error('Chỉ giáo viên mới xem tổng quan lớp.');
+      const cfg = EducMindDB.getCoursePracticeConfig(courseId);
+      const content = await dbLoadContent();
+      const objIds = content.objectives.map((o) => o.id);
+      const [mastery, gaps, recommendations, members, profiles, evidence, questions, practiceSessions] = await Promise.all([
+        dbCallIn(EducMindDB.listMastery, objIds).catch(() => []),
+        dbCallIn(EducMindDB.listGaps, objIds).catch(() => []),
+        dbCall(EducMindDB.listRecommendations()).catch(() => []),
+        dbCallIn(EducMindDB.listMembers, [DB.classId]).catch(() => []),
+        dbCallIn(EducMindDB.listProfiles, (await dbCallIn(EducMindDB.listMembers, [DB.classId]).catch(() => [])).map((m) => m.student_id)).catch(() => []),
+        dbCallIn(EducMindDB.listEvidence, objIds).catch(() => []),
+        dbCall(EducMindDB.listQuestions(courseId)).catch(() => []),
+        dbCall(EducMindDB.listPracticeSessions()).catch(() => []),
+      ]);
+      return { content, mastery, gaps, recommendations, members, profilesById: dbById(profiles), evidence, questions, practiceSessions, cfg };
+    }, OperationType.GET, 'assignments'),
+
     /* ----- Trò chơi ôn tập ----- */
     gameQuestions: (courseId) => safeWrap(async () => {
       const qs = await getByIds('questions', await getClassIndexIds(courseId, 'question_ids'));
