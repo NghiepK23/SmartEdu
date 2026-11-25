@@ -959,6 +959,38 @@ test('DOM & XSS interactive tests for Botanical Teal shell, user card, global se
   evalExpr(`DB_PAGES.exam && dbExamStop(false);`);
 });
 
+test('Adaptive practice page (17-practice.js) exposes a floating dock and styled stats', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  evalExpr(`
+    logged = true;
+    role = 'S';
+    sess = { email: 'hs@edu.vn', role: 'S', t: Date.now(), backend: true, userId: 's1' };
+    DB.me = { id: 's1', email: 'hs@edu.vn', full_name: 'An', role: 'STUDENT' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1';
+    DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.notifs = [];
+    DB.page = 'practice';
+    DB.arg = { objectiveId: 'o1' };
+    DB_PRACTICE = { session: null, objectiveId: '', idx: 0, questions: [], answers: [], levelPath: [], cfg: {} };
+    DB.loading = false;
+    DB.loadError = '';
+    DB.data = {
+      objective: { id: 'o1', code: 'O1', description: 'Mục tiêu thử' },
+      mastery: { mastery_score: 0.5 }, evidenceCount: 3, officialCount: 2,
+      bankCount: 12, cfg: { practice_session_length: 8, practice_unlock_min_official: 1 },
+      canStart: true,
+    };
+    dbRender();
+  `);
+  const dock = document.querySelector('.db-bottom-dock');
+  assert.ok(dock, 'practice page renders the floating bottom dock');
+  assert.equal(dock.dataset.context, 'practice');
+  assert.ok(dock.querySelector('[data-sub="pr-start"]'), 'dock can jump to the start button');
+  assert.equal(document.querySelectorAll('.db-practice-stats .db-stat').length, 3, 'renders three practice stats');
+  assert.ok(document.querySelector('#db-practice-resources'), 'resources slot exists');
+});
+
 test('Class overview dashboard (18-class-overview.js) has dock sub-tabs and styled KPI cards', async () => {
   const { document, evalExpr } = createDomTestContext();
   evalExpr(`

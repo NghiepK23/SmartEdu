@@ -255,6 +255,21 @@ function dbDockSubItems(T) {
       { sub: 'co-coverage', label: 'Độ phủ', icon: 'target', active: sub === 'co-coverage' },
       { sub: 'co-settings', label: 'Ngưỡng', icon: 'settings', active: sub === 'co-settings' },
     );
+  } else if (p === 'practice') {
+    const pr = typeof DB_PRACTICE !== 'undefined' ? DB_PRACTICE : null;
+    const active = !!(pr && pr.session && pr.session.status === 'ACTIVE');
+    if (active) {
+      items.push(
+        { sub: 'pr-answer', label: 'Trả lời', icon: 'play', active: !sub || sub === 'pr-answer' },
+        { sub: 'pr-trail', label: 'Lộ trình cấp độ', icon: 'mastery', active: sub === 'pr-trail' },
+      );
+    } else {
+      items.push(
+        { sub: 'pr-start', label: 'Bắt đầu', icon: 'play', active: !sub || sub === 'pr-start' },
+        { sub: 'pr-stats', label: 'Sẵn sàng', icon: 'list', active: sub === 'pr-stats' },
+        { sub: 'pr-resources', label: 'Tài liệu', icon: 'lessons', active: sub === 'pr-resources' },
+      );
+    }
   } else if (p === 'games') {
     items.push(
       { sub: 'game-modes', label: 'Chế độ chơi', icon: 'play', active: !sub || sub === 'game-modes' },
@@ -941,6 +956,12 @@ DB_ACT.dockSubAction = async (el) => {
   if (sub === 'hist-top') { dbDockScrollTo('#db-h-h'); dbSyncDockActive(); return; }
   if (sub === 'hist-search') { dbDockScrollTo('#db-history-search', '#db-history-search'); dbSyncDockActive(); return; }
   if (sub === 'hist-clear' && typeof DB_ACT.clearHistoryFilters === 'function') { DB_UI.dockSub = ''; DB_ACT.clearHistoryFilters(); dbSyncDockActive(); return; }
+
+  if (sub === 'pr-start') { dbDockScrollTo('.db-practice-intro [data-act="practiceStart"]'); dbSyncDockActive(); return; }
+  if (sub === 'pr-stats') { dbDockScrollTo('.db-practice-stats'); dbSyncDockActive(); return; }
+  if (sub === 'pr-resources') { dbDockScrollTo('#db-practice-resources'); dbSyncDockActive(); return; }
+  if (sub === 'pr-answer') { dbDockScrollTo('.db-practice-question'); dbSyncDockActive(); return; }
+  if (sub === 'pr-trail') { dbDockScrollTo('.db-practice-trail'); dbSyncDockActive(); return; }
 
   if (sub === 'co-kpi') { dbDockScrollTo('#db-co-kpi'); dbSyncDockActive(); return; }
   if (sub === 'co-reteach') { dbDockScrollTo('#db-co-reteach'); dbSyncDockActive(); return; }
