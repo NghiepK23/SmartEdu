@@ -712,6 +712,16 @@ body:has(.db-bottom-dock) .work-card .work-actions .btn.light.mini{opacity:.9}
 @media(max-width:900px){
   body:has(.db-bottom-dock) .panel .row .btn.light{opacity:.92}
 }
+/* Ưu tiên tab bar nổi: ẩn nút trùng lặp trên khung chính — chỉ giữ 1 vị trí duy nhất */
+body:has(.db-bottom-dock) #main [data-act="clearHistoryFilters"],
+body:has(.db-bottom-dock) #main [data-act="clearTrashFilters"],
+body:has(.db-bottom-dock) #main [data-act="clearHistory"]{display:none !important}
+body:has(.db-bottom-dock) #main .db-pf-bar [data-pf-clearwrap],
+body:has(.db-bottom-dock) #main [data-act="pfClear"]{display:none !important}
+body:has(.db-bottom-dock) #main .db-filter .btn.light.mini{display:none !important}
+body:has(.db-bottom-dock) #main .db-pf-bar .btn.light.mini{display:none !important}
+/* Giữ lại tìm kiếm & dropdown, chỉ ẩn nút hành động đã có trên dock */
+body:has(.db-bottom-dock) #main .db-pf-actions .btn.light.mini{display:none !important}
 /* Hiệu ứng nổi nhẹ khi đổi ngữ cảnh */
 @keyframes dockMorph{from{transform:translateX(-50%) scale(.96);opacity:.85}to{transform:translateX(-50%) scale(1);opacity:1}}
 .db-dock-wrap.is-morphing{animation:dockMorph .42s cubic-bezier(.34,1.38,.64,1)}
