@@ -327,9 +327,10 @@ test('URL hash routing, role normalization, F5 restore, and auth hash protection
   assert.equal(locationObj.hash, '#/assessments?class=c2&id=ex-2');
 
   // Class switch updates URL hash
+  // Học sinh không đổi lớp được: dbSetClass bị chặn và không đụng route hash
   await ctx.dbSetClass('c1', 'home', {});
-  assert.equal(evalExpr('DB.classId'), 'c1');
-  assert.equal(locationObj.hash, '#/home?class=c1');
+  assert.equal(evalExpr('DB.classId'), 'c2');
+  assert.equal(locationObj.hash, '#/assessments?class=c2&id=ex-2');
 
   // Browser Back (hashchange) should restore route via history:'pop' without pushing another entry
   locationObj.hash = '#/assignments?class=c2&id=asg-9';

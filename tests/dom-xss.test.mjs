@@ -859,9 +859,10 @@ test('DOM & XSS interactive tests for Botanical Teal shell, user card, global se
   assert.equal(plusBtn, null, 'removes floating + quick-create button from bottom dock');
   assert.equal(document.getElementById('db-quick-menu'), null, 'removes quick-create menu');
   assert.equal(document.querySelector('#main .head #classSelect'), null, 'removes class select from #main .head');
-  const topClassSelect = document.querySelector('.top .user #classSelect');
-  assert.ok(topClassSelect, 'places #classSelect in .top .user role slot');
-  assert.equal(document.querySelector('.top .user-role:not(.user-class-static)'), null, 'replaces static role badge with selected class control');
+  // Giáo viên: ô chọn lớp nằm trong .top .user; thẻ lớp hiển thị tĩnh (không có select) để tránh đổi lớp nhầm.
+  const topClassBadge = document.querySelector('.top .user .user-class-static');
+  assert.ok(topClassBadge && topClassBadge.textContent.includes('10A1'), 'places class badge in .top .user role slot');
+  assert.equal(document.querySelector('.top .user #classSelect'), null, 'teacher sees static class badge instead of a class selector');
 
   // Clicking bottom dock sub-function switches internal home filter without leaving sidebar page
   dockEl.querySelector('.db-dock-item[data-sub="home-pending"]').click();
@@ -939,7 +940,11 @@ test('DOM & XSS interactive tests for Botanical Teal shell, user card, global se
   assert.ok(document.getElementById('db-home-work-panel'), 'student home renders unified work table');
   assert.ok(document.querySelector('.db-dock-item[data-sub="home-todo"]'), 'student home dock shows internal todo filter');
   assert.equal(document.getElementById('db-dock-plus'), null, 'student bottom dock does not render + button');
-  assert.ok(document.querySelector('.top .user #classSelect'), 'student topbar displays class selector in role slot');
+  const stuClassSelect = document.querySelector('.top .user #classSelect');
+  assert.ok(stuClassSelect, 'student topbar displays current class in role slot');
+  // Lớp của học sinh do giáo viên phân công: đổi lớp bị chặn ở tầng hành động.
+  assert.equal(evalExpr('(DB_ACT.setClass({ value: "c2" }), role)'), 'S');
+  assert.equal(evalExpr('DB.classId'), 'c1', 'student cannot switch class (action is guarded)');
   evalExpr(`DB.page = 'exam'; DBX = { assessment: { id: 'ex1', title: 'KT' }, attempt: { id: 'att1', status: 'IN_PROGRESS' }, questions: [], answers: {}, state: {}, debounce: {} }; dbRender();`);
   assert.equal(document.querySelector('.db-bottom-dock'), null, 'bottom dock is hidden during active exam');
   evalExpr(`DB_PAGES.exam && dbExamStop(false);`);

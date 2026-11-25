@@ -270,6 +270,16 @@ function dbSyncDockActive() {
     if (on) btn.setAttribute('aria-current', 'true');
     else btn.removeAttribute('aria-current');
   });
+  dbDockPillSync(dock);
+}
+
+/* Đặt viên thuốc trượt đúng vị trí mục đang chọn (kiểu tab bar iOS). */
+function dbDockPillSync(dock) {
+  if (!dock) return;
+  const active = dock.querySelector('.db-dock-item.is-active');
+  if (!active) { dock.style.setProperty('--dock-w', '0px'); return; }
+  dock.style.setProperty('--dock-x', active.offsetLeft + 'px');
+  dock.style.setProperty('--dock-w', active.offsetWidth + 'px');
 }
 
 function dbQuickCreateItems(T) {
@@ -494,7 +504,17 @@ function dbShell(P, body) {
   </div>${dbBottomDockHtml(T)}${typeof dbChatDrawerHtml === 'function' ? dbChatDrawerHtml() : ''}<div class="db-settings-global-wrap" aria-hidden="true">${dbSettingsMenuHtml()}</div>`;
   applyLayer4Background();
   // iOS 26 adaptive morph — trigger morph animation khi đổi ngữ cảnh
-  requestAnimationFrame(()=>{ const w=document.querySelector('.db-dock-wrap'); if(w){ w.classList.remove('is-morphing'); void w.offsetWidth; w.classList.add('is-morphing'); setTimeout(()=>w.classList.remove('is-morphing'),520); }});
+  requestAnimationFrame(()=>{
+    const w=document.querySelector('.db-dock-wrap');
+    if(w){ w.classList.remove('is-morphing'); void w.offsetWidth; w.classList.add('is-morphing'); setTimeout(()=>w.classList.remove('is-morphing'),520); }
+    dbDockPillSync(document.querySelector('.db-bottom-dock'));
+  });
+  if(!window.__dbDockPillBound){
+    window.__dbDockPillBound = true;
+    const sync=()=>dbDockPillSync(document.querySelector('.db-bottom-dock'));
+    window.addEventListener('resize',sync,{passive:true});
+    document.addEventListener('scroll',(e)=>{ if(e.target && e.target.classList && e.target.classList.contains('db-bottom-dock')) sync(); },{capture:true,passive:true});
+  }
   // Đánh dấu body có dock để CSS ẩn nút trùng lặp trong khung chính
   document.body.classList.toggle('has-db-dock', !!document.querySelector('.db-bottom-dock'));
 }

@@ -722,6 +722,50 @@ body:has(.db-bottom-dock) #main .db-filter .btn.light.mini{display:none !importa
 body:has(.db-bottom-dock) #main .db-pf-bar .btn.light.mini{display:none !important}
 /* Giữ lại tìm kiếm & dropdown, chỉ ẩn nút hành động đã có trên dock */
 body:has(.db-bottom-dock) #main .db-pf-actions .btn.light.mini{display:none !important}
+/* ===== Dedup theo ngữ cảnh: mỗi chức năng chỉ còn một điểm vào (dock là chính) =====
+   Quy tắc: ẩn tab-bar/bước/nút điều hướng đã có mục tương ứng trên dock;
+   giữ nguyên ô tìm kiếm, dropdown lọc, biểu mẫu và các hành động không có trên dock. */
+/* Nút "Về danh sách" / "Sửa thông tin" ở đầu trang chi tiết đã có trên dock */
+body:has(.db-dock-wrap[data-context="assignments"]) #main .db-assignment-detail > .row [data-act="go"][data-page="assignments"],
+body:has(.db-dock-wrap[data-context="assignments"]) #main .db-assignment-detail > .row [data-act="go"][data-edit],
+body:has(.db-dock-wrap[data-context="assignments"]) #main .db-assignment-preview > .row [data-act="go"][data-page="assignments"],
+body:has(.db-dock-wrap[data-context="assignments"]) #main .db-assignment-detail-head > .row [data-act="go"][data-page="assignments"],
+body:has(.db-dock-wrap[data-context="assignments"]) #main .db-assignment-playing-head [data-act="go"][data-page="assignments"],
+body:has(.db-dock-wrap[data-context="assessments"]) #main .db-assessment-detail > .row [data-act="go"][data-page="assessments"],
+body:has(.db-dock-wrap[data-context="assessments"]) #main .db-assessment-detail > .row [data-act="go"][data-edit],
+body:has(.db-dock-wrap[data-context="assessments"]) #main .db-assessment-preview > .row [data-act="go"][data-page="assessments"],
+body:has(.db-dock-wrap[data-context="assessments"]) #main .db-student-assessment-detail > .row [data-act="go"][data-page="assessments"]{display:none !important}
+/* Dock đã có mục "Danh sách": bỏ nút quay lại trùng lặp ở mọi trang chi tiết */
+body:has(.db-dock-wrap[data-context="assignments"]) #main .panel > .row [data-act="go"][data-page="assignments"]:not([data-id]),
+body:has(.db-dock-wrap[data-context="assessments"]) #main .panel > .row [data-act="go"][data-page="assessments"]:not([data-id]){display:none !important}
+/* Bước 1-2-3 của trình soạn bài tập/bài kiểm tra đã có trên dock */
+body:has(.db-dock-wrap[data-context="assignments"]) #main .db-workflow-steps .btn,
+body:has(.db-dock-wrap[data-context="assessments"]) #main .db-workflow-steps .btn{display:none !important}
+/* Bài kiểm tra: thanh tab Câu hỏi/Xem trước/Lượt làm trùng mục trên dock */
+body:has(.db-dock-wrap[data-context="assessments"]) #main .seg[aria-label="Phần của bài kiểm tra"]{display:none !important}
+/* Bài kiểm tra: nút "Xem trước đề" cuối trình soạn đã có mục trên dock */
+body:has(.db-dock-wrap[data-context="assessments"]) #main .db-assessment-author > .db-form-actions{display:none !important}
+/* Thư mục học tập: tab Mục tiêu/Tài liệu của bài học đã nằm trên dock */
+body:has(.db-dock-wrap[data-context="content"]) .lesson-workspace-head .folder-tabs{display:none !important}
+/* Chủ đề: "Sửa chủ đề" trùng mục trên dock (giữ Xuất bản và Xóa vì dock chưa có) */
+body:has(.db-dock-wrap[data-context="content"]) #main .folder-wrap .panel > .row [data-act="editTopic"]{display:none !important}
+/* Bảng công việc trang chủ: chỉ ẩn những tab trạng thái dock đã có, giữ tab còn lại + ô tìm kiếm */
+body:has(.db-dock-wrap[data-context="home"]) #main .td-seg-bar .td-seg-tab[data-tab="ALL"],
+body:has(.db-dock-wrap[data-context="home"]) #main .td-seg-bar .td-seg-tab[data-tab="PENDING"],
+body:has(.db-dock-wrap[data-context="home"]) #main .td-seg-bar .td-seg-tab[data-tab="TODO"]{display:none !important}
+/* Lịch: "Bỏ lọc ngày" đã có trên dock khi đang chọn ngày (giữ "Tháng hiện tại") */
+body:has(.db-dock-wrap[data-context="schedule"]) #main [data-act="schedAll"]{display:none !important}
+/* Ngân hàng câu hỏi: thẻ "Soạn câu hỏi thủ công" đã có mục trên dock nên ẩn cả thẻ */
+body:has(.db-dock-wrap[data-context="questions"]) #main .db-create-source-card:has([data-act="go"][data-page="questions"][data-edit="new"]){display:none !important}
+body:has(.db-dock-wrap[data-context="questions"]) #main .db-create-source{grid-template-columns:minmax(0,1fr)}
+/* AI: "Duyệt tất cả" có trên dock; "Từ chối tất cả" chưa có nên vẫn giữ */
+body:has(.db-dock-wrap[data-context="ai"]) #main [data-act="aiApproveAll"]{display:none !important}
+/* Thùng rác: "Khôi phục tất cả" có trên dock; "Xóa sạch thùng rác" chưa có nên vẫn giữ */
+body:has(.db-dock-wrap[data-context="trash"]) #main [data-act="restoreAllTrash"]{display:none !important}
+/* Trò chơi: nút âm thanh ở sảnh đã có trên dock */
+body:has(.db-dock-wrap[data-context="games"]) #main .db-game-lobby-sound{display:none !important}
+/* Trợ lý AI: nút "Mới" ở sidebar trùng mục "Hội thoại mới" trên dock */
+body:has(.db-dock-wrap[data-context="chat"]) .db-chat-sidebar-actions [data-act="chatNewThread"]{display:none !important}
 /* Hiệu ứng nổi nhẹ khi đổi ngữ cảnh */
 @keyframes dockMorph{from{transform:translateX(-50%) scale(.96);opacity:.85}to{transform:translateX(-50%) scale(1);opacity:1}}
 .db-dock-wrap.is-morphing{animation:dockMorph .42s cubic-bezier(.34,1.38,.64,1)}
@@ -729,3 +773,28 @@ body:has(.db-bottom-dock) #main .db-pf-actions .btn.light.mini{display:none !imp
 .db-bottom-dock:empty{display:none !important}
 .db-dock-wrap:has(.db-bottom-dock:empty){display:none !important}
 
+/* Viên thuốc trượt theo mục đang chọn (kiểu iOS): chỉ báo vị trí, không thay nút */
+.db-bottom-dock{position:relative;--dock-x:0px;--dock-w:0px}
+.db-bottom-dock::before{
+  content:"";
+  position:absolute;
+  top:3px;
+  left:0;
+  width:var(--dock-w);
+  height:calc(100% - 6px);
+  border-radius:999px;
+  background:#ffffff;
+  box-shadow:0 2px 8px -2px rgba(10,36,35,.22);
+  transform:translateX(var(--dock-x));
+  transition:transform .44s cubic-bezier(.34,1.32,.64,1),width .44s cubic-bezier(.34,1.32,.64,1),opacity .2s var(--ease);
+  opacity:0;
+  pointer-events:none;
+}
+.db-bottom-dock:has(.db-dock-item.is-active)::before{opacity:1}
+.db-bottom-dock .db-dock-item{position:relative;z-index:1;background:transparent!important;box-shadow:none!important}
+.db-bottom-dock .db-dock-item.is-active{color:#154946!important}
+:root[data-theme="dark"] .db-bottom-dock::before{background:#48b8ae;box-shadow:0 2px 10px -2px rgba(0,0,0,.5)}
+:root[data-theme="dark"] .db-bottom-dock .db-dock-item.is-active{color:#081c1b!important}
+@media(prefers-reduced-motion:reduce){
+  .db-bottom-dock::before,.db-dock-item,.db-bottom-dock,.db-dock-wrap.is-morphing{transition:none!important;animation:none!important}
+}

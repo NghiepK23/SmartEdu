@@ -329,4 +329,4 @@ DB_ACT.practiceShowResources = (el) => dbRun(el, async () => {
   toast('Đã tải tài liệu gợi ý.');
 });
 
-function dbLetter(i) { return String.fromCharCode(65 + i); }
+/* dbLetter() đã được khai báo trong js/db/06-questions.js nên dùng lại, không khai báo trùng. */
