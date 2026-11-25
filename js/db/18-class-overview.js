@@ -109,7 +109,7 @@ DB_PAGES.class_overview = {
     const coveragePct = coverageTotal ? Math.round((covered / coverageTotal) * 100) : 0;
 
     return `<section class="panel" id="db-co-kpi" aria-labelledby="db-h-overview">
-      <div class="row between"><div><h2 id="db-h-overview">Chất lượng lớp ${h(dbClass()?.name || '')}</h2><p class="lead">Bốn chỉ số nhanh về mức nắm vững, lỗ hổng kiến thức, luyện tập và độ phủ tài liệu của lớp.</p></div>
+      <div class="row between"><div><h2 id="db-h-overview">Lớp ${h(dbClass()?.name || '')}</h2><p class="lead">Bốn chỉ số nhanh về mức nắm vững, lỗ hổng kiến thức, luyện tập và độ phủ tài liệu của lớp.</p></div>
         <div class="row">${dbBtn(ic('spark', 16) + ' Tóm tắt AI', 'classOverviewAiSummary', {}, 'light mini')}${dbBtn('Làm mới', 'reload', {}, 'light mini')}</div>
       </div>
 
