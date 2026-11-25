@@ -1,11 +1,11 @@
 /* EducMind · js/db/18-class-overview.js
-   Bảng điều khiển lớp cho giáo viên: 4 chỉ số nhanh, mục tiêu cần chú ý, phân nhóm học sinh, chất lượng câu hỏi. */
+   Sức khoẻ lớp học (dành cho giáo viên): 4 chỉ số nhanh, mục tiêu cần chú ý, phân nhóm học sinh, chất lượng câu hỏi. */
 
 DB_PAGES.class_overview = {
-  title: 'Bảng điều khiển lớp',
+  title: 'Sức khoẻ lớp học',
   sub: 'Phân loại học sinh theo mức nắm vững, mục tiêu cần dạy lại, độ phủ tài liệu và chất lượng câu hỏi.',
   async load() {
-    if (!dbIsTeacher()) throw new Error('Chỉ giáo viên mới xem tổng quan lớp.');
+    if (!dbIsTeacher()) throw new Error('Chỉ giáo viên mới xem được sức khoẻ lớp học.');
     if (!DB.course) await dbLoadCourse();
     const overview = await dbCall(EducMindDB.getClassOverview(DB.course.id));
     // Compute derived metrics
@@ -108,7 +108,7 @@ DB_PAGES.class_overview = {
     const coveragePct = coverageTotal ? Math.round((covered / coverageTotal) * 100) : 0;
 
     return `<section class="panel" id="db-co-kpi" aria-labelledby="db-h-overview">
-      <div class="row between"><div><h2 id="db-h-overview">Bảng điều khiển lớp ${h(dbClass()?.name || '')}</h2><p class="lead">Nhóm học sinh · Mục tiêu cần chú ý · Độ phủ tài liệu & câu hỏi · Chất lượng câu hỏi</p></div>
+      <div class="row between"><div><h2 id="db-h-overview">Sức khoẻ lớp ${h(dbClass()?.name || '')}</h2><p class="lead">Bốn chỉ số nhanh về mức nắm vững, lỗ hổng, luyện tập và độ phủ tài liệu của lớp.</p></div>
         <div class="row">${dbBtn(ic('spark', 16) + ' Tóm tắt AI', 'classOverviewAiSummary', {}, 'light mini')}${dbBtn('Làm mới', 'reload', {}, 'light mini')}</div>
       </div>
 
@@ -158,14 +158,14 @@ DB_PAGES.class_overview = {
     </section>
 
     <section class="panel" id="db-co-settings">
-      <h3>Cài đặt bảng điều khiển lớp</h3>
+      <h3>Ngưỡng đánh giá của lớp</h3>
       <div class="db-settings-grid">
-        <div class="field"><label>Tỷ lệ dạy lại (dash_reteach_share)</label><input id="db-dash-reteach" type="number" min="0" max="1" step="0.05" value="${cfg.dash_reteach_share}" data-field="dash_reteach_share"></div>
-        <div class="field"><label>Số HS tối thiểu (dash_min_students)</label><input id="db-dash-min" type="number" min="1" max="200" value="${cfg.dash_min_students}" data-field="dash_min_students"></div>
-        <div class="field"><label>Ngưỡng xuất sắc</label><input id="db-dash-adv" type="number" min="0" max="1" step="0.05" value="${cfg.dash_advanced_threshold}" data-field="dash_advanced_threshold"></div>
-        <div class="field"><label>Ngày không hoạt động</label><input id="db-dash-inactive" type="number" min="1" max="365" value="${cfg.dash_inactive_days}" data-field="dash_inactive_days"></div>
+        <div class="field"><label for="db-dash-reteach">Tỷ lệ học sinh yếu cần dạy lại</label><input id="db-dash-reteach" type="number" min="0" max="1" step="0.05" value="${cfg.dash_reteach_share}" data-field="dash_reteach_share"></div>
+        <div class="field"><label for="db-dash-min">Số học sinh tối thiểu mỗi nhóm</label><input id="db-dash-min" type="number" min="1" max="200" value="${cfg.dash_min_students}" data-field="dash_min_students"></div>
+        <div class="field"><label for="db-dash-adv">Ngưỡng xuất sắc (0–1)</label><input id="db-dash-adv" type="number" min="0" max="1" step="0.05" value="${cfg.dash_advanced_threshold}" data-field="dash_advanced_threshold"></div>
+        <div class="field"><label for="db-dash-inactive">Số ngày tính là không hoạt động</label><input id="db-dash-inactive" type="number" min="1" max="365" value="${cfg.dash_inactive_days}" data-field="dash_inactive_days"></div>
       </div>
-      <p class="muted">Lưu cài đặt sẽ cập nhật vào khóa học (courses).</p>
+      <p class="muted">Ngưỡng được lưu vào khóa học và dùng chung cho trang Tổng quan của giáo viên.</p>
       <div class="row">${dbBtn('Lưu cài đặt', 'saveDashSettings', {}, 'mini')}</div>
     </section>`;
   },

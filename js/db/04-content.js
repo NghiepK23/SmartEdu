@@ -91,7 +91,7 @@ function dbContentRootView(d, lessonsBy, objBy) {
       </div>
       <div class="row" style="margin-top:10px">${dbBtn('Lưu cài đặt luyện tập', 'savePracticeSettings', {}, 'mini')}${dbBtn('Khôi phục mặc định', 'resetPracticeSettings', {}, 'light mini')}</div>
     </details>
-    <details class="db-content-settings"><summary>Ngưỡng tính bảng điều khiển lớp</summary>
+    <details class="db-content-settings"><summary>Ngưỡng tính chỉ số lớp học</summary>
       <div class="db-form-row" style="flex-wrap:wrap;gap:12px">
         <div class="field"><label>Tỷ lệ dạy lại</label><input type="number" min="0" max="1" step="0.05" value="${h(DB.course ? (DB.course.dash_reteach_share ?? 0.4) : 0.4)}" data-field="dash_reteach_share"></div>
         <div class="field"><label>Số HS tối thiểu</label><input type="number" min="1" max="200" value="${h(DB.course ? (DB.course.dash_min_students ?? 5) : 5)}" data-field="dash_min_students"></div>

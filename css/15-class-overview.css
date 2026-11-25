@@ -98,14 +98,16 @@
   .db-overview-grid{break-inside:avoid}
 }
 
-/* ----- Bảng trong trang: không tràn khung, cột gọn trên màn hình hẹp ----- */
-#main .panel .tablewrap{max-width:100%;overflow-x:auto}
-#main .panel .tablewrap table{min-width:520px}
+/* ----- Bảng "Mục tiêu cần chú ý": cuộn ngang thay vì bóp chữ ----- */
+#db-co-reteach .tablewrap{max-width:100%;overflow-x:auto}
+#db-co-reteach .tablewrap table{min-width:520px}
 
 /* ----- Danh sách cảnh báo câu hỏi (dùng .db-objectives có sẵn) ----- */
 #db-co-questions .db-objectives>li{align-items:flex-start;gap:10px}
 #db-co-questions .db-objectives .pill{flex:none;max-width:100%;white-space:normal;text-align:left}
 
-/* ----- Tiêu đề khối trong trang ----- */
-#main .panel>h3{margin:0 0 4px}
-#main .panel>h3+.lead{margin:0 0 12px}
+/* ----- Tiêu đề khối trong trang (chỉ áp dụng cho các khối của trang này) ----- */
+#db-co-kpi>h3,#db-co-reteach>h3,#db-co-groups>h3,
+#db-co-coverage>h3,#db-co-questions>h3,#db-co-settings>h3{margin:0 0 4px}
+#db-co-reteach>h3+.lead,#db-co-coverage>h3+.lead,
+#db-co-questions>h3+.lead{margin:0 0 12px}
