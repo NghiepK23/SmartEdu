@@ -510,6 +510,10 @@ async function dbLoadCourse() {
   DB.course = list[0] || null;
 }
 async function dbSetClass(id, page, arg, opts) {
+  if (!dbIsTeacher()) {
+    toast('Học sinh không được đổi lớp - liên hệ giáo viên.');
+    return;
+  }
   DB.classId = id || '';
   try { localStorage.setItem('educmind.db.class', DB.classId); } catch (_) {}
   DB.course = null;

@@ -135,7 +135,10 @@ function dbClassesStudent(d) {
 }
 
 /* ===== Thao tác ===== */
-DB_ACT.selectClass = (el) => dbSetClass(el.dataset.id, 'classes');
+DB_ACT.selectClass = (el) => {
+  if (!dbIsTeacher()) { toast('Học sinh không được đổi lớp - lớp do giáo viên phân công.'); return; }
+  dbSetClass(el.dataset.id, 'classes');
+};
 DB_ACT.copyCode = async (el) => {
   try { await navigator.clipboard.writeText(el.dataset.code); toast('Đã sao chép mã lớp ' + el.dataset.code + '.'); }
   catch (_) { toast('Không sao chép tự động được. Mã lớp: ' + el.dataset.code); }

@@ -684,3 +684,38 @@ body:has(.sidebar-collapsed) .db-settings-menu{
   left:max(94px, calc(50vw - 626px))!important;
 }
 
+/* ===== iOS 26/27 Adaptive Tab Bar — Liquid morph & contextual ===== */
+.db-dock-wrap{
+  transition:width .52s cubic-bezier(.34,1.38,.64,1),transform .42s var(--ease),bottom .22s var(--ease);
+  will-change:width,transform;
+}
+.db-bottom-dock{
+  transition:width .52s cubic-bezier(.34,1.38,.64,1),gap .38s var(--ease),padding .38s var(--ease),background-color .3s var(--ease);
+  will-change:width,gap;
+}
+.db-dock-item{
+  transition:transform .45s cubic-bezier(.34,1.38,.64,1),background-color .22s var(--ease),color .22s var(--ease),width .45s var(--ease),opacity .25s var(--ease);
+  transform-origin:center;
+}
+.db-dock-item.is-active{transform:scale(1.04)}
+.db-bottom-dock:has(.db-dock-item:nth-child(n+5)){gap:2px}
+/* Khi dock thích ứng theo ngữ cảnh, thu gọn nhãn trên mobile, giữ icon */
+@media(min-width:761px){
+  .db-bottom-dock[data-context="content"] .db-dock-item{padding:0 12px}
+}
+/* Ẩn nút trùng lặp trên khung chính khi dock thích ứng đã đảm nhiệm — cho giao diện sạch như iOS 26 */
+body:has(.db-bottom-dock) .topic-folder .topic-icon-btn{display:none !important}
+body:has(.db-bottom-dock) .topic-folder .topic-actions .pill.plain{opacity:.85}
+body:has(.db-bottom-dock) .db-folder-heading .btn,
+body:has(.db-bottom-dock) .lesson-workspace-head .btn.light{display:none !important}
+body:has(.db-bottom-dock) .work-card .work-actions .btn.light.mini{opacity:.9}
+@media(max-width:900px){
+  body:has(.db-bottom-dock) .panel .row .btn.light{opacity:.92}
+}
+/* Hiệu ứng nổi nhẹ khi đổi ngữ cảnh */
+@keyframes dockMorph{from{transform:translateX(-50%) scale(.96);opacity:.85}to{transform:translateX(-50%) scale(1);opacity:1}}
+.db-dock-wrap.is-morphing{animation:dockMorph .42s cubic-bezier(.34,1.38,.64,1)}
+/* Trạng thái rỗng: ẩn hẳn dock để không che nội dung */
+.db-bottom-dock:empty{display:none !important}
+.db-dock-wrap:has(.db-bottom-dock:empty){display:none !important}
+

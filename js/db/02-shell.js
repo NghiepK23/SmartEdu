@@ -297,8 +297,9 @@ function dbBottomDockHtml(T) {
     const badge = it.badge > 0 ? `<span class="db-dock-badge" aria-hidden="true">${it.badge > 9 ? '9+' : it.badge}</span>` : '';
     return `<button type="button" class="db-dock-item${it.active ? ' is-active' : ''}" data-act="dockSubAction" data-sub="${h(it.sub)}" ${it.active ? 'aria-current="true"' : ''} aria-label="${h(it.label)}" title="${h(it.label)}">${ic(it.icon, 16)}<span>${h(it.label)}</span>${badge}</button>`;
   }).join('');
-  return `<div class="db-dock-wrap" aria-label="Chức năng trang hiện tại">
-    <nav class="db-bottom-dock" aria-label="Chức năng bên trong mục hiện tại">${tabs}</nav>
+  const ctx = DB.page || 'home';
+  return `<div class="db-dock-wrap" aria-label="Chức năng trang hiện tại" data-context="${h(ctx)}">
+    <nav class="db-bottom-dock" aria-label="Chức năng bên trong mục hiện tại" data-context="${h(ctx)}">${tabs}</nav>
   </div>`;
 }
 
@@ -437,9 +438,9 @@ function dbShell(P, body) {
   const sub = typeof P.sub === 'function' ? P.sub() : P.sub;
   const activeClass = DB.classes.find((c) => c.id === DB.classId) || DB.classes[0] || null;
   const topClassPicker = DB.classes.length
-    ? (P.hideClass
+    ? (T || P.hideClass
         ? `<span class="user-role user-class-static">· Lớp: ${h(activeClass ? activeClass.name : '')}</span>`
-        : `<label class="user-class-picker" for="classSelect" title="${T ? 'Lớp đang chọn' : 'Lớp'}"><span class="user-class-label">Lớp:</span><select id="classSelect" data-change="setClass" aria-label="${T ? 'Lớp đang chọn' : 'Chọn lớp'}">${DB.classes.map((c) => `<option value="${h(c.id)}" ${c.id === DB.classId ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></label>`)
+        : `<label class="user-class-picker" for="classSelect" title="Lớp"><span class="user-class-label">Lớp:</span><select id="classSelect" data-change="setClass" aria-label="Chọn lớp">${DB.classes.map((c) => `<option value="${h(c.id)}" ${c.id === DB.classId ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></label>`)
     : `<span class="user-role user-class-static">· Chưa có lớp</span>`;
   const iconBtn = (label, icon, attrs, extra, cls) => `<button type="button" class="btn light icon-only ${cls || ''}" data-iconified="1" ${attrs} aria-label="${label}" title="${label}">${ic(icon, 18)}<span class="sr">${label}</span>${extra || ''}</button>`;
   const greetingName = h(dbName(DB.me));
@@ -492,6 +493,10 @@ function dbShell(P, body) {
     </main>
   </div>${dbBottomDockHtml(T)}${typeof dbChatDrawerHtml === 'function' ? dbChatDrawerHtml() : ''}<div class="db-settings-global-wrap" aria-hidden="true">${dbSettingsMenuHtml()}</div>`;
   applyLayer4Background();
+  // iOS 26 adaptive morph — trigger morph animation khi đổi ngữ cảnh
+  requestAnimationFrame(()=>{ const w=document.querySelector('.db-dock-wrap'); if(w){ w.classList.remove('is-morphing'); void w.offsetWidth; w.classList.add('is-morphing'); setTimeout(()=>w.classList.remove('is-morphing'),520); }});
+  // Đánh dấu body có dock để CSS ẩn nút trùng lặp trong khung chính
+  document.body.classList.toggle('has-db-dock', !!document.querySelector('.db-bottom-dock'));
 }
 
 function dbFoldSearch(s) {
