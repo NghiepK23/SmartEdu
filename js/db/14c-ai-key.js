@@ -27,9 +27,7 @@ async function dbAiKeyLoad(force) {
     if (error) {
       /* Lỗi 401 ở đây là chuyện của phiên đăng nhập, không phải của API key:
          báo đúng nguyên nhân để người dùng không tưởng là đã lưu key thất bại. */
-      DB_AI_KEY.error = error.status === 401
-        ? 'Phiên đăng nhập chưa sẵn sàng nên chưa kiểm tra được API key. Hãy tải lại trang (F5) rồi thử lại.'
-        : (error.message || 'Không kiểm tra được API key.');
+      DB_AI_KEY.error = dbAiKeyErrorText(error, 'Không kiểm tra được API key.');
       DB_AI_KEY.status = null;
     } else {
       DB_AI_KEY.status = data || null;
@@ -50,6 +48,21 @@ function dbAiKeyReady() {
   if (st.hasKey) return true;
   if (!dbIsTeacher() && st.classOwner && st.classOwner.hasKey) return true;
   return !!st.sharedKeyAvailable;
+}
+
+/* Đổi lỗi kỹ thuật thành câu tiếng Việt dễ hiểu.
+   "fetch failed" là lỗi MÁY CHỦ không gọi được Google — không phải lỗi của key hay của trình duyệt. */
+function dbAiKeyErrorText(error, fallback) {
+  const status = (error && error.status) || 0;
+  const code = (error && error.code) || '';
+  const message = String((error && error.message) || '');
+  if (code === 'UPSTREAM_UNREACHABLE' || /fetch failed|ECONNRESET|ENOTFOUND|ETIMEDOUT/i.test(message)) {
+    return 'Máy chủ chưa kết nối được Google (Firebase/Gemini) nên chưa lưu được key. Đây là lỗi mạng phía máy chủ, không phải lỗi key của bạn — hãy thử lại sau hoặc báo người quản trị máy chủ.';
+  }
+  if (status === 401) return 'Máy chủ chưa nhận được thông tin đăng nhập. Hãy tải lại trang (F5) rồi thử lại.';
+  if (status === 403) return 'Tài khoản chưa được phép ghi API key (kiểm tra quy tắc bảo mật Firestore đã triển khai bản mới chưa).';
+  if (status === 503) return message || 'Máy chủ chưa cấu hình khoá mã hoá API key (AI_KEY_ENCRYPTION_KEY).';
+  return message || fallback;
 }
 
 /* Thẻ "Quản lý API key Gemini" trong hộp thoại Tài khoản. */
@@ -145,12 +158,7 @@ DB_ACT.aiKeySave = async () => {
   dbAiKeyPaint();
   try {
     const { data, error } = await EducMindDB.aiKeySave(key);
-    if (error) {
-      if (error.status === 401) {
-        throw new Error('Máy chủ chưa nhận được thông tin đăng nhập. Hãy tải lại trang (F5) rồi lưu lại key.');
-      }
-      throw new Error(error.message || 'Không lưu được API key.');
-    }
+    if (error) throw new Error(dbAiKeyErrorText(error, 'Không lưu được API key.'));
     DB_UI.aiKeyDraft = '';
     await dbAiKeyLoad(true);
     toast(data && data.hint ? `Đã lưu API key (••••${data.hint}).` : 'Đã lưu API key.');
@@ -183,7 +191,7 @@ DB_ACT.aiKeyTest = async () => {
     /* Có key đang gõ thì kiểm tra chính key đó (chưa lưu), chưa gõ thì kiểm tra key đã lưu. */
     const { data, error } = draft ? await EducMindDB.aiKeyTest(draft) : await EducMindDB.aiKeyTest();
     DB_AI_KEY.testResult = error
-      ? 'bad:' + (error.message || 'Key chưa dùng được.')
+      ? 'bad:' + dbAiKeyErrorText(error, 'Key chưa dùng được.')
       : 'ok:Key hoạt động bình thường' + (data && data.model ? ` (${data.model})` : '') + '.';
   } catch (err) {
     DB_AI_KEY.testResult = 'bad:' + ((err && err.message) || 'Không kiểm tra được key.');

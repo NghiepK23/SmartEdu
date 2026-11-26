@@ -194,6 +194,14 @@ Mô hình: **mỗi người dùng mang API key của mình (BYO key)**, không c
 - Tắt công tắc của một bài ⇒ máy chủ trả HTTP 403 `AI_DISABLED_FOR_WORK` khi học sinh hỏi Trợ lý AI
   trong ngữ cảnh bài đó.
 
+Chẩn đoán khi gặp lỗi **"fetch failed"** hoặc *"Máy chủ chưa kết nối được Google"*: đây là lỗi
+**hạ tầng phía máy chủ** (máy chủ không ra được Internet), không phải lỗi API key hay lỗi trình duyệt.
+Mở `GET /api/health/upstream` để xem máy chủ có gọi được `googleapis.com` (Firebase Auth) và
+`firestore.googleapis.com` hay không; kết quả kèm mã lỗi mạng (`ECONNRESET`, `ENOTFOUND`, …) và
+cho biết `AI_KEY_ENCRYPTION_KEY` đã cấu hình chưa. Mọi lời gọi ra Google đều có timeout 15 giây
+(`AI_UPSTREAM_TIMEOUT_MS` để đổi) và thử lại một lần; khi thất bại, API trả **502
+`UPSTREAM_UNREACHABLE`** kèm câu tiếng Việt thay vì chuỗi `fetch failed` thô.
+
 Để chạy trên máy chủ:
 
 1. Đặt trong `.env` (xem `.env.example`): `AI_KEY_ENCRYPTION_KEY` (tối thiểu 32 ký tự, tạo bằng

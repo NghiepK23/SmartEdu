@@ -280,6 +280,10 @@ function dbSafeFileName(name) {
 
 /* ----- Lỗi từ máy chủ -> thông báo tiếng Việt ----- */
 const DB_ERRORS = [
+  /* Lỗi mạng phía máy chủ: máy chủ không gọi được Google nên không xác thực/lưu được.
+     Đây không phải lỗi của người dùng nên phải nói rõ, tránh câu "fetch failed" khó hiểu. */
+  [/fetch failed|ECONNRESET|ENOTFOUND|ETIMEDOUT|EAI_AGAIN/i, 'Máy chủ chưa kết nối được Google (Firebase/Gemini). Đây là lỗi mạng phía máy chủ — hãy thử lại sau hoặc báo người quản trị.'],
+  [/UPSTREAM_UNREACHABLE/i, 'Máy chủ chưa kết nối được Google (Firebase/Gemini). Đây là lỗi mạng phía máy chủ — hãy thử lại sau hoặc báo người quản trị.'],
   [/Invalid or expired class code/i, 'Mã lớp không đúng hoặc đã hết hạn.'],
   [/Only teachers can create a class/i, 'Chỉ tài khoản giáo viên mới tạo được lớp.'],
   [/Only students can join a class/i, 'Chỉ tài khoản học sinh mới vào lớp bằng mã.'],

@@ -41,6 +41,44 @@ export const SECURITY_HEADERS = {
 const FIREBASE_CERTS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 let cachedCerts = { keys: null, expiresAt: 0 };
 
+/* Lỗi mạng (máy chủ không gọi được Google) là lỗi hạ tầng: báo rõ thay vì "fetch failed".
+   Mọi lời gọi ra ngoài đều đi qua helper này (timeout + thử lại) để tránh treo request. */
+class UpstreamError extends Error {
+  constructor(message, code, cause) {
+    super(message);
+    this.status = 502;
+    this.code = code;
+    this.cause = cause;
+  }
+}
+
+async function fetchUpstream(url, options, label) {
+  const timeoutMs = Number(process.env.AI_UPSTREAM_TIMEOUT_MS || 15000);
+  let lastCause;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await fetch(url, { ...(options || {}), signal: AbortSignal.timeout(timeoutMs) });
+    } catch (err) {
+      lastCause = err;
+      const code = (err && err.cause && err.cause.code) || (err && err.name) || '';
+      /* ECONNRESET / ENOTFOUND / ETIMEDOUT: thử lại một lần rồi mới báo lỗi. */
+      if (attempt === 0 && /ECONN|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|UND_ERR|TimeoutError/i.test(String(code) + String(err && err.message))) {
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
+      }
+      break;
+    }
+  }
+  const reason = (lastCause && lastCause.cause && (lastCause.cause.code || lastCause.cause.message))
+    || (lastCause && lastCause.message) || 'không rõ nguyên nhân';
+  console.error(`Không kết nối được ${label}:`, reason);
+  throw new UpstreamError(
+    `Máy chủ chưa kết nối được ${label}. Hãy kiểm tra máy chủ (mạng ra Internet) rồi thử lại.`,
+    'UPSTREAM_UNREACHABLE',
+    reason,
+  );
+}
+
 function loadFirebaseConfig(rootDir) {
   const cfgPath = path.join(rootDir, 'firebase-applet-config.json');
   if (!fs.existsSync(cfgPath)) return null;
@@ -61,9 +99,10 @@ async function getFirebasePublicCerts() {
   if (cachedCerts.keys && Date.now() < cachedCerts.expiresAt) {
     return cachedCerts.keys;
   }
-  const res = await fetch(FIREBASE_CERTS_URL);
+  const res = await fetchUpstream(FIREBASE_CERTS_URL, undefined, 'dịch vụ xác thực Firebase (googleapis.com)');
   if (!res.ok) {
-    throw new Error('Không tải được chứng chỉ xác thực Firebase.');
+    const err = new UpstreamError('Không tải được chứng chỉ xác thực Firebase.', 'UPSTREAM_UNREACHABLE', 'HTTP ' + res.status);
+    throw err;
   }
   const cc = String(res.headers.get('cache-control') || '');
   const maxAgeMatch = cc.match(/max-age=(\d+)/i);
@@ -277,11 +316,12 @@ function firestoreRest(projectId, databaseId, auth) {
   const headers = { Authorization: 'Bearer ' + auth.token };
   return {
     async getDoc(path) {
-      const res = await fetch(`${base}/${path}`, { headers });
+      const res = await fetchUpstream(`${base}/${path}`, { headers }, 'Firestore');
       if (res.status === 404) return null;
       if (!res.ok) {
         const err = new Error('Không đọc được bản ghi trên Firestore.');
         err.status = res.status === 401 || res.status === 403 ? 403 : 502;
+        err.code = res.status === 403 ? 'FIRESTORE_DENIED' : 'FIRESTORE_ERROR';
         throw err;
       }
       return res.json();
@@ -293,7 +333,7 @@ function firestoreRest(projectId, databaseId, auth) {
       const transforms = create
         ? [{ fieldPath: 'createdAt', setToServerTimestamp: {} }, { fieldPath: 'updatedAt', setToServerTimestamp: {} }]
         : [{ fieldPath: 'updatedAt', setToServerTimestamp: {} }];
-      const res = await fetch(`${base}:commit`, {
+      const res = await fetchUpstream(`${base}:commit`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -303,7 +343,7 @@ function firestoreRest(projectId, databaseId, auth) {
             currentDocument: create ? { exists: false } : { exists: true },
           }],
         }),
-      });
+      }, 'Firestore');
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         console.error('Firestore commit bị từ chối:', res.status, body.slice(0, 300));
@@ -315,11 +355,11 @@ function firestoreRest(projectId, databaseId, auth) {
     },
     async patchDoc(path, fields) {
       const masked = Object.keys(fields).map((k) => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&');
-      const res = await fetch(`${base}/${path}?${masked}`, {
+      const res = await fetchUpstream(`${base}/${path}?${masked}`, {
         method: 'PATCH',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ fields }),
-      });
+      }, 'Firestore');
       if (!res.ok) {
         const err = new Error('Không lưu được bản ghi trên Firestore.');
         err.status = res.status === 401 || res.status === 403 ? 403 : 502;
@@ -328,7 +368,7 @@ function firestoreRest(projectId, databaseId, auth) {
       return res.json();
     },
     async deleteDoc(path) {
-      const res = await fetch(`${base}/${path}`, { method: 'DELETE', headers });
+      const res = await fetchUpstream(`${base}/${path}`, { method: 'DELETE', headers }, 'Firestore');
       if (!res.ok && res.status !== 404) {
         const err = new Error('Không xoá được bản ghi trên Firestore.');
         err.status = res.status === 401 || res.status === 403 ? 403 : 502;
@@ -336,11 +376,11 @@ function firestoreRest(projectId, databaseId, auth) {
       }
     },
     async runQuery(structuredQuery) {
-      const res = await fetch(`${base}:runQuery`, {
+      const res = await fetchUpstream(`${base}:runQuery`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ structuredQuery }),
-      });
+      }, 'Firestore');
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         console.error('Firestore runQuery bị từ chối:', res.status, body.slice(0, 300));
@@ -542,7 +582,10 @@ async function withGeminiRetry(fn) {
       lastError = error;
       const msg = error instanceof Error ? error.message.toLowerCase() : '';
       const status = typeof error?.status === 'number' ? error.status : 0;
-      const retryable = RETRYABLE_STATUS.has(status) || /\b(429|500|502|503|504|unavailable|overloaded|timeout)\b/.test(msg);
+      /* Lỗi mạng của máy chủ (không gọi được Gemini) cũng thử lại rồi báo rõ nguyên nhân. */
+      const networkIssue = /fetch failed|econnreset|enotfound|etimedout|eai_again|network|socket hang up/i.test(msg);
+      const retryable = RETRYABLE_STATUS.has(status) || networkIssue
+        || /\b(429|500|502|503|504|unavailable|overloaded|timeout)\b/.test(msg);
       if (!retryable || attempt + 1 === MAX_AI_ATTEMPTS) throw error;
       await new Promise((resolve) => setTimeout(resolve, 900 * (2 ** attempt)));
     }
@@ -975,6 +1018,36 @@ export function createApp(options = {}) {
   app.use(compressionMiddleware);
   app.use('/api', express.json({ limit: '1mb' }));
 
+  /* Chẩn đoán hạ tầng: máy chủ có kết nối được Google (Firebase Auth + Firestore) hay không.
+     Không trả về thông tin bí mật; dùng khi gặp lỗi "fetch failed". */
+  app.get('/api/health/upstream', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const probe = async (url, label) => {
+      const startedAt = Date.now();
+      try {
+        const r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(8000) });
+        return { label, ok: true, status: r.status, ms: Date.now() - startedAt };
+      } catch (err) {
+        return {
+          label,
+          ok: false,
+          ms: Date.now() - startedAt,
+          reason: (err && err.cause && (err.cause.code || err.cause.message)) || (err && err.message) || 'unknown',
+        };
+      }
+    };
+    const [certs, firestore] = await Promise.all([
+      probe(FIREBASE_CERTS_URL, 'Firebase Auth (googleapis.com)'),
+      probe(`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseProjectId || 'x')}/databases/${encodeURIComponent(firebaseDatabaseId || '(default)')}/documents?pageSize=1`, 'Firestore'),
+    ]);
+    res.status(certs.ok ? 200 : 503).json({
+      ok: certs.ok,
+      encryptionKeyConfigured: (process.env.AI_KEY_ENCRYPTION_KEY || '').trim().length >= 32,
+      firebaseProjectId: firebaseProjectId ? 'da cau hinh' : 'thieu',
+      probes: [certs, firestore],
+    });
+  });
+
   app.get('/api/server-now', (_req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({ now: new Date().toISOString() });
@@ -1118,7 +1191,11 @@ export function createApp(options = {}) {
     try {
       return await fn({ auth, api, profile });
     } catch (err) {
-      return res.status(err.status || 500).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+      /* Lỗi mạng của máy chủ (không gọi được Google) trả 502 kèm code để giao diện báo đúng. */
+      const status = err.status || (err instanceof UpstreamError ? 502 : 500);
+      const code = err.code || (err instanceof UpstreamError ? 'UPSTREAM_UNREACHABLE' : '');
+      if (code === 'UPSTREAM_UNREACHABLE') console.error('Lỗi kết nối ra ngoài:', err.cause || err.message);
+      return res.status(status).json({ error: err.message, ...(code ? { code } : {}) });
     }
   }
 
@@ -1153,6 +1230,13 @@ export function createApp(options = {}) {
   app.post('/api/ai/key/status', aiKeyStatusHandler);
 
   app.post('/api/ai/key', (req, res) => withAiAuth(req, res, async ({ auth, api }) => {
+    /* Kiểm tra khoá mã hoá trước: thiếu thì báo 503 rõ ràng thay vì để lỗi lúc mã hoá. */
+    if (AI_ENCRYPTION_SECRET.length < 32) {
+      return res.status(503).json({
+        error: 'Máy chủ chưa cấu hình khoá mã hoá API key (AI_KEY_ENCRYPTION_KEY từ 32 ký tự).',
+        code: 'MISSING_ENCRYPTION_KEY',
+      });
+    }
     const body = isRecord(req.body) ? req.body : {};
     const raw = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
     if (raw.length < 20 || raw.length > 200 || /\s/.test(raw)) {
