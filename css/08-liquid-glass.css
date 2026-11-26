@@ -350,16 +350,17 @@ html[data-lg-scrolled="1"] .top{
 
 /* Thương hiệu EducMind ở đầu sidebar */
 .side-brand{
-  display:flex;align-items:center;gap:8px;
+  display:flex;align-items:center;gap:9px;
   padding:0 3px 6px;
 }
-.side-brand-mark{
-  display:grid;place-items:center;flex:none;
-  width:30px;height:30px;border-radius:9px;
-  background:linear-gradient(145deg,#2d918a 0%,#123e3b 100%);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.32),0 4px 10px -4px rgba(9,32,30,.45);
-  color:#ffffff;
+/* Dùng chung khối .logo-mark với màn hình đăng nhập/thanh trên, chỉ thu nhỏ lại,
+   để biểu tượng mở sách ở thanh bên và ở màn hình khoá là một hình giống hệt. */
+.side-brand .logo-mark{
+  width:34px;height:34px;border-radius:11px;
+  background:linear-gradient(145deg,#2a8580 0%,#164f4c 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 10px -4px rgba(22,79,76,.42);
 }
+.side-brand .logo-mark svg{width:26px;height:26px}
 .side-brand-copy{min-width:0;display:grid;gap:1px}
 .side-brand-copy b{font:750 .98rem/1.1 var(--font-head);letter-spacing:-.025em;color:#ffffff}
 .side-brand-copy small{font-size:.73rem;color:rgba(210,235,230,.82);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -490,6 +491,7 @@ html[data-lg-scrolled="1"] .top{
 .nav-ic-tile[data-nav-tone="gaps"]{background:linear-gradient(155deg,#d98b32,#b46d1b)}
 .nav-ic-tile[data-nav-tone="recommend"]{background:linear-gradient(155deg,#c89b3c,#9f7722)}
 .nav-ic-tile[data-nav-tone="report"]{background:linear-gradient(155deg,#399e6b,#24784d)}
+.nav-ic-tile[data-nav-tone="class_overview"]{background:linear-gradient(155deg,#8e7cc3,#63539b)}
 .nav-ic-tile[data-nav-tone="classes"]{background:linear-gradient(155deg,#3c7f8f,#275d6a)}
 .nav-ic-tile[data-nav-tone="trash"]{background:linear-gradient(155deg,#63777a,#47585b)}
 .nav-ic-tile[data-nav-tone="history"]{background:linear-gradient(155deg,#32949c,#216b72)}

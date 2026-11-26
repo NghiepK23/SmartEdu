@@ -9,7 +9,7 @@ const DB_NAV_T = [
   /* 'chat' không nằm trong thanh bên: Trợ lý AI đã có nút riêng trên thanh trên
      (mở khung chat nổi, có nút phóng to sang trang đầy đủ). Giữ mục này ở đây sẽ
      tạo hai lối vào trùng nhau. */
-  ['Đánh giá học tập', [['progress', 'Mức độ nắm vững', 'mastery'], ['gaps', 'Lỗ hổng kiến thức', 'gaps'], ['recommend', 'Gợi ý học tập', 'recommend'], ['report', 'Báo cáo tiến bộ', 'trend'], ['class_overview', 'Chất lượng lớp học', 'classes']]],
+  ['Đánh giá học tập', [['progress', 'Mức độ nắm vững', 'mastery'], ['gaps', 'Lỗ hổng kiến thức', 'gaps'], ['recommend', 'Gợi ý học tập', 'recommend'], ['report', 'Báo cáo tiến bộ', 'trend'], ['class_overview', 'Chất lượng lớp học', 'target']]],
   ['Quản lý', [['classes', 'Lớp học phụ trách', 'classes'], ['trash', 'Thùng rác', 'trash'], ['history', 'Lịch sử chỉnh sửa', 'history']]],
 ];
 const DB_NAV_S = [
@@ -501,7 +501,7 @@ function dbShell(P, body) {
     : '';
   const sideHeader = `
     <div class="side-brand">
-      <span class="side-brand-mark" aria-hidden="true">${ic('classes', 18)}</span>
+      ${brandMarkHtml()}
       <div class="side-brand-copy"><b>EducMind</b><small>${T ? 'Không gian giảng dạy' : 'Không gian học tập'}</small></div>
     </div>`;
   const searchResults = DB_UI.globalOpen ? dbGlobalSearchHtml(dbGlobalSearchMatches(DB_UI.globalQuery), DB_UI.globalQuery) : '';

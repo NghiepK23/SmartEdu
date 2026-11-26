@@ -1010,6 +1010,46 @@ test('Every page except the exam screen offers floating dock sub-tabs', async ()
   assert.equal(missing.length, 0, 'mọi trang (trừ màn làm bài) đều có tab bar nổi: ' + missing.join(', '));
 });
 
+test('Sidebar brand uses the same EducMind logo as the login screen, and nav icons are unique', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  evalExpr(`
+    logged = true; role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 't1' };
+    DB.me = { id: 't1', email: 'gv@edu.vn', full_name: 'GV', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1'; DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.notifs = []; DB.loading = false; DB.loadError = '';
+    DB.page = 'home'; DB.arg = {}; DB.data = null;
+    dbRender();
+  `);
+
+  // Logo thanh bên phải là cùng SVG với logo trên thanh trên (dùng chung BRAND_MARK_SVG).
+  const sideMark = document.querySelector('.side-brand .logo-mark');
+  const topMark = document.querySelector('.top .logo .logo-mark');
+  assert.ok(sideMark, 'sidebar renders the brand mark');
+  assert.ok(topMark, 'top bar renders the brand mark');
+  assert.equal(sideMark.innerHTML.trim(), topMark.innerHTML.trim(), 'sidebar và thanh trên dùng chung một biểu tượng');
+  assert.ok(sideMark.querySelector('svg path'), 'brand mark là SVG mở sách, không phải biểu tượng khác');
+  // Không còn mũ tốt nghiệp trong khối thương hiệu thanh bên.
+  assert.equal(evalExpr("String(document.querySelector('.side-brand').innerHTML).includes('M2 9l10-5 10 5-10 5z')"), false,
+    'không dùng lại icon mũ tốt nghiệp cho logo');
+
+  // Mỗi mục điều hướng một biểu tượng riêng.
+  const labels = [...document.querySelectorAll('.side .nav')].map((b) => (b.getAttribute('aria-label') || '').trim());
+  const tiles = [...document.querySelectorAll('.side .nav .nav-ic-tile')].map((t) => (t.innerHTML || '').trim());
+  assert.equal(new Set(tiles).size, tiles.length, 'không có hai mục nào dùng cùng một biểu tượng');
+  const quality = document.querySelector('.side .nav[data-page="class_overview"]');
+  const classes = document.querySelector('.side .nav[data-page="classes"]');
+  assert.ok(quality && classes, 'có cả mục Chất lượng lớp học và Lớp học phụ trách');
+  assert.notEqual((quality.querySelector('.nav-ic-tile').innerHTML || '').trim(),
+    (classes.querySelector('.nav-ic-tile').innerHTML || '').trim(), 'hai mục này không trùng biểu tượng');
+
+  // Màn hình khoá (đăng nhập) dùng đúng biểu tượng đó.
+  const loginMarkup = evalExpr('brandLogoHtml()');
+  assert.ok(loginMarkup.includes(evalExpr('BRAND_MARK_SVG')), 'login logo dùng chung BRAND_MARK_SVG');
+  assert.equal(tiles.length, labels.length, 'số biểu tượng khớp số mục điều hướng');
+});
+
 test('Trợ lý AI có đúng một lối vào trên thanh bên/thanh trên, không trùng lặp', async () => {
   const { document, evalExpr } = createDomTestContext();
   for (const role of ['T', 'S']) {
