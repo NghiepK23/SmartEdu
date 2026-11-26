@@ -508,6 +508,8 @@ async function dbLoadCourse() {
   if (!DB.classId) return;
   const list = await dbCall(EducMindDB.listCourses(DB.classId));
   DB.course = list[0] || null;
+  /* Trạng thái API key phụ thuộc lớp (học sinh dùng key của giáo viên chủ lớp). */
+  if (typeof dbAiKeyLoad === 'function') dbAiKeyLoad(true).then(() => {}).catch(() => {});
 }
 async function dbSetClass(id, page, arg, opts) {
   if (!dbIsTeacher()) {

@@ -79,7 +79,7 @@ function dbContentRootView(d, lessonsBy, objBy) {
     <div class="db-topic-list" data-sort-scope="topics" aria-label="Danh sách chủ đề">${cards || `<div class="folder-empty">Chưa có chủ đề. Tạo chủ đề để bắt đầu xây dựng nội dung.</div>`}</div>
     <details class="db-content-settings"><summary>Cài đặt học tập</summary>
       <label class="db-check db-seq-toggle"><input type="checkbox" data-change="toggleSequential" ${DB.course && DB.course.sequential_unlock ? 'checked' : ''}> Mở bài học tuần tự: học sinh chỉ mở được bài sau khi nắm vững (≥ 0,8) mọi mục tiêu của bài trước</label>
-      <label class="db-check db-seq-toggle"><input type="checkbox" data-change="toggleStudentAi" ${!DB.course || DB.course.student_ai_enabled !== false ? 'checked' : ''}> Cho phép học sinh sử dụng Trợ lý AI trong lớp này</label>
+      <p class="muted db-hint">Trợ lý AI được bật/tắt cho từng bài tập và từng bài kiểm tra, ngay trong lúc tạo hoặc sửa bài.</p>
     </details>
     <details class="db-content-settings"><summary>Cài đặt luyện tập thích ứng</summary>
       <div class="db-form-row" style="flex-wrap:wrap;gap:12px">
@@ -452,13 +452,6 @@ DB_ACT.toggleSequential = (el) => dbRun(el, async () => {
   await dbCall(EducMindDB.updateCourse(course.id, { sequential_unlock: el.checked }));
   DB.course.sequential_unlock = el.checked;
   toast(el.checked ? 'Đã bật mở bài học tuần tự.' : 'Đã tắt mở bài học tuần tự.');
-});
-/* Bật/tắt Trợ lý AI cho học sinh trong lớp đang chọn. */
-DB_ACT.toggleStudentAi = (el) => dbRun(el, async () => {
-  const course = await dbEnsureCourse();
-  await dbCall(EducMindDB.updateCourse(course.id, { student_ai_enabled: el.checked }));
-  DB.course.student_ai_enabled = el.checked;
-  toast(el.checked ? 'Đã bật Trợ lý AI cho học sinh lớp này.' : 'Đã tạm tắt Trợ lý AI cho học sinh lớp này.');
 });
 DB_ACT.editTopic = (el) => {
   const t = DB.data.topics.find((x) => x.id === el.dataset.id);

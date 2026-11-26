@@ -152,6 +152,7 @@ function createDomTestContext(opts = {}) {
     'js/db/13-report.js',
     'js/db/14-ai.js',
     'js/db/14b-ai-chat.js',
+    'js/db/14c-ai-key.js',
     'js/db/15-games.js',
     'js/db/16-live.js',
     'js/db/17-practice.js',
@@ -1627,10 +1628,95 @@ test('DOM & XSS interactive tests for Gemini AI Chatbot workspace, drawer, quiz 
   assert.equal(evalExpr('DB_CHAT.drawerOpen'), false);
   assert.ok(document.getElementById('db-chat-toggle').classList.contains('is-locked'));
 
+  // 5b. Trạng thái AI do máy chủ/giáo viên quyết định: đang làm bài thì khoá, nộp rồi thì mở
+  const examState = evalExpr('dbAiStudentState()');
+  assert.equal(examState.allowed, false);
+  assert.match(examState.reason, /làm bài kiểm tra/);
+  evalExpr(`DBX = null; dbAssignmentMarkBusy('as-1');`);
+  const busyState = evalExpr('dbAiStudentState()');
+  assert.equal(busyState.allowed, false, 'đang làm bài tập thì Trợ lý AI bị khoá');
+  assert.match(busyState.reason, /làm bài tập/);
+  evalExpr(`dbAssignmentMarkBusy('as-1', false);`);
+  assert.equal(evalExpr('dbAssignmentBusy()'), false, 'nộp bài xong thì bỏ khoá');
+
   // 6. Logout resets DB_CHAT cleanly
   evalExpr('DBX = null; dbReset();');
   assert.equal(evalExpr('DB_CHAT.threads.length'), 0);
   assert.equal(evalExpr('DB_CHAT.activeThreadId'), '');
   assert.equal(evalExpr('DB_CHAT.drawerOpen'), false);
   assert.equal(evalExpr('DB_CHAT.sidebarCollapsed'), false);
+});
+
+test('API key Gemini panel: status, save/test/delete, and the per-work AI switch (14c-ai-key.js)', async () => {
+  const calls = [];
+  const mockDb = {
+    aiKeyStatus: async () => {
+      calls.push('status');
+      return { data: { role: 'TEACHER', hasKey: false, hint: '', classOwner: null, sharedKeyAvailable: false }, error: null };
+    },
+    aiKeySave: async (key) => { calls.push('save:' + key); return { data: { ok: true, hint: key.slice(-4) }, error: null }; },
+    aiKeyDelete: async () => { calls.push('delete'); return { data: { ok: true }, error: null }; },
+    aiKeyTest: async (key) => { calls.push('test:' + (key || 'stored')); return { data: { ok: true, model: 'gemini-3.1-flash-lite' }, error: null }; },
+  };
+  const { document, evalExpr } = createDomTestContext({ EducMindDB: mockDb });
+  evalExpr(`
+    logged = true;
+    role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 'teacher-1' };
+    DB.me = { id: 'teacher-1', email: 'gv@edu.vn', full_name: 'Cô An', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1';
+    DB.data = { ready: true };
+  `);
+
+  // 1. Hộp thoại Tài khoản có thẻ API key, hiển thị trạng thái "chưa lưu"
+  await evalExpr('(async () => { await dbAiKeyLoad(true); })()');
+  evalExpr(`DB.dialog = { title: 'Tài khoản', compact: true, body: '<div>' + dbAiKeyPanelMarked() + '</div>' }; dbRender();`);
+  const bodyHtml = () => document.body.textContent;
+  assert.ok(document.getElementById('db-ai-key-input'), 'renders the API key input');
+  assert.match(bodyHtml(), /Quản lý API key Gemini/);
+  assert.match(bodyHtml(), /Chưa lưu API key/);
+  assert.ok(document.querySelector('[data-act="aiKeySave"]'), 'has save button');
+  assert.ok(!document.querySelector('[data-act="aiKeyDelete"]'), 'no delete button before a key exists');
+  assertDomSafeFromXss(document, 'ai-key-panel:empty');
+
+  // 2. Dán key -> nút Lưu gửi đúng key lên máy chủ (một lần), sau đó thẻ cập nhật
+  document.getElementById('db-ai-key-input').value = 'AIzaSyDummyKeyForTesting1234567890';
+  await evalExpr('(async () => { await DB_ACT.aiKeySave(); })()');
+  assert.deepEqual(calls.filter((c) => c.startsWith('save:')), ['save:AIzaSyDummyKeyForTesting1234567890']);
+
+  // 3. Trạng thái sau khi lưu: chỉ hiện 4 ký tự cuối, không có key thô trong DOM
+  mockDb.aiKeyStatus = async () => ({ data: { role: 'TEACHER', hasKey: true, hint: '7890', updatedAt: '2026-11-25T09:00:00Z', classOwner: null, sharedKeyAvailable: false }, error: null });
+  await evalExpr('(async () => { await dbAiKeyLoad(true); dbAiKeyPaint(); })()');
+  assert.match(bodyHtml(), /Đã lưu key/);
+  assert.match(bodyHtml(), /••••7890/);
+  assert.doesNotMatch(document.body.innerHTML, /AIzaSyDummyKeyForTesting1234567890/, 'raw key never rendered');
+  assert.ok(document.querySelector('[data-act="aiKeyDelete"]'), 'delete button appears once a key exists');
+  assertDomSafeFromXss(document, 'ai-key-panel:saved');
+
+  // 4. Nút Kiểm tra dùng key đang gõ (chưa cần lưu)
+  document.getElementById('db-ai-key-input').value = 'AIzaDraftKeyForTesting0987654321';
+  await evalExpr('(async () => { await DB_ACT.aiKeyTest(); })()');
+  assert.ok(calls.includes('test:AIzaDraftKeyForTesting0987654321'), 'tests the typed key before saving');
+  assert.match(bodyHtml(), /Key hoạt động bình thường/);
+
+  // 5. Học sinh: thấy ghi chú dùng key của giáo viên
+  evalExpr(`
+    role = 'S';
+    DB.me = { id: 'stu-1', role: 'STUDENT' };
+    DB_AI_KEY.status = { role: 'STUDENT', hasKey: false, hint: '', classOwner: { hasKey: true }, sharedKeyAvailable: false };
+    DB.dialog = { title: 'Tài khoản', body: '<div>' + dbAiKeyPanelMarked() + '</div>' };
+    dbRender();
+  `);
+  assert.match(bodyHtml(), /Giáo viên lớp này đã lưu API key/);
+  assertDomSafeFromXss(document, 'ai-key-panel:student');
+
+  // 6. Công tắc trong form bài tập / bài kiểm tra: mặc định bật, tên trường đúng
+  evalExpr(`DB.dialog = null; DB.data = { ready: true };`);
+  const switchHtml = evalExpr(`dbAiSwitchHtml('assignment', true, 'Học sinh được dùng Trợ lý AI', 'Ghi chú')`);
+  assert.match(switchHtml, /name="student_ai_enabled"/);
+  assert.match(switchHtml, /checked/);
+  assert.match(switchHtml, /data-ai-switch="assignment"/);
+  const offSwitch = evalExpr(`dbAiSwitchHtml('assessment', false, 'Học sinh được dùng Trợ lý AI')`);
+  assert.doesNotMatch(offSwitch, /\schecked/);
 });

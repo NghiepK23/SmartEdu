@@ -21,7 +21,13 @@ const dbDueText = (a) => 'Hạn nộp ' + dbDateTime(a.due_at) + (a.allow_late &
 DB_PAGES.assignments = {
   title: 'Bài tập',
   sub: () => (dbIsTeacher() ? 'Tạo bài có câu hỏi, theo dõi bài nộp và chấm điểm.' : 'Bài tập giáo viên đã giao cho lớp.'),
-  leave() { dbAssignmentStopTimer(); DB_ASSIGNMENT_FLOW = null; DB_ASSIGNMENT_REVIEW = null; },
+  leave() {
+    dbAssignmentStopTimer();
+    /* Học sinh rời trang khi chưa nộp: vẫn giữ trạng thái "đang làm bài" để Trợ lý AI tiếp tục bị khoá
+       (máy chủ cũng kiểm tra lại bằng dữ liệu bài làm). Chỉ xoá khi đã nộp. */
+    if (DB_ASSIGNMENT_FLOW && DB_ASSIGNMENT_FLOW.started) dbAssignmentMarkBusy(DB_ASSIGNMENT_FLOW.assignmentId, true);
+    DB_ASSIGNMENT_FLOW = null; DB_ASSIGNMENT_REVIEW = null;
+  },
   async load() {
     const content = await dbLoadContent();
     const activeAssignments = DB.course ? await dbCall(EducMindDB.listAssignments(DB.course.id)) : [];
@@ -217,6 +223,7 @@ function dbAssignmentForm(d, a) {
         <div class="field"><label class="db-check"><input type="checkbox" id="db-af-late" name="allow_late" ${a && a.allow_late ? 'checked' : ''}> Cho phép nộp muộn</label></div>
         ${dbField('Nhận bài muộn đến', 'db-af-lateclose', dbDatetimeField('db-af-lateclose', 'late_close', a ? a.late_close_at : '', '', minimum), 'Chỉ dùng khi cho phép nộp muộn; phải sau hạn nộp.')}
       </div>
+      ${dbAiSwitchHtml('assignment', a ? a.student_ai_enabled !== false : true, 'Học sinh được dùng Trợ lý AI khi làm bài này', 'Khi học sinh bấm Bắt đầu làm bài, Trợ lý AI tự khoá cho tới khi nộp bài — dù công tắc này đang bật.')}
       ${!a ? '</section><section class="db-assignment-step-panel" data-assignment-step-panel="2" aria-label="Chọn câu hỏi" hidden>' : ''}
       ${sourceChoices}
       ${fileSource}
@@ -386,7 +393,7 @@ DB_ACT.saveAssignment = (form) => dbRun(form, async (v) => {
     if (new Date(lateClose) <= new Date(due)) throw new Error('Thời điểm ngừng nhận bài muộn phải sau hạn nộp.');
   }
   const course = await dbEnsureCourse();
-  const row = { title: v.title, description: v.description || '', lesson_id: v.lesson_id || null, due_at: due, allow_late: !!v.allow_late, late_close_at: lateClose, max_score: max };
+  const row = { title: v.title, description: v.description || '', lesson_id: v.lesson_id || null, due_at: due, allow_late: !!v.allow_late, late_close_at: lateClose, max_score: max, student_ai_enabled: v.student_ai_enabled !== false };
   let a;
   if (id) { a = await dbCall(EducMindDB.updateAssignment(id, { ...row, topic_id: null })); }
   else a = await dbCall(EducMindDB.createAssignment({ ...row, course_id: course.id }));
@@ -503,6 +510,7 @@ function dbAssignmentFacts(d, a) {
       <div><span>Nộp muộn</span><b>${a.allow_late ? 'Đến ' + dbDateTime(a.late_close_at) : 'Không nhận'}</b></div>
       <div class="db-fact-score"><span>Điểm tối đa</span><b>${dbNum(a.max_score)}</b></div>
       <div class="db-fact-lesson"><span>Bài học</span><b>${dbLessonTitle(d, a.lesson_id) || 'Chưa gắn bài học'}</b></div>
+      ${dbIsTeacher() ? `<div><span>Trợ lý AI khi làm bài</span><b>${a.student_ai_enabled === false ? 'Học sinh không được dùng' : 'Học sinh được dùng (khoá trong lúc làm)'}</b></div>` : ''}
     </div>
     ${a.description ? `<div class="db-prose">${h(a.description)}</div>` : ''}
     ${objs.length ? `<div class="db-objlist"><span class="db-label">Mục tiêu được đánh giá</span><ul>${objs.map((o) => `<li>${dbObjLabel(o)}</li>`).join('')}</ul></div>` : (dbIsTeacher() ? `<p class="muted">Bài tập chưa gắn mục tiêu nên điểm sẽ không được tính vào mức nắm vững.</p>` : '')}`;

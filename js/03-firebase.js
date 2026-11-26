@@ -153,6 +153,24 @@ const EducMindDB = (() => {
     return payload;
   }
 
+  /* Gọi API máy chủ có kèm ID token, không ném lỗi: dùng cho các form nhỏ
+     (Quản lý API key Gemini) để tự hiển thị thông báo lỗi tại chỗ. */
+  async function apiFetch(method, url, body) {
+    try {
+      const payload = await apiRequest(method, url, body);
+      return { data: payload, error: null };
+    } catch (err) {
+      return {
+        data: null,
+        error: {
+          message: err instanceof Error ? err.message : 'Không kết nối được máy chủ.',
+          code: (err && err.details && err.details.code) || '',
+          status: (err && err.status) || 0,
+        },
+      };
+    }
+  }
+
   async function safeWrap(fn, opType = OperationType.GET, path = '') {
     try {
       const data = await fn();
@@ -654,7 +672,6 @@ const EducMindDB = (() => {
         title: String(subject || 'Tin học').trim(),
         description: '',
         sequential_unlock: false,
-        student_ai_enabled: true,
         created_at: tsNow,
         deleted_at: null,
         createdAt: ts2,
@@ -929,7 +946,6 @@ const EducMindDB = (() => {
         title: String(row.title || 'Khóa học').trim(),
         description: row.description || '',
         sequential_unlock: !!row.sequential_unlock,
-        student_ai_enabled: row.student_ai_enabled !== false,
         created_at: nowIso(),
         deleted_at: null,
         createdAt: ts,
@@ -941,7 +957,7 @@ const EducMindDB = (() => {
     updateCourse: (id, row) => safeWrap(async () => {
       const { doc, updateDoc, serverTimestamp } = api();
       const patch = { updatedAt: serverTimestamp() };
-      for (const k of ['title', 'description', 'sequential_unlock', 'student_ai_enabled', 'deleted_at']) {
+      for (const k of ['title', 'description', 'sequential_unlock', 'deleted_at']) {
         if (k in row) patch[k] = row[k];
       }
       /* Ngưỡng cấu hình: trước đây bị bỏ qua nên nút "Lưu" ở phần cài đặt không ghi được gì. */
@@ -1173,6 +1189,8 @@ const EducMindDB = (() => {
         allow_late: !!row.allow_late,
         late_close_at: row.late_close_at || null,
         max_score: Number(row.max_score || 10),
+        /* Công tắc cho học sinh dùng Trợ lý AI khi làm bài này (mặc định bật). */
+        student_ai_enabled: row.student_ai_enabled !== false,
         status: row.status || 'DRAFT',
         objective_ids: [],
         question_ids: [],
@@ -1190,7 +1208,7 @@ const EducMindDB = (() => {
       const { doc, updateDoc, serverTimestamp } = api();
       const before = await getById('assignments', id);
       const patch = { updatedAt: serverTimestamp() };
-      for (const k of ['topic_id', 'lesson_id', 'title', 'description', 'due_at', 'allow_late', 'late_close_at', 'max_score', 'status', 'deleted_at']) {
+      for (const k of ['topic_id', 'lesson_id', 'title', 'description', 'due_at', 'allow_late', 'late_close_at', 'max_score', 'student_ai_enabled', 'status', 'deleted_at']) {
         if (k in row) patch[k] = row[k];
       }
       await updateDoc(doc(firebaseDb, 'assignments', id), patch);
@@ -2011,6 +2029,8 @@ const EducMindDB = (() => {
         max_attempts: Number(row.max_attempts || 1),
         open_at: row.open_at || null,
         close_at: row.close_at || null,
+        /* Công tắc cho học sinh dùng Trợ lý AI khi làm bài kiểm tra này (mặc định bật). */
+        student_ai_enabled: row.student_ai_enabled !== false,
         status: row.status || 'DRAFT',
         question_ids: [],
         created_at: nowIso(),
@@ -2027,7 +2047,7 @@ const EducMindDB = (() => {
       const { doc, updateDoc, serverTimestamp } = api();
       const before = await getById('assessments', id);
       const patch = { updatedAt: serverTimestamp() };
-      for (const k of ['topic_id', 'lesson_id', 'title', 'duration_minutes', 'max_attempts', 'open_at', 'close_at', 'status', 'deleted_at']) {
+      for (const k of ['topic_id', 'lesson_id', 'title', 'duration_minutes', 'max_attempts', 'open_at', 'close_at', 'student_ai_enabled', 'status', 'deleted_at']) {
         if (k in row) patch[k] = row[k];
       }
       await updateDoc(doc(firebaseDb, 'assessments', id), patch);
@@ -2514,6 +2534,13 @@ const EducMindDB = (() => {
         .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
         .slice(0, lim || 200);
     }, OperationType.LIST, 'content_revisions'),
+
+    /* ----- API key Gemini của từng người (máy chủ mã hoá rồi lưu Firestore) ----- */
+    aiKeyStatus: (classId) => apiFetch('GET', '/api/ai/key' + (classId ? '?classId=' + encodeURIComponent(classId) : '')),
+    aiKeySave: (apiKey) => apiFetch('POST', '/api/ai/key', { apiKey }),
+    aiKeyDelete: () => apiFetch('DELETE', '/api/ai/key'),
+    /* Tham số tuỳ chọn: key đang gõ (để kiểm tra trước khi lưu). */
+    aiKeyTest: (apiKey) => apiFetch('POST', '/api/ai/key/test', typeof apiKey === 'string' && apiKey ? { apiKey } : {}),
 
     /* ----- AI tạo câu hỏi nháp (qua Express /api/ai/generate) ----- */
     listAiRequests: () => safeWrap(async () => {
@@ -3121,9 +3148,6 @@ const EducMindDB = (() => {
 
       if (payload.class_id) {
         const courseCheck = await getById('courses', payload.class_id).catch(() => null);
-        if (!isTeacher && courseCheck && courseCheck.student_ai_enabled === false) {
-          throw new Error('Giáo viên đã tạm tắt Trợ lý AI cho lớp học này.');
-        }
         if (includeContext) {
           const cls = await getById('classes', payload.class_id).catch(() => null);
           if (cls && !cls.deleted_at) {
@@ -3243,6 +3267,9 @@ const EducMindDB = (() => {
       const result = await apiRequest('POST', '/api/ai/chat', {
         ...payload,
         role: userRole,
+        /* Bài tập / bài kiểm tra đang mở: máy chủ kiểm tra công tắc AI của riêng bài đó. */
+        work_kind: payload.work_kind === 'assessment' || payload.work_kind === 'assignment' ? payload.work_kind : undefined,
+        work_id: typeof payload.work_id === 'string' ? payload.work_id.slice(0, 200) : undefined,
         history,
         contextData,
         contextSummary,

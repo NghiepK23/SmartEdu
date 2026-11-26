@@ -171,10 +171,24 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidAiKey(data) {
+      return data.keys().hasAll(['id', 'ciphertext', 'iv', 'tag', 'key_hint', 'created_at', 'updated_at', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'ciphertext', 'iv', 'tag', 'key_hint', 'created_at', 'updated_at', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && data.ciphertext is string && data.ciphertext.size() >= 16 && data.ciphertext.size() <= 1024
+        && data.iv is string && data.iv.size() >= 8 && data.iv.size() <= 64
+        && data.tag is string && data.tag.size() >= 8 && data.tag.size() <= 64
+        && data.key_hint is string && data.key_hint.size() >= 2 && data.key_hint.size() <= 4
+        && data.created_at is string && data.created_at.size() <= 40
+        && data.updated_at is string && data.updated_at.size() <= 40
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     function isValidCourse(data) {
       return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'title', 'created_at', 'createdAt', 'updatedAt'])
         && data.keys().hasOnly([
-          'id', 'class_id', 'teacher_id', 'title', 'description', 'sequential_unlock', 'student_ai_enabled',
+          'id', 'class_id', 'teacher_id', 'title', 'description', 'sequential_unlock',
           'practice_weight', 'practice_unlock_min_official', 'practice_session_length', 'practice_daily_scored_sessions', 'practice_max_share',
           'dash_reteach_share', 'dash_min_students', 'dash_advanced_threshold', 'dash_inactive_days', 'dash_question_min_answers',
           'created_at', 'deleted_at', 'createdAt', 'updatedAt'
@@ -185,7 +199,6 @@ service cloud.firestore {
         && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
         && isOptStr(data, 'description', 4000)
         && isOptBool(data, 'sequential_unlock')
-        && isOptBool(data, 'student_ai_enabled')
         && isOptNumRange(data, 'practice_weight', 0, 1)
         && isOptIntRange(data, 'practice_unlock_min_official', 0, 50)
         && isOptIntRange(data, 'practice_session_length', 1, 50)
@@ -340,7 +353,7 @@ service cloud.firestore {
 
     function isValidAssignment(data) {
       return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'created_by', 'course_id', 'title', 'status', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'created_by', 'course_id', 'topic_id', 'lesson_id', 'title', 'description', 'due_at', 'allow_late', 'late_close_at', 'max_score', 'status', 'objective_ids', 'question_ids', 'target_mode', 'target_group', 'target_student_ids', 'created_at', 'deleted_at', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'created_by', 'course_id', 'topic_id', 'lesson_id', 'title', 'description', 'due_at', 'allow_late', 'late_close_at', 'max_score', 'status', 'objective_ids', 'question_ids', 'target_mode', 'target_group', 'target_student_ids', 'student_ai_enabled', 'created_at', 'deleted_at', 'createdAt', 'updatedAt'])
         && isValidId(data.id)
         && isValidId(data.class_id)
         && isValidId(data.teacher_id)
@@ -354,6 +367,7 @@ service cloud.firestore {
         && isOptBool(data, 'allow_late')
         && isOptStr(data, 'late_close_at', 40)
         && isOptNum(data, 'max_score')
+        && isOptBool(data, 'student_ai_enabled')
         && data.status in ['DRAFT', 'PUBLISHED']
         && isOptBoundedIdList(data, 'objective_ids', 100)
         && isOptBoundedIdList(data, 'question_ids', 200)
@@ -481,7 +495,7 @@ service cloud.firestore {
 
     function isValidAssessment(data) {
       return data.keys().hasAll(['id', 'class_id', 'teacher_id', 'created_by', 'course_id', 'title', 'duration_minutes', 'max_attempts', 'status', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'created_by', 'course_id', 'topic_id', 'lesson_id', 'title', 'duration_minutes', 'max_attempts', 'open_at', 'close_at', 'status', 'question_ids', 'created_at', 'deleted_at', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'class_id', 'teacher_id', 'created_by', 'course_id', 'topic_id', 'lesson_id', 'title', 'duration_minutes', 'max_attempts', 'open_at', 'close_at', 'status', 'question_ids', 'student_ai_enabled', 'created_at', 'deleted_at', 'createdAt', 'updatedAt'])
         && isValidId(data.id)
         && isValidId(data.class_id)
         && isValidId(data.teacher_id)
@@ -492,6 +506,7 @@ service cloud.firestore {
         && data.title is string && data.title.size() >= 1 && data.title.size() <= 300
         && data.duration_minutes is int && data.duration_minutes >= 1
         && data.max_attempts is int && data.max_attempts >= 1
+        && isOptBool(data, 'student_ai_enabled')
         && isOptStr(data, 'open_at', 40)
         && isOptStr(data, 'close_at', 40)
         && data.status in ['DRAFT', 'PUBLISHED']
@@ -1045,7 +1060,7 @@ service cloud.firestore {
         && incoming().class_id == existing().class_id
         && isServerUpdated(incoming())
         && incoming().diff(existing()).affectedKeys().hasOnly([
-          'title', 'description', 'sequential_unlock', 'student_ai_enabled',
+          'title', 'description', 'sequential_unlock',
           'practice_weight', 'practice_unlock_min_official', 'practice_session_length', 'practice_daily_scored_sessions', 'practice_max_share',
           'dash_reteach_share', 'dash_min_students', 'dash_advanced_threshold', 'dash_inactive_days', 'dash_question_min_answers',
           'deleted_at', 'updatedAt'
@@ -1260,7 +1275,7 @@ service cloud.firestore {
         && incoming().class_id == existing().class_id
         && incoming().course_id == existing().course_id
         && isServerUpdated(incoming())
-        && incoming().diff(existing()).affectedKeys().hasOnly(['topic_id', 'lesson_id', 'title', 'description', 'due_at', 'allow_late', 'late_close_at', 'max_score', 'status', 'objective_ids', 'question_ids', 'target_mode', 'target_group', 'target_student_ids', 'deleted_at', 'updatedAt']);
+        && incoming().diff(existing()).affectedKeys().hasOnly(['topic_id', 'lesson_id', 'title', 'description', 'due_at', 'allow_late', 'late_close_at', 'max_score', 'status', 'objective_ids', 'question_ids', 'target_mode', 'target_group', 'target_student_ids', 'student_ai_enabled', 'deleted_at', 'updatedAt']);
       allow delete: if isVerifiedUser() && isValidId(assignmentId) && existing().teacher_id == request.auth.uid;
     }
 
@@ -1478,7 +1493,7 @@ service cloud.firestore {
         && incoming().class_id == existing().class_id
         && incoming().course_id == existing().course_id
         && isServerUpdated(incoming())
-        && incoming().diff(existing()).affectedKeys().hasOnly(['topic_id', 'lesson_id', 'title', 'duration_minutes', 'max_attempts', 'open_at', 'close_at', 'status', 'question_ids', 'deleted_at', 'updatedAt']);
+        && incoming().diff(existing()).affectedKeys().hasOnly(['topic_id', 'lesson_id', 'title', 'duration_minutes', 'max_attempts', 'open_at', 'close_at', 'status', 'question_ids', 'student_ai_enabled', 'deleted_at', 'updatedAt']);
       allow delete: if isVerifiedUser() && isValidId(assessmentId) && existing().teacher_id == request.auth.uid;
     }
 
@@ -1926,6 +1941,21 @@ service cloud.firestore {
         && isServerUpdated(incoming())
         && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'mode', 'class_id', 'updated_at', 'updatedAt']);
       allow delete: if isVerifiedUser() && isValidId(threadId) && existing().user_id == request.auth.uid;
+    }
+
+    /* API key Gemini của từng người: chỉ chủ sở hữu đọc/ghi document của mình.
+       Nội dung là bản mã AES-256-GCM do máy chủ Express tạo (khoá nằm trong biến môi trường máy chủ),
+       nên kể cả khi đọc được document cũng không lấy được key. */
+    match /ai_keys/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId);
+      allow list: if false;
+      allow create, update: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidAiKey(incoming())
+        && userId == request.auth.uid
+        && incoming().id == request.auth.uid
+        && isServerCreated(incoming());
+      allow delete: if isVerifiedUser() && isValidId(userId) && userId == request.auth.uid;
     }
 
     match /ai_chat_messages/{messageId} {

@@ -1118,7 +1118,8 @@ DB_ACT.openAccount = async () => {
       ${dbField('Họ và tên', 'db-acc-name', `<input id="db-acc-name" name="full_name" maxlength="120" value="${h(DB.me.full_name)}" autocomplete="name">`)}
       ${hasPasswordProvider
         ? `<div class="field"><span class="db-label">Mật khẩu</span>${dbBtn('Đổi mật khẩu', 'changePassword', {}, 'light')}</div>`
-        : `<div class="field"><span class="db-label">Đăng nhập</span><p class="muted">Tài khoản Google</p></div>`}`,
+        : `<div class="field"><span class="db-label">Đăng nhập</span><p class="muted">Tài khoản Google</p></div>`}
+      ${typeof dbAiKeyPanelMarked === 'function' ? dbAiKeyPanelMarked() : ''}`,
     onOk: async (v) => {
       if (!v.full_name) throw new Error('Nhập họ và tên.');
       const className = String(v.class_name || '').trim(), subject = String(v.subject || '').trim();
