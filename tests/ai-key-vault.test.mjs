@@ -5,6 +5,11 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+/* Khoá mã hoá phải có TRƯỚC khi nạp server.js (module đọc biến môi trường lúc khởi tạo).
+   Bản clone sạch không có .env nên test phải tự đặt, không phụ thuộc máy đang chạy. */
+if (!(process.env.AI_KEY_ENCRYPTION_KEY || '').trim() || process.env.AI_KEY_ENCRYPTION_KEY.trim().length < 32) {
+  process.env.AI_KEY_ENCRYPTION_KEY = 'test-encryption-secret-with-enough-length-1234';
+}
 /* Nạp server.js NGAY khi file test bắt đầu, trước mọi lần thay globalThis.fetch:
    module dùng fetch toàn cục lúc chạy, nhưng nạp sớm giúp hành vi ổn định giữa các test. */
 const { createApp } = await import('../server.js');
