@@ -52,9 +52,14 @@
 .db-rep .db-org input{font-size:.83rem;padding:7px 10px}
 
 /* ----- Dải ô chỉ số ----- */
+/* Bốn ô chỉ số: 2×2 trên màn hình thường, 4 cột khi đủ rộng, 1 cột khi hẹp —
+   giữ số ô mỗi hàng chia hết để không còn hàng lẻ. */
 .db-rep-stats{
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(212px,1fr));
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
   gap:12px;padding:18px 24px 4px;
+}
+@media(min-width:1360px){
+  .db-rep-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
 .db-rep-stat{
   --rep-tone:var(--brand);
@@ -186,7 +191,7 @@
 /* ----- Màn hình hẹp ----- */
 @media(max-width:900px){
   .db-rep-hero{padding:18px 18px 16px}
-  .db-rep-stats{padding:14px 18px 2px;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .db-rep-stats{padding:14px 18px 2px}
   .db-rep-split{padding:12px 18px 0;grid-template-columns:minmax(0,1fr)}
   .db-rep .db-org{margin:14px 18px 0!important}
   .db-rep-notes{margin:14px 18px 18px}
