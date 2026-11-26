@@ -8,6 +8,11 @@
   --ink:#132226;--muted:#526468;--subtle:#6b7d81;
   --line:rgba(19,34,38,.09);--line-strong:rgba(19,34,38,.18);--track:rgba(19,34,38,.10);
   --brand:#1f6f6b;--brand-ink:#165451;--brand-soft:rgba(31,111,107,.12);
+  /* Logo EducMind: một gradient xanh dương → tím, dùng cho mọi vị trí (màn hình đăng nhập,
+     thanh trên, đầu thanh điều hướng). Đổi ở đây là đổi đồng loạt. */
+  --brand-logo-grad:linear-gradient(145deg,#4f8ef7 0%,#6f5bd6 52%,#8b4bc4 100%);
+  --brand-logo-shadow:rgba(79,110,220,.42);
+  --brand-logo-accent:#6f5bd6;
   --cta-bg:#1f6f6b;--cta-bg-hover:#175754;--cta-ink:#ffffff;
   --good:#1d8358;--good-soft:#daf3e7;--good-bar:#218b6e;
   --prog:#2e6f8e;--prog-soft:#e1f0f6;--prog-bar:#3b7d8c;
@@ -27,6 +32,10 @@
   --ink:#edf4f2;--muted:#98acab;--subtle:#8ca1a0;
   --line:rgba(220,238,234,.10);--line-strong:rgba(220,238,234,.22);--track:rgba(220,238,234,.14);
   --brand:#48b8ae;--brand-ink:#7be0d7;--brand-soft:rgba(72,184,174,.18);
+  /* Bản tối: sáng hơn một nhịp để gradient nổi trên nền than. */
+  --brand-logo-grad:linear-gradient(145deg,#6ba4ff 0%,#8f7bf0 52%,#b06ce0 100%);
+  --brand-logo-shadow:rgba(8,16,34,.62);
+  --brand-logo-accent:#a58cf0;
   --cta-bg:#36988f;--cta-bg-hover:#48b8ae;--cta-ink:#081c1b;
   --good:#4cc38a;--good-soft:rgba(33,139,110,.20);--good-bar:#2ea47e;
   --prog:#63b3cb;--prog-soft:rgba(59,125,140,.22);--prog-bar:#4c9eb5;
@@ -80,10 +89,10 @@ button{font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;touch
   background:var(--glass);-webkit-backdrop-filter:saturate(180%) blur(22px);backdrop-filter:saturate(180%) blur(22px);
   box-shadow:inset 0 -.5px 0 var(--glass-line)}
 .logo{display:flex;align-items:center;gap:10px;font:750 1.1875rem/1 var(--font-head);letter-spacing:-.035em;color:var(--ink);white-space:nowrap}
-.logo-mark{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:11px;background:linear-gradient(145deg,#2a8580 0%,#164f4c 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 10px -4px rgba(22,79,76,.42);overflow:hidden}
+.logo-mark{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:11px;background:var(--brand-logo-grad);box-shadow:inset 0 1px 0 rgba(255,255,255,.38),0 4px 12px -4px var(--brand-logo-shadow);overflow:hidden}
 .logo-mark svg{display:block;width:28px;height:28px}
 .logo-word{display:inline-flex;align-items:baseline;gap:0;font-size:1.02em;letter-spacing:-.04em}
-.logo-word strong{font-weight:760}.logo-word i{color:var(--brand-ink);font-style:normal;font-weight:620}
+.logo-word strong{font-weight:760}.logo-word i{color:var(--brand-logo-accent,var(--brand-ink));font-style:normal;font-weight:620}
 .login .logo{justify-content:center;gap:14px;width:100%;margin:0 auto 8px;padding-top:20px}.login .logo-mark{width:54px;height:54px;border-radius:16px}.login .logo-mark svg{width:43px;height:43px}.login .logo-word{font-size:1.55rem;letter-spacing:-.045em}.login h1{margin-top:18px}
 .spacer{flex:1}
 .user{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.8125rem;letter-spacing:.005em}

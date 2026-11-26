@@ -2,9 +2,7 @@
    Giao diện Trợ lý AI Gemini (Cửa sổ nổi + Không gian trò chuyện) theo ngôn ngữ Daylight Sky & Azure Glass / Slate Night. */
 
 /* Nút điều hướng sidebar & nút bật nhanh trên thanh trên */
-.nav-ic-tile[data-nav-tone="chat"]{
-  background:linear-gradient(155deg,#2a8580,#1b5f5c);
-}
+/* Nút Trợ lý AI dùng tông tím của logo mới (xem bộ màu nav-ic-tile trong css/08). */
 .db-chat-top-btn{
   display:inline-flex;align-items:center;gap:6px;
   height:36px;min-height:36px;padding:0 12px;
@@ -13,11 +11,11 @@
   white-space:nowrap;
 }
 .db-chat-top-btn.is-active{
-  background:var(--brand)!important;
-  background-image:none!important;
+  background:linear-gradient(135deg,#4f8ef7,#6f5bd6)!important;
+  background-image:linear-gradient(135deg,#4f8ef7,#6f5bd6)!important;
   color:#fff!important;
   border-color:transparent!important;
-  box-shadow:0 6px 16px -6px rgba(31,111,107,.48);
+  box-shadow:0 6px 16px -6px rgba(79,110,220,.5);
 }
 .db-chat-top-btn.is-locked{
   opacity:.68;
@@ -113,7 +111,7 @@
 .db-chat-badge-ic{
   display:grid;place-items:center;flex:none;
   width:34px;height:34px;border-radius:11px;
-  background:linear-gradient(145deg,#2a8580,#175754);
+  background:var(--brand-logo-grad);
   color:#fff;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.35);
 }

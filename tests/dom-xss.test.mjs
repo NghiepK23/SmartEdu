@@ -1050,6 +1050,45 @@ test('Sidebar brand uses the same EducMind logo as the login screen, and nav ico
   assert.equal(tiles.length, labels.length, 'số biểu tượng khớp số mục điều hướng');
 });
 
+test('Logo EducMind dùng một gradient chung ở mọi vị trí, không còn màu xanh rêu', async () => {
+  const { document } = createDomTestContext();
+  const base = fs.readFileSync(path.join(ROOT, 'css/01-base.css'), 'utf8');
+  const glass = fs.readFileSync(path.join(ROOT, 'css/08-liquid-glass.css'), 'utf8');
+  const chat = fs.readFileSync(path.join(ROOT, 'css/14-ai-chat.css'), 'utf8');
+  const all = base + '\n' + glass + '\n' + chat;
+  const flat = all.replace(/\s+/g, ' ');
+
+  // Gradient logo được khai báo bằng biến, có bản tối riêng.
+  assert.ok(base.includes('--brand-logo-grad:linear-gradient(145deg,#4f8ef7 0%,#6f5bd6 52%,#8b4bc4 100%)'), 'có biến gradient logo cho giao diện sáng');
+  assert.ok(/\[data-theme="dark"\]\{[^}]*--brand-logo-grad:linear-gradient\(145deg,#6ba4ff/.test(flat), 'có gradient logo riêng cho giao diện tối');
+  assert.ok(base.includes('--brand-logo-shadow') && base.includes('--brand-logo-accent'), 'có biến bóng đổ và màu nhấn cho logo');
+
+  // Mọi khối .logo-mark (gốc, thanh bên, bản tối) đều dùng chung biến.
+  // Chỉ xét các khối .logo-mark có khai báo màu nền (bỏ qua khối chỉ đổi kích thước cho màn hình khoá).
+  const logoMarkRules = [...flat.matchAll(/\.logo-mark\{([^}]*)\}/g)].map((m) => m[1])
+    .filter((rule) => rule.includes('background'));
+  assert.ok(logoMarkRules.length >= 2, 'có nhiều khối .logo-mark đặt màu nền');
+  logoMarkRules.forEach((rule) => {
+    assert.ok(rule.includes('background:var(--brand-logo-grad)'), 'mỗi .logo-mark đều dùng biến gradient: ' + rule);
+    assert.ok(rule.includes('var(--brand-logo-shadow)'), 'mỗi .logo-mark đều dùng biến bóng đổ: ' + rule);
+  });
+
+  // Không còn hex xanh rêu trong bất kỳ khai báo nền/đổ bóng nào của logo.
+  const logoDecls = [...flat.matchAll(/(?:^|[ ;])\.logo-mark[^{]*\{([^}]*)\}/g)].map((m) => m[1]).join(' ');
+  ['#2a8580', '#164f4c', '#2d918a', '#154946'].forEach((hex) => {
+    assert.ok(!logoDecls.toLowerCase().includes(hex), 'không còn màu xanh rêu ' + hex + ' trong logo');
+  });
+
+  // Ảnh đại diện khung chat và tông chữ "Mind" đi theo gradient mới.
+  const badgeRule = [...flat.matchAll(/\.db-chat-badge-ic\{([^}]*)\}/g)].map((m) => m[1])[0] || '';
+  assert.ok(badgeRule.includes('var(--brand-logo-grad'), 'khung chat dùng cùng gradient logo: ' + badgeRule);
+  assert.ok(flat.includes('.logo-word i{color:var(--brand-logo-accent'), 'chữ "Mind" dùng tông nhấn của logo');
+
+  // Mọi vị trí có logo đều dùng chung biến: không nơi nào tự khai báo gradient xanh rêu.
+  assert.ok(!/logo-mark[^{]*\{[^}]*linear-gradient\(145deg,#(?:2a8580|2d918a)/.test(flat),
+    'không còn gradient xanh rêu cứng trong .logo-mark');
+});
+
 test('Trợ lý AI có đúng một lối vào trên thanh bên/thanh trên, không trùng lặp', async () => {
   const { document, evalExpr } = createDomTestContext();
   for (const role of ['T', 'S']) {
