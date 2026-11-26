@@ -1116,6 +1116,73 @@ test('Trợ lý AI có đúng một lối vào trên thanh bên/thanh trên, kh�
   assert.ok(matches.some((m) => m.title === 'Trợ lý AI' && m.kind === 'act'), 'tìm kiếm vẫn tìm được Trợ lý AI');
 });
 
+test('Báo cáo tiến bộ: bố cục thẻ chỉ số rõ ràng, có lối xuất tệp và ghi chú thu gọn', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  evalExpr(`
+    logged = true; role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 't1' };
+    DB.me = { id: 't1', email: 'gv@edu.vn', full_name: 'GV', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1'; DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.page = 'report'; DB.arg = {}; DB_REPORT_STU = '';
+    DB.data = {
+      topics: [{ id: 't1', title: 'Chủ đề 1' }], lessons: [{ id: 'l1', topic_id: 't1', title: 'Bài 1' }],
+      objectives: [{ id: 'o1', lesson_id: 'l1', code: 'O1', description: 'Mục tiêu 1' }],
+      assignments: [{ id: 'a1', title: 'Bài tập 1', due_at: '2026-12-01T10:00:00Z', max_score: 10 }],
+      assessments: [{ id: 'e1', title: 'Kiểm tra 1' }],
+      submissions: [{ id: 's1', assignment_id: 'a1', student_id: 'stu-1', score: 8 }],
+      attempts: [{ id: 'att1', assessment_id: 'e1', student_id: 'stu-1', total_score: 7 }],
+      mastery: [{ student_id: 'stu-1', objective_id: 'o1', mastery_score: 0.9 }],
+      gaps: [], evidence: [],
+      members: [{ student_id: 'stu-1' }],
+      profiles: { 'stu-1': { id: 'stu-1', full_name: 'Nguyễn An' } },
+      maxBy: { e1: 10 },
+    };
+    dbRender();
+  `);
+
+  // Đầu trang: tiêu đề phạm vi + dải nhãn + nút xuất tệp ngay trên cùng.
+  assert.ok(document.querySelector('.db-rep-hero h2'), 'có tiêu đề khối đầu trang');
+  assert.ok(document.querySelectorAll('.db-rep-chips .db-rep-chip').length >= 3, 'có dải nhãn tóm tắt');
+  assert.ok(document.querySelector('[data-act="reportExcel"]'), 'có nút Xuất Excel');
+  assert.ok(document.querySelector('[data-act="reportWord"]'), 'có nút Xuất Word');
+  assert.ok(document.querySelector('#db-rep-stu'), 'giáo viên chọn được phạm vi xem');
+
+  // Ô chỉ số: nhãn và số là hai phần tử riêng (không dính chữ như bản cũ).
+  const stats = [...document.querySelectorAll('.db-rep-stat')];
+  assert.equal(stats.length, 4, 'tổng hợp cả lớp có 4 ô chỉ số');
+  stats.forEach((st) => {
+    assert.ok(st.querySelector('.db-rep-stat-label'), 'ô chỉ số có nhãn riêng');
+    assert.ok(st.querySelector('.db-rep-stat-value'), 'ô chỉ số có giá trị riêng');
+    assert.equal(st.querySelector('.db-rep-stat-label').contains(st.querySelector('.db-rep-stat-value')), false,
+      'nhãn không bao quanh giá trị');
+  });
+
+  // Không còn lưới .grid.dp-metrics bị bóp hẹp như bản cũ.
+  assert.equal(document.querySelectorAll('.db-rep .grid.db-metrics').length, 0, 'không dùng lưới chỉ số cũ');
+
+  // Chi tiết học sinh: mở từ nút trong bảng, quay lại được cả lớp.
+  document.querySelector('[data-act="reportPick"][data-id="stu-1"]').click();
+  assert.ok(document.querySelector('.db-rep-hero h2').textContent.includes('Nguyễn An'), 'tiêu đề đổi sang tên học sinh');
+  assert.ok(document.querySelector('[data-act="reportClass"]'), 'có nút quay lại xem cả lớp');
+  assert.ok(document.querySelectorAll('.db-rep .db-rep-block').length >= 4, 'chi tiết có các khối bảng riêng');
+  document.querySelector('[data-act="reportClass"]').click();
+  assert.equal(evalExpr('DB_REPORT_STU'), '', 'quay lại tổng hợp cả lớp');
+
+  // Ghi chú cách tính nằm trong <details> để không chiếm chỗ.
+  const notes = document.querySelector('details.db-rep-notes');
+  assert.ok(notes, 'có khối ghi chú cách tính thu gọn');
+  assert.ok(notes.querySelectorAll('dl > div').length >= 5, 'ghi chú liệt kê cách tính từng chỉ số');
+
+  // CSS của trang được nạp trong index.html và có luật cho các lớp mới.
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  assert.ok(html.includes('css/17-progress-report.css'), 'index.html nạp CSS trang báo cáo');
+  const css = fs.readFileSync(path.join(ROOT, 'css/17-progress-report.css'), 'utf8').replace(/\s+/g, ' ');
+  ['.db-rep-hero', '.db-rep-stat-value', '.db-rep-bands', '.db-rep-watch', '.db-rep-inline-bar', '[data-theme="dark"]']
+    .forEach((sel) => assert.ok(css.includes(sel), 'CSS có luật cho ' + sel));
+  assert.ok(!/\.db-rep \.grid/.test(css), 'không tạo lưới chỉ số cũ cho trang báo cáo');
+});
+
 test('Sidebar collapse handle does not shift when a nav or dock button is pressed', async () => {
   const { document, evalExpr } = createDomTestContext();
   const src = fs.readFileSync(path.join(ROOT, 'js/09-render.js'), 'utf8');
