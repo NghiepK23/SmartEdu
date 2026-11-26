@@ -218,6 +218,33 @@ function firestoreRest(projectId, databaseId, auth) {
       }
       return res.json();
     },
+    /* Ghi tài liệu với mốc thời gian do MÁY CHỦ Firestore đặt (setToServerTimestamp),
+       nhờ vậy rules dạng createdAt == request.time mới thoả. create: true khi tạo mới. */
+    async commitDoc(path, fields, opts) {
+      const create = !!(opts && opts.create);
+      const transforms = create
+        ? [{ fieldPath: 'createdAt', setToServerTimestamp: {} }, { fieldPath: 'updatedAt', setToServerTimestamp: {} }]
+        : [{ fieldPath: 'updatedAt', setToServerTimestamp: {} }];
+      const res = await fetch(`${base}:commit`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          writes: [{
+            update: { name: `projects/${projectId}/databases/${databaseId || '(default)'}/documents/${path}`, fields },
+            updateTransforms: transforms,
+            currentDocument: create ? { exists: false } : { exists: true },
+          }],
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        console.error('Firestore commit bị từ chối:', res.status, body.slice(0, 300));
+        const err = new Error('Không lưu được bản ghi trên Firestore.');
+        err.status = res.status === 401 || res.status === 403 ? 403 : 502;
+        throw err;
+      }
+      return true;
+    },
     async patchDoc(path, fields) {
       const masked = Object.keys(fields).map((k) => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&');
       const res = await fetch(`${base}/${path}?${masked}`, {
@@ -1062,17 +1089,20 @@ export function createApp(options = {}) {
       return res.status(err.status || 500).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
     }
     const nowIso = new Date().toISOString();
-    await api.patchDoc(keyDocPath(auth.uid), {
+    const existingDoc = await api.getDoc(keyDocPath(auth.uid)).catch(() => null);
+    const fields = {
       id: FS.str(auth.uid),
       ciphertext: FS.str(encrypted.ciphertext),
       iv: FS.str(encrypted.iv),
       tag: FS.str(encrypted.tag),
       key_hint: FS.str(raw.slice(-4)),
-      created_at: FS.str(nowIso),
       updated_at: FS.str(nowIso),
-      createdAt: FS.ts(nowIso),
-      updatedAt: FS.ts(nowIso),
-    });
+    };
+    if (!existingDoc) {
+      fields.created_at = FS.str(nowIso);
+    }
+    /* createdAt / updatedAt do Firestore tự đặt (server timestamp) để khớp quy tắc bảo mật. */
+    await api.commitDoc(keyDocPath(auth.uid), fields, { create: !existingDoc });
     res.json({ ok: true, hint: raw.slice(-4) });
   }));
 

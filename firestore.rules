@@ -171,6 +171,13 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    /* userId có phải giáo viên chủ lớp đang dạy người gọi không (dùng cho ai_keys). */
+    function isSharedTeacherKey(userId) {
+      return exists(/databases/$(database)/documents/student_teachers/$(request.auth.uid + '_' + userId))
+        && exists(/databases/$(database)/documents/profiles/$(userId))
+        && get(/databases/$(database)/documents/profiles/$(userId)).data.role == 'TEACHER';
+    }
+
     function isValidAiKey(data) {
       return data.keys().hasAll(['id', 'ciphertext', 'iv', 'tag', 'key_hint', 'created_at', 'updated_at', 'createdAt', 'updatedAt'])
         && data.keys().hasOnly(['id', 'ciphertext', 'iv', 'tag', 'key_hint', 'created_at', 'updated_at', 'createdAt', 'updatedAt'])
@@ -1943,18 +1950,34 @@ service cloud.firestore {
       allow delete: if isVerifiedUser() && isValidId(threadId) && existing().user_id == request.auth.uid;
     }
 
-    /* API key Gemini của từng người: chỉ chủ sở hữu đọc/ghi document của mình.
+    /* API key Gemini của từng người: mỗi người chỉ ghi tài liệu của mình; đọc thì chủ sở hữu
+       hoặc giáo viên chủ lớp của người gọi (học sinh dùng chung key giáo viên).
        Nội dung là bản mã AES-256-GCM do máy chủ Express tạo (khoá nằm trong biến môi trường máy chủ),
-       nên kể cả khi đọc được document cũng không lấy được key. */
+       nên kể cả khi đọc được tài liệu cũng không lấy được key thô. */
     match /ai_keys/{userId} {
-      allow get: if isVerifiedUser() && isValidId(userId);
+      allow get: if isVerifiedUser()
+        && isValidId(userId)
+        && (
+          userId == request.auth.uid
+          /* Học sinh đọc key của giáo viên chủ lớp: máy chủ Express dùng ID token của học sinh
+             để lấy bản mã rồi giải mã tại chỗ (học sinh không bao giờ nhận key thô). */
+          || isSharedTeacherKey(userId)
+        );
       allow list: if false;
-      allow create, update: if isVerifiedUser()
+      allow create: if isVerifiedUser()
         && isValidId(userId)
         && isValidAiKey(incoming())
         && userId == request.auth.uid
         && incoming().id == request.auth.uid
         && isServerCreated(incoming());
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidAiKey(incoming())
+        && userId == request.auth.uid
+        && existing().id == request.auth.uid
+        && incoming().id == existing().id
+        && existing().created_at is string
+        && isServerUpdated(incoming());
       allow delete: if isVerifiedUser() && isValidId(userId) && userId == request.auth.uid;
     }
 
