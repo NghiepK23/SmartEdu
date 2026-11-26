@@ -1010,6 +1010,33 @@ test('Every page except the exam screen offers floating dock sub-tabs', async ()
   assert.equal(missing.length, 0, 'mọi trang (trừ màn làm bài) đều có tab bar nổi: ' + missing.join(', '));
 });
 
+test('Trợ lý AI có đúng một lối vào trên thanh bên/thanh trên, không trùng lặp', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  for (const role of ['T', 'S']) {
+    evalExpr(`
+      logged = true; role = '${role}';
+      sess = { email: 'u@edu.vn', role: '${role}', t: Date.now(), backend: true, userId: 'u1' };
+      DB.me = { id: 'u1', email: 'u@edu.vn', full_name: 'Người dùng', role: '${role === 'T' ? 'TEACHER' : 'STUDENT'}' };
+      DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+      DB.classId = 'c1'; DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+      DB.notifs = []; DB.loading = false; DB.loadError = '';
+      DB.page = 'home'; DB.arg = {};
+      DB.data = null;
+      dbRender();
+    `);
+    assert.equal(document.querySelector('.side [data-page="chat"]'), null, `${role}: thanh bên không còn mục Trợ lý AI`);
+    assert.ok(document.getElementById('db-chat-toggle'), `${role}: nút Trợ lý AI trên thanh trên vẫn còn`);
+    const navLabels = [...document.querySelectorAll('.side .nav')].map((b) => b.getAttribute('aria-label'));
+    assert.equal(navLabels.filter((l) => l === 'Trợ lý AI').length, 0, `${role}: không có nhãn Trợ lý AI lặp trong thanh bên`);
+  }
+
+  // Trang chat đầy đủ vẫn mở được từ khung chat nổi và từ tìm kiếm
+  const pages = evalExpr('Object.keys(DB_PAGES)');
+  assert.ok(pages.includes('chat'), 'trang chat toàn màn hình vẫn tồn tại');
+  const matches = evalExpr('dbGlobalSearchMatches("trợ lý ai")');
+  assert.ok(matches.some((m) => m.title === 'Trợ lý AI' && m.kind === 'act'), 'tìm kiếm vẫn tìm được Trợ lý AI');
+});
+
 test('Sidebar collapse handle does not shift when a nav or dock button is pressed', async () => {
   const { document, evalExpr } = createDomTestContext();
   const src = fs.readFileSync(path.join(ROOT, 'js/09-render.js'), 'utf8');
@@ -1391,7 +1418,8 @@ test('DOM & XSS interactive tests for Gemini AI Chatbot workspace, drawer, quiz 
 
   await evalExpr('(async () => { await DB_PAGES.chat.load(); DB.data = { ready: true, lessons: [{ id: "l1", title: "Bài 1" }] }; dbRender(); })()');
   assert.ok(document.getElementById('db-chat-workspace'), 'renders dedicated chat workspace');
-  assert.ok(document.getElementById('nav-chat'), 'renders Trợ lý AI in sidebar');
+  assert.equal(document.getElementById('nav-chat'), null, 'Trợ lý AI không còn mục riêng ở thanh bên');
+  assert.ok(document.getElementById('db-chat-toggle'), 'vẫn còn nút Trợ lý AI trên thanh trên');
   assert.ok(document.querySelector('.db-chat-code'), 'renders fenced code block');
   assert.ok(document.querySelector('.db-chat-code-head .db-chat-code-dots'), 'renders macOS window header inside code block');
   assert.ok(document.querySelector('.db-chat-quiz'), 'renders interactive quiz card');

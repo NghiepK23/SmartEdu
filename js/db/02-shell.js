@@ -5,13 +5,16 @@
 /* Danh mục điều hướng: [tên nhóm, [[khóa trang, nhãn, biểu tượng], …]] */
 const DB_NAV_T = [
   ['', [['home', 'Tổng quan', 'dashboard'], ['schedule', 'Lịch & việc cần làm', 'calendar']]],
-  ['Dạy học', [['content', 'Thư mục học tập', 'lessons'], ['assignments', 'Bài tập', 'navAsg'], ['questions', 'Ngân hàng câu hỏi', 'questionBank'], ['assessments', 'Bài kiểm tra', 'exam'], ['ai', 'AI tạo câu hỏi', 'spark'], ['chat', 'Trợ lý AI', 'chat']]],
+  ['Dạy học', [['content', 'Thư mục học tập', 'lessons'], ['assignments', 'Bài tập', 'navAsg'], ['questions', 'Ngân hàng câu hỏi', 'questionBank'], ['assessments', 'Bài kiểm tra', 'exam'], ['ai', 'AI tạo câu hỏi', 'spark']]],
+  /* 'chat' không nằm trong thanh bên: Trợ lý AI đã có nút riêng trên thanh trên
+     (mở khung chat nổi, có nút phóng to sang trang đầy đủ). Giữ mục này ở đây sẽ
+     tạo hai lối vào trùng nhau. */
   ['Đánh giá học tập', [['progress', 'Mức độ nắm vững', 'mastery'], ['gaps', 'Lỗ hổng kiến thức', 'gaps'], ['recommend', 'Gợi ý học tập', 'recommend'], ['report', 'Báo cáo tiến bộ', 'trend'], ['class_overview', 'Chất lượng lớp học', 'classes']]],
   ['Quản lý', [['classes', 'Lớp học phụ trách', 'classes'], ['trash', 'Thùng rác', 'trash'], ['history', 'Lịch sử chỉnh sửa', 'history']]],
 ];
 const DB_NAV_S = [
   ['', [['home', 'Tổng quan', 'dashboard'], ['schedule', 'Lịch & việc cần làm', 'calendar']]],
-  ['Học tập', [['lessons', 'Bài học', 'lessons'], ['assignments', 'Bài tập', 'assignments'], ['assessments', 'Bài kiểm tra', 'exam'], ['chat', 'Trợ lý AI', 'chat']]],
+  ['Học tập', [['lessons', 'Bài học', 'lessons'], ['assignments', 'Bài tập', 'assignments'], ['assessments', 'Bài kiểm tra', 'exam']]],
   ['Kết quả', [['progress', 'Mức nắm vững', 'mastery'], ['gaps', 'Lỗ hổng kiến thức', 'gaps'], ['recommend', 'Gợi ý học tập', 'recommend'], ['report', 'Báo cáo tiến bộ', 'trend']]],
   ['Lớp học', [['classes', 'Lớp của em', 'classes']]],
 ];
@@ -410,6 +413,11 @@ function dbGlobalSearchMatches(rawQuery) {
         out.push({ kind: 'act', act: s.act, icon: s.icon, title: s.title, sub: s.sub });
       }
     });
+    /* Trợ lý AI không còn mục riêng ở thanh bên; tìm kiếm vẫn phải mở được. */
+    const chatKeys = 'tro ly ai chat gemini hoi dap tu van';
+    if (dbFoldSearch('Trợ lý AI').includes(q) || chatKeys.includes(q)) {
+      out.push({ kind: 'act', act: 'toggleChatDrawer', icon: 'chat', title: 'Trợ lý AI', sub: 'Mở khung chat nổi' });
+    }
   }
   (DB.classes || []).forEach((c) => {
     if (q && dbFoldSearch(c.name).includes(q)) {
