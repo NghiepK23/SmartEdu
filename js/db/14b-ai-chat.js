@@ -98,10 +98,6 @@ function dbChatExamLocked() {
   return !dbIsTeacher() && DB.page === 'exam' && typeof DBX !== 'undefined' && DBX && DBX.attempt && DBX.attempt.status === 'IN_PROGRESS';
 }
 
-function dbChatStudentDisabled() {
-  return !dbIsTeacher() && DB.course && DB.course.student_ai_enabled === false;
-}
-
 function dbChatRecommendModel(tier, mode, text, wantQuiz) {
   if (tier && tier !== 'auto' && DB_CHAT_MODELS[tier]) {
     const picked = DB_CHAT_MODELS[tier];
@@ -346,6 +342,8 @@ function dbChatErrorBannerHtml() {
   return `<div class="db-chat-error" role="alert">
     <div class="db-chat-error-copy">${ic('alert', 16)} <span>${h(err.message)}</span></div>
     <div class="db-chat-error-actions">
+      ${(err.code === 'QUOTA_OR_PAID_KEY_REQUIRED' || err.code === 'KEY_PERMISSION_OR_INVALID' || err.code === 'MISSING_API_KEY' || err.code === 'KEY_RECORD_INVALID')
+        ? dbBtn(ic('spark', 15) + ' Quản lý API key', 'openAiKey', {}, 'light mini') : ''}
       ${(err.code === 'QUOTA_OR_PAID_KEY_REQUIRED' || err.code === 'KEY_PERMISSION_OR_INVALID') && err.retryPayload
         ? dbBtn('Thử lại với Cân bằng', 'chatRetryBalanced', {}, 'light mini') : ''}
       ${err.retryPayload ? dbBtn('Thử lại', 'chatRetryLast', {}, 'light mini') : ''}
@@ -355,7 +353,10 @@ function dbChatErrorBannerHtml() {
 }
 
 function dbChatComposerHtml(surface) {
-  const disabled = DB_CHAT.sending || dbChatExamLocked() || dbChatStudentDisabled();
+  /* Một nguồn quyết định duy nhất: dbAiStudentState() (khoá khi đang làm bài, công tắc của giáo viên,
+     lớp bị tắt AI, chưa có API key). Giáo viên luôn được dùng. */
+  const aiState = typeof dbAiStudentState === 'function' ? dbAiStudentState() : { allowed: true, reason: '' };
+  const disabled = DB_CHAT.sending || !aiState.allowed;
   const modeList = dbIsTeacher() ? DB_CHAT_MODES_T : DB_CHAT_MODES_S;
   const activeMode = dbChatActiveMode();
   const rec = dbChatRecommendModel(DB_CHAT.tier, activeMode, DB_CHAT.draftText, activeMode === 'quiz');
@@ -371,10 +372,8 @@ function dbChatComposerHtml(surface) {
   return `<form class="db-chat-composer" data-act="chatSend" data-surface="${h(surface)}" novalidate>
     ${modeRow}
     <div class="db-chat-input-wrap">
-      <textarea id="${inputId}" name="message" rows="2" maxlength="4000" placeholder="${dbChatExamLocked()
-        ? 'Trợ lý AI tạm khóa trong lúc đang làm bài kiểm tra tính giờ.'
-        : dbChatStudentDisabled()
-        ? 'Giáo viên đã tạm tắt Trợ lý AI cho lớp này.'
+      <textarea id="${inputId}" name="message" rows="2" maxlength="4000" placeholder="${!aiState.allowed
+        ? h(aiState.reason)
         : 'Nhập câu hỏi hoặc yêu cầu (Enter để gửi, Shift+Enter xuống dòng)…'}" data-input="chatDraftInput" ${disabled ? 'disabled' : ''}>${h(DB_CHAT.draftText)}</textarea>
       <div class="db-chat-composer-foot">
         <div class="db-chat-tier-pick">
@@ -391,10 +390,13 @@ function dbChatComposerHtml(surface) {
 }
 
 function dbChatTopBtnHtml() {
-  const locked = dbChatExamLocked();
+  const aiState = typeof dbAiStudentState === 'function' ? dbAiStudentState() : { allowed: true, reason: '' };
+  const locked = !aiState.allowed;
+  const needsKey = locked && /API key/i.test(aiState.reason);
   const active = DB_CHAT.drawerOpen || DB.page === 'chat';
-  const label = locked ? 'Trợ lý AI (khóa trong giờ kiểm tra)' : 'Trợ lý AI';
-  return `<button type="button" id="db-chat-toggle" class="btn light mini db-chat-top-btn${active ? ' is-active' : ''}${locked ? ' is-locked' : ''}" data-act="toggleChatDrawer" aria-expanded="${DB_CHAT.drawerOpen ? 'true' : 'false'}" aria-label="${label}" title="${label}">
+  const label = locked ? 'Trợ lý AI (' + aiState.reason + ')' : 'Trợ lý AI';
+  const act = needsKey ? 'openAiKey' : 'toggleChatDrawer';
+  return `<button type="button" id="db-chat-toggle" class="btn light mini db-chat-top-btn${active ? ' is-active' : ''}${locked ? ' is-locked' : ''}" data-act="${act}" aria-expanded="${DB_CHAT.drawerOpen ? 'true' : 'false'}" aria-label="${h(label)}" title="${h(label)}">
     ${ic(locked ? 'lock' : 'chat', 16)}<span>Trợ lý AI</span>
   </button>`;
 }
@@ -427,7 +429,8 @@ function dbChatDrawerInnerHtml() {
 }
 
 function dbChatDrawerHtml() {
-  if (dbChatExamLocked() && DB_CHAT.drawerOpen) DB_CHAT.drawerOpen = false;
+  const aiState = typeof dbAiStudentState === 'function' ? dbAiStudentState() : { allowed: true };
+  if (!aiState.allowed && /làm bài/.test(aiState.reason) && DB_CHAT.drawerOpen) DB_CHAT.drawerOpen = false;
   const open = !!DB_CHAT.drawerOpen && DB.page !== 'chat';
   return `<div id="db-chat-drawer-host" class="db-chat-drawer-host${open ? ' is-open' : ''}">${dbChatDrawerHostBodyHtml(open)}</div>`;
 }
@@ -501,6 +504,7 @@ DB_PAGES.chat = {
     : 'Hỏi đáp bài học theo từng bước, ôn tập lỗ hổng và luyện câu hỏi trắc nghiệm cùng Gemini.'),
   async load() {
     DB_CHAT.drawerOpen = false;
+    if (typeof dbAiKeyLoad === 'function') await dbAiKeyLoad();
     await dbChatEnsureThreads(true);
     if (DB_CHAT.activeThreadId && !DB_CHAT.messagesByThread[DB_CHAT.activeThreadId]) {
       await dbChatLoadThreadMessages(DB_CHAT.activeThreadId);
@@ -646,12 +650,9 @@ async function dbChatParseInvokeError(error) {
 async function dbChatExecuteSend(text, opts = {}) {
   const cleanText = String(text || '').trim();
   if (!cleanText || DB_CHAT.sending) return;
-  if (dbChatExamLocked()) {
-    toast('Trợ lý AI tạm khóa trong lúc em đang làm bài kiểm tra tính giờ.');
-    return;
-  }
-  if (dbChatStudentDisabled()) {
-    toast('Giáo viên đã tạm tắt Trợ lý AI cho lớp học này.');
+  const aiState = typeof dbAiStudentState === 'function' ? dbAiStudentState() : { allowed: true, reason: '' };
+  if (!aiState.allowed) {
+    toast(aiState.reason || 'Trợ lý AI hiện không dùng được.');
     return;
   }
   if (!EducMindDB || typeof EducMindDB.sendAiChat !== 'function') {
@@ -662,9 +663,13 @@ async function dbChatExecuteSend(text, opts = {}) {
   const mode = opts.mode || dbChatActiveMode();
   const tier = opts.tier || DB_CHAT.tier || 'auto';
   const wantQuiz = opts.wantQuiz === true || (mode === 'quiz' && tier !== 'fast');
+  /* Bài tập / bài kiểm tra đang mở: máy chủ kiểm tra công tắc AI riêng của bài đó. */
+  const workPage = DB.page === 'assignments' ? 'assignment' : (DB.page === 'assessments' || DB.page === 'exam' ? 'assessment' : '');
   const payload = {
     thread_id: DB_CHAT.activeThreadId || null,
     class_id: DB.classId || null,
+    work_kind: workPage || undefined,
+    work_id: workPage ? ((DB.arg && DB.arg.id) || undefined) : undefined,
     lesson_id: DB_CHAT.focusLessonId || null,
     objective_id: DB_CHAT.focusObjectiveId || null,
     page: DB.page || 'home',

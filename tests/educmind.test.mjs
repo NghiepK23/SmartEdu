@@ -327,9 +327,10 @@ test('URL hash routing, role normalization, F5 restore, and auth hash protection
   assert.equal(locationObj.hash, '#/assessments?class=c2&id=ex-2');
 
   // Class switch updates URL hash
+  // Học sinh không đổi lớp được: dbSetClass bị chặn và không đụng route hash
   await ctx.dbSetClass('c1', 'home', {});
-  assert.equal(evalExpr('DB.classId'), 'c1');
-  assert.equal(locationObj.hash, '#/home?class=c1');
+  assert.equal(evalExpr('DB.classId'), 'c2');
+  assert.equal(locationObj.hash, '#/assessments?class=c2&id=ex-2');
 
   // Browser Back (hashchange) should restore route via history:'pop' without pushing another entry
   locationObj.hash = '#/assignments?class=c2&id=asg-9';
@@ -346,6 +347,22 @@ test('URL hash routing, role normalization, F5 restore, and auth hash protection
   locationObj.hash = '#access_token=tok&type=recovery';
   ctx.dbClearRouteHash();
   assert.equal(locationObj.hash, '#access_token=tok&type=recovery');
+});
+
+test('Course config thresholds are persisted and clamped (js/03-firebase.js)', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'js/03-firebase.js'), 'utf8');
+  assert.ok(src.includes('COURSE_CONFIG_NUMERIC'), 'updateCourse whitelists config thresholds');
+  for (const key of ['practice_weight', 'practice_session_length', 'dash_reteach_share', 'dash_inactive_days']) {
+    assert.ok(src.includes(`'${key}'`), `threshold ${key} can be saved`);
+  }
+  assert.ok(/COURSE_CONFIG_RANGE\[k\]/.test(src), 'values are clamped to a valid range');
+  // saveDashSettings đọc input theo data-field, nên mọi ô cài đặt phải có thuộc tính này.
+  const content = fs.readFileSync(path.join(ROOT, 'js/db/04-content.js'), 'utf8');
+  const overview = fs.readFileSync(path.join(ROOT, 'js/db/18-class-overview.js'), 'utf8');
+  for (const key of ['dash_reteach_share', 'dash_min_students', 'dash_advanced_threshold', 'dash_inactive_days']) {
+    assert.ok(overview.includes(`data-field="${key}"`), `class overview input exposes ${key}`);
+  }
+  assert.ok(content.includes("data-field=\"dash_reteach_share\""), 'content page exposes the same thresholds');
 });
 
 test('Exam F5 auto-resume guard and timer formatting (js/db/08-exam.js)', async () => {

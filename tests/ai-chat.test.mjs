@@ -45,7 +45,17 @@ function createChatUnitContext() {
     document: doc,
     location: { origin: 'http://localhost:3000', pathname: '/', search: '', hash: '' },
     history: { pushState: noop, replaceState: noop },
-    localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
+    localStorage: (() => {
+      const store = new Map();
+      return {
+        get length() { return store.size; },
+        key: (i) => [...store.keys()][i] ?? null,
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => store.set(k, String(v)),
+        removeItem: (k) => store.delete(k),
+        clear: () => store.clear(),
+      };
+    })(),
     addEventListener: noop,
     removeEventListener: noop,
     scrollTo: noop,
@@ -64,7 +74,7 @@ function createChatUnitContext() {
   sandbox.globalThis = sandbox;
   const ctx = vm.createContext(sandbox);
 
-  for (const rel of ['js/00-grade-config.js', 'js/02-state.js', 'js/04-icons.js', 'js/05-helpers.js', 'js/db/01-core.js', 'js/db/14b-ai-chat.js']) {
+  for (const rel of ['js/00-grade-config.js', 'js/02-state.js', 'js/04-icons.js', 'js/05-helpers.js', 'js/db/01-core.js', 'js/db/05c-assignment-student.js', 'js/db/14b-ai-chat.js', 'js/db/14c-ai-key.js']) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, rel), 'utf8'), ctx, { filename: rel });
   }
   return {
@@ -111,18 +121,140 @@ test('Safe Markdown formatter escapes raw HTML and formats lists, headings, and 
   assert.match(html, /<div class="db-chat-code" data-lang="python"><div class="db-chat-code-head"><span class="db-chat-code-dots" aria-hidden="true"><i><\/i><i><\/i><i><\/i><\/span><span class="db-chat-code-lang">python<\/span><\/div><pre><code>print\(&quot;&lt;xss&gt;&quot;\)<\/code><\/pre><\/div>/);
 });
 
-test('Exam lock and per-course student AI disable checks enforce role and course rules', () => {
-  const { evalExpr } = createChatUnitContext();
+test('AI access follows role, exam/assignment sessions, and the per-work teacher switch', () => {
+  const { evalExpr, evalJson } = createChatUnitContext();
 
-  evalExpr(`DB.me = { id: 's1', role: 'STUDENT' }; DB.page = 'exam'; DBX = { attempt: { status: 'IN_PROGRESS' } };`);
+  // Đang làm bài kiểm tra -> khoá với học sinh, giáo viên không bị ảnh hưởng.
+  evalExpr(`DB.me = { id: 's1', role: 'STUDENT' }; DB.page = 'exam'; DB.data = { ready: true }; DBX = { attempt: { status: 'IN_PROGRESS' }, assessment: { title: 'KT 15 phút' } };`);
   assert.equal(evalExpr('dbChatExamLocked()'), true);
+  const examState = evalJson('dbAiStudentState()');
+  assert.equal(examState.allowed, false);
+  assert.match(examState.reason, /làm bài kiểm tra: KT 15 phút/);
 
   evalExpr(`DB.me = { id: 't1', role: 'TEACHER' };`);
   assert.equal(evalExpr('dbChatExamLocked()'), false);
+  assert.equal(evalJson('dbAiStudentState()').allowed, true, 'giáo viên luôn dùng được Trợ lý AI');
 
-  evalExpr(`DB.me = { id: 's1', role: 'STUDENT' }; DBX = null; DB.page = 'lessons'; DB.course = { id: 'c1', student_ai_enabled: false };`);
-  assert.equal(evalExpr('dbChatStudentDisabled()'), true);
+  // Đang làm bài tập -> khoá; nộp bài xong -> mở lại.
+  evalExpr(`DB.me = { id: 's1', role: 'STUDENT' }; DBX = null; DB.page = 'assignments'; DB.data = { ready: true, assignments: [{ id: 'as-1', title: 'Bài tập 1' }] }; DB_AI_KEY.status = { hasKey: true };`);
+  evalExpr("dbAssignmentMarkBusy('as-1')");
+  const busyState = evalJson('dbAiStudentState()');
+  assert.equal(busyState.allowed, false);
+  assert.match(busyState.reason, /làm bài tập: Bài tập 1/);
+  evalExpr("dbAssignmentMarkBusy('as-1', false)");
 
-  evalExpr(`DB.course = { id: 'c1', student_ai_enabled: true };`);
-  assert.equal(evalExpr('dbChatStudentDisabled()'), false);
+  // Công tắc cấp lớp đã bỏ hoàn toàn: không còn ai đọc DB.course.student_ai_enabled.
+  evalExpr(`DB.course = { id: 'c1', student_ai_enabled: false };`);
+  assert.equal(evalExpr("typeof dbChatStudentDisabled === 'undefined'"), true, 'hàm chặn theo lớp đã bị xoá');
+  assert.equal(evalJson('dbAiStudentState()').allowed, true, 'công tắc cấp lớp không còn ảnh hưởng');
+
+  // Giáo viên tắt AI cho riêng một bài tập -> học sinh bị chặn khi mở đúng bài đó.
+  evalExpr(`DB.arg = { id: 'as-2' }; DB.data = { ready: true, assignments: [{ id: 'as-2', title: 'Bài tự làm', student_ai_enabled: false }] };`);
+  const offState = evalJson('dbAiStudentState()');
+  assert.equal(offState.allowed, false);
+  assert.match(offState.reason, /không cho dùng Trợ lý AI cho bài tập này/);
+  evalExpr(`DB.data.assignments[0].student_ai_enabled = true;`);
+  assert.equal(evalJson('dbAiStudentState()').allowed, true, 'bật lại thì dùng được');
+
+  // Chưa có API key -> chặn kèm hướng dẫn mở Tài khoản.
+  evalExpr(`DB_AI_KEY.status = { hasKey: false, classOwner: { hasKey: false }, sharedKeyAvailable: false }; DB.arg = null;`);
+  const noKeyState = evalJson('dbAiStudentState()');
+  assert.equal(noKeyState.allowed, false);
+  assert.match(noKeyState.reason, /API key/);
+});
+
+test('apiRequest sends the ID token in header and body, and retries once with a fresh token on AUTH_REQUIRED', async () => {
+  // Dựng ngữ cảnh riêng với fetch giả lập để quan sát request thật.
+  const fsMod = await import('node:fs');
+  const pathMod = await import('node:path');
+  const vmMod = await import('node:vm');
+  const root = pathMod.resolve(pathMod.dirname(new URL(import.meta.url).pathname), '..');
+  const seen = [];
+  let tokenVersion = 'TOKEN1';
+  const responses = [
+    { ok: false, status: 401, json: async () => ({ error: 'Cần đăng nhập', code: 'AUTH_REQUIRED' }) },
+    { ok: true, status: 200, json: async () => ({ ok: true, hint: '4321' }) },
+  ];
+  const noop = () => {};
+  const sandbox = {
+    console, Date, Math, JSON, Number, String, Boolean, Array, Object, Set, Map, RegExp, Error, Promise,
+    document: { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener: noop },
+    location: { origin: 'http://localhost:3000', pathname: '/', search: '', hash: '' },
+    history: { pushState: noop, replaceState: noop },
+    localStorage: { getItem: () => null, setItem: noop, removeItem: noop, clear: noop },
+    addEventListener: noop, removeEventListener: noop, toast: noop, render: noop,
+    app: { innerHTML: '', addEventListener: noop, querySelector: () => null, querySelectorAll: () => [] },
+    fetch: async (url, opts) => {
+      seen.push({ url, headers: opts.headers, body: JSON.parse(opts.body) });
+      return responses.shift();
+    },
+  };
+  /* 03-firebase.js đọc runtime Firebase từ window.EducMindFirebase. */
+  sandbox.window = sandbox;
+  sandbox.EducMindFirebase = {
+    firestoreApi: {},
+    authApi: { onAuthStateChanged: () => {} },
+    auth: { currentUser: { uid: 'u1', email: 'gv@edu.vn', getIdToken: async (force) => { if (force) tokenVersion = 'TOKEN2'; return tokenVersion; } } },
+  };
+  sandbox.globalThis = sandbox;
+  const ctx = vmMod.createContext(sandbox);
+  for (const rel of ['js/00-grade-config.js', 'js/02-state.js', 'js/03-firebase.js']) {
+    vmMod.runInContext(fsMod.readFileSync(pathMod.join(root, rel), 'utf8'), ctx, { filename: rel });
+  }
+  vmMod.runInContext("sess = { userId: 'u1', backend: true }; role = 'T'; DB = { me: { id: 'u1', role: 'TEACHER' } };", ctx);
+  const res = await vmMod.runInContext("EducMindDB.aiKeySave('AIzaTestKey0123456789abcdef')", ctx);
+
+  assert.equal(res.error, null, 'lần thử lại với token mới phải thành công');
+  assert.equal(seen.length, 2, 'đúng một lần thử lại');
+  assert.equal(seen[0].headers.Authorization, 'Bearer TOKEN1');
+  assert.equal(seen[0].body.auth_token, 'TOKEN1', 'token cũng nằm trong thân request (proxy có thể bỏ header)');
+  assert.equal(seen[1].headers.Authorization, 'Bearer TOKEN2', 'lần thử lại dùng token đã làm mới');
+  assert.equal(seen[1].body.auth_token, 'TOKEN2');
+  assert.equal(seen[0].body.apiKey, 'AIzaTestKey0123456789abcdef');
+});
+
+test('apiRequest never sends a body with GET/HEAD (browsers reject "Request with GET/HEAD method cannot have body")', async () => {
+  const fsMod = await import('node:fs');
+  const pathMod = await import('node:path');
+  const vmMod = await import('node:vm');
+  const root = pathMod.resolve(pathMod.dirname(new URL(import.meta.url).pathname), '..');
+  const seen = [];
+  const noop = () => {};
+  const sandbox = {
+    console, Date, Math, JSON, Number, String, Boolean, Array, Object, Set, Map, RegExp, Error, Promise,
+    document: { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener: noop },
+    location: { origin: 'http://localhost:3000', pathname: '/', search: '', hash: '' },
+    history: { pushState: noop, replaceState: noop },
+    localStorage: { getItem: () => null, setItem: noop, removeItem: noop, clear: noop },
+    addEventListener: noop, removeEventListener: noop, toast: noop, render: noop,
+    app: { innerHTML: '', addEventListener: noop, querySelector: () => null, querySelectorAll: () => [] },
+    fetch: async (url, opts) => {
+      /* Mô phỏng đúng lỗi của trình duyệt. */
+      const verb = String((opts && opts.method) || 'GET').toUpperCase();
+      if ((verb === 'GET' || verb === 'HEAD') && opts && opts.body !== undefined) {
+        throw new TypeError("Failed to execute 'fetch' on 'Window': Request with GET/HEAD method cannot have body.");
+      }
+      seen.push({ url, method: verb, headers: opts.headers, hasBody: opts.body !== undefined });
+      return { ok: true, status: 200, json: async () => ({ role: 'TEACHER', hasKey: false }) };
+    },
+  };
+  sandbox.window = sandbox;
+  sandbox.EducMindFirebase = {
+    firestoreApi: {},
+    authApi: { onAuthStateChanged: () => {} },
+    auth: { currentUser: { uid: 'u1', email: 'gv@edu.vn', getIdToken: async () => 'TOKEN1' } },
+  };
+  sandbox.globalThis = sandbox;
+  const ctx = vmMod.createContext(sandbox);
+  for (const rel of ['js/00-grade-config.js', 'js/02-state.js', 'js/03-firebase.js']) {
+    vmMod.runInContext(fsMod.readFileSync(pathMod.join(root, rel), 'utf8'), ctx, { filename: rel });
+  }
+  vmMod.runInContext("sess = { userId: 'u1', backend: true }; role = 'T'; DB = { me: { id: 'u1', role: 'TEACHER' }, classId: 'c1' };", ctx);
+
+  const status = await vmMod.runInContext('EducMindDB.aiKeyStatus("c1")', ctx);
+  assert.equal(status.error, null, 'trạng thái key phải gọi được: ' + JSON.stringify(status.error));
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].hasBody, true, 'POST /api/ai/key/status có thân để mang token dự phòng');
+  assert.equal(seen[0].headers.Authorization, 'Bearer TOKEN1');
+  assert.equal(seen[0].headers['X-EducMind-Token'], 'Bearer TOKEN1', 'gửi thêm header riêng phòng khi proxy bỏ Authorization');
 });

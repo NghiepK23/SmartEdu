@@ -1,23 +1,12 @@
 /* EducMind · js/09-render.js
    Hàm render(): chọn màn hình theo trạng thái đăng nhập và đặt lại vị trí nút thu gọn thanh bên. */
 /* ===== Hiển thị ===== */
-/* Tay nắm thu gọn bám đúng mép phải của thẻ điều hướng, luôn ở giữa chiều cao cửa sổ */
-function placeSideToggle(){
-  const t=document.querySelector('.side-toggle'),n=document.querySelector('.side');
-  if(!t||!n){return}
-  const r=n.getBoundingClientRect();
-  if(window.innerWidth<=900){
-    t.style.removeProperty('--tog-x');
-    const y=Math.round(r.top+(r.height-(t.offsetHeight||40))/2)+'px';
-    if(t.style.getPropertyValue('--tog-y')!==y)t.style.setProperty('--tog-y',y);
-    return;
-  }
-  t.style.removeProperty('--tog-y');
-  const half=t.offsetWidth/2||15,x=Math.round(r.right-half)+'px';
-  if(t.style.getPropertyValue('--tog-x')!==x)t.style.setProperty('--tog-x',x);
-}
-addEventListener('resize',()=>requestAnimationFrame(placeSideToggle));
-addEventListener('scroll',()=>{if(window.innerWidth<=900)requestAnimationFrame(placeSideToggle)},{passive:true});
+/* Tay nắm thu gọn: vị trí do CSS quyết định (bám mép phải thanh bên, xem
+   css/06-floating-nav.css). Không đo bằng JS rồi ghi toạ độ nữa: mỗi lần vẽ lại,
+   phần tử mới luôn xuất hiện ở giá trị mặc định rồi mới nhảy về toạ độ đo được,
+   nên bấm bất kỳ mục nào ở thanh bên hay tab bar nổi đều thấy nút này "chạy" ngang.
+   Chỉ cần một hàm rỗng để các chỗ gọi cũ vẫn chạy an toàn. */
+function placeSideToggle(){}
 function render(){
   authGuard();
   try{

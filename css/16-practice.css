@@ -1,0 +1,100 @@
+/* EducMind · css/16-practice.css
+   Luyện tập thích ứng: khối giới thiệu, thanh tiến độ câu hỏi, vùng trả lời và phản hồi.
+   Các lớp .db-practice-* / .db-stat trước đây chưa được định nghĩa nên nội dung dồn thành
+   một khối chữ liền nhau. */
+
+/* ----- Khối giới thiệu ----- */
+.db-practice-intro{
+  display:grid;
+  gap:12px;
+  margin:14px 0 0;
+  padding:14px 16px;
+  border:1px solid var(--lg-edge,var(--line));
+  border-radius:18px;
+  background:color-mix(in srgb,var(--brand) 6%,var(--surface));
+}
+.db-practice-stats{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+  gap:10px;
+}
+.db-stat{
+  display:grid;
+  gap:3px;
+  padding:10px 12px;
+  border-radius:14px;
+  background:var(--surface);
+  box-shadow:inset 0 0 0 .5px var(--line);
+  min-width:0;
+  font-size:.84rem;
+  line-height:1.35;
+  color:var(--muted);
+}
+.db-stat>b{
+  font:700 1.3rem/1.1 var(--font-head,var(--font-body));
+  color:var(--ink);
+  font-variant-numeric:tabular-nums;
+}
+.db-stat>span{font-size:.76rem}
+.db-practice-resources:empty{display:none}
+.db-practice-resources{margin-top:4px}
+
+/* ----- Khu vực làm bài ----- */
+.db-practice-workspace{display:grid;gap:14px}
+.db-practice-head{display:grid;gap:10px}
+.db-practice-progress{display:flex;align-items:center;gap:10px}
+.db-practice-progress>small{flex:none;font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.db-practice-bar{
+  flex:1 1 auto;
+  height:8px;
+  border-radius:999px;
+  background:var(--fill);
+  box-shadow:inset 0 0 0 .5px var(--line);
+  overflow:hidden;
+}
+.db-practice-bar>span{
+  display:block;
+  height:100%;
+  border-radius:999px;
+  background-image:linear-gradient(90deg,var(--brand),#3b8da1);
+  transition:width .3s var(--ease,ease);
+}
+.db-practice-question{display:grid;gap:12px}
+.db-practice-form{display:grid;gap:12px}
+.db-practice-form .db-answers{display:grid;gap:8px}
+.db-practice-feedback:empty{display:none}
+.db-practice-feedback{
+  display:grid;
+  gap:6px;
+  padding:12px 14px;
+  border-radius:14px;
+  background:var(--fill);
+  box-shadow:inset 0 0 0 .5px var(--line);
+  font-size:.9rem;
+}
+.db-practice-trail{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px;
+  font-size:.82rem;
+  color:var(--muted);
+}
+.db-practice-trail .pill{flex:none}
+
+/* ----- Câu hỏi dạng ghép cặp ----- */
+.db-matching{display:grid;gap:10px}
+
+/* ----- Tổng kết phiên ----- */
+.db-practice-summary{display:grid;gap:10px}
+.db-practice-summary .db-stat{background:var(--fill)}
+
+@media(max-width:560px){
+  .db-practice-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .db-practice-intro{padding:12px 13px;border-radius:16px}
+  .db-stat{padding:9px 10px}
+  .db-stat>b{font-size:1.15rem}
+}
+@media print{
+  .db-practice-intro,.db-practice-question{break-inside:avoid}
+}

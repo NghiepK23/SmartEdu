@@ -4,6 +4,21 @@
 let DB_ASSIGNMENT_FLOW = null;
 let DB_ASSIGNMENT_REVIEW = null;
 let DB_ASSIGNMENT_TIMER = null;
+/* Phiên đang làm bài tập (đã bấm bắt đầu, chưa nộp). Lưu id bài vào localStorage để tải lại
+   trang hay mở tab khác vẫn biết là đang làm bài — dùng cho việc khoá Trợ lý AI. */
+const DB_ASSIGNMENT_BUSY_KEY = 'educmind.db.assignment_busy';
+function dbAssignmentMarkBusy(assignmentId, busy) {
+  /* Gọi dbAssignmentMarkBusy(id) là đánh dấu đang làm; truyền busy = false để bỏ đánh dấu. */
+  const on = busy === undefined ? !!assignmentId : !!busy;
+  try {
+    if (on && assignmentId) localStorage.setItem(DB_ASSIGNMENT_BUSY_KEY, String(assignmentId));
+    else localStorage.removeItem(DB_ASSIGNMENT_BUSY_KEY);
+  } catch (_) { /* trình duyệt chặn lưu trữ: chỉ còn trạng thái trong bộ nhớ */ }
+}
+function dbAssignmentBusy() {
+  if (DB_ASSIGNMENT_FLOW && DB_ASSIGNMENT_FLOW.started) return true;
+  try { return !!localStorage.getItem(DB_ASSIGNMENT_BUSY_KEY); } catch (_) { return false; }
+}
 const DB_ASSIGNMENT_GAMES = {
   RACE: { title: 'Kéo co tri thức', icon: '🪢', tag: 'Đua theo chặng', description: 'Trả lời từng câu để đưa đội em tiến gần vạch đích.' },
   SURVIVAL: { title: 'Sinh tồn tri thức', icon: '🏝️', tag: 'Khám phá bản đồ', description: 'Khám phá các trạm trên bản đồ qua từng câu hỏi.' },
@@ -213,6 +228,8 @@ DB_ACT.assignmentPickMode = (el) => {
   dbAssignmentStopTimer();
   DbSfx.play('click');
   DB_ASSIGNMENT_FLOW = { assignmentId: el.dataset.id, mode, started: false, index: 0 };
+  /* Chọn lại chế độ = còn làm bài; xoá cờ cũ của bài khác để không khoá AI vô ích. */
+  dbAssignmentMarkBusy(el.dataset.id, false);
   render();
 };
 DB_ACT.assignmentGameStart = () => {
@@ -221,6 +238,7 @@ DB_ACT.assignmentGameStart = () => {
   DB_ASSIGNMENT_FLOW.started = true;
   DB_ASSIGNMENT_FLOW.index = 0;
   DB_ASSIGNMENT_FLOW.startedAt = Date.now();
+  dbAssignmentMarkBusy(DB_ASSIGNMENT_FLOW.assignmentId, true);
   render();
   dbAssignmentStartTimer();
   document.querySelector('.db-assignment-game[data-editable="true"] [data-game-question="0"]')?.focus({ preventScroll: true });
@@ -477,6 +495,7 @@ DB_ACT.submitAssignment = (form) => dbRun(form, async () => {
   }))));
   if (typeof dbDraftClear === 'function') dbDraftClear('asg', a.id);
   dbAssignmentStopTimer();
+  dbAssignmentMarkBusy(a.id, false);
   DB_ASSIGNMENT_FLOW = { ...(DB_ASSIGNMENT_FLOW || {}), assignmentId: a.id, started: false, submitted: true, index: 0 };
   DB_ASSIGNMENT_REVIEW = { assignmentId: a.id, index: 0 };
   DB.dialog = {

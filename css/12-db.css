@@ -638,3 +638,127 @@
   }
 }
 
+
+/* ----- Cổng hộp thoại: luôn nằm ngoài #main nên lớp phủ phủ đúng toàn khung nhìn -----
+   Trước đây hộp thoại render bên trong #main; #main có backdrop-filter nên trở thành
+   containing block, khiến .ov bị kẹt trong hình chữ nhật xám, góc sắc, không bo góc. */
+.db-dialog-host{display:contents}
+#db-dialog-root.db-dialog-host{display:block}
+/* Cổng nằm sau #app trong DOM: cùng mức z-index nhưng vẽ trên thanh trên, sidebar và dock */
+#db-dialog-root .ov{z-index:2147483647!important}
+/* Lớp phủ: nền gradient mờ theo bảng màu thay cho hình chữ nhật xám đặc */
+.db-dialog.ov{
+  background:
+    radial-gradient(120% 90% at 50% 0%,rgba(255,255,255,.16),transparent 62%),
+    color-mix(in srgb,var(--brand) 12%,rgba(15,23,42,.42));
+  -webkit-backdrop-filter:blur(26px) saturate(140%);
+  backdrop-filter:blur(26px) saturate(140%);
+  animation:dbDlgScrimIn .26s var(--ease) both;
+}
+:root[data-theme="dark"] .db-dialog.ov{
+  background:
+    radial-gradient(120% 90% at 50% 0%,rgba(120,224,215,.10),transparent 62%),
+    rgba(4,12,14,.62);
+}
+.db-dialog.ov.enter{animation:none}
+@keyframes dbDlgScrimIn{from{opacity:0}to{opacity:1}}
+/* Hộp thoại: hiện lên mềm như sheet kính (không còn khối xám thô, góc sắc) */
+.db-dialog .dlg{animation:dbDlgIn .36s var(--ease-spring) both}
+@keyframes dbDlgIn{
+  from{opacity:0;transform:translateY(10px) scale(.965)}
+  to{opacity:1;transform:none}
+}
+@media(max-width:620px){
+  @keyframes dbDlgIn{
+    from{opacity:0;transform:translateY(18px) scale(.99)}
+    to{opacity:1;transform:none}
+  }
+}
+/* Hộp thoại: bo góc mềm, viền sáng mảnh, bóng mềm — hoà với chất liệu kính */
+.db-dialog .dlg{
+  max-width:420px;
+  padding:22px 24px;
+  border-radius:28px!important;
+  border:1px solid var(--lg-edge);
+  box-shadow:var(--lg-content-rim),0 6px 16px -6px rgba(19,34,38,.18),0 48px 96px -40px rgba(19,34,38,.46);
+  overflow:auto;
+  overscroll-behavior:contain;
+}
+.db-dialog .dlg:focus-visible{outline:none}
+.db-dialog .dlg.db-dlg-wide{border-radius:30px!important}
+.db-dialog .dlg.db-dlg-compact{border-radius:26px!important}
+@media(max-width:560px){
+  .db-dialog .dlg{width:100%;max-width:none;border-radius:26px!important}
+}
+@media(prefers-reduced-motion:reduce){
+  .db-dialog.ov,.db-dialog .dlg{animation:none!important}
+}
+/* Chế độ tương phản cao: giữ lớp phủ đục nhưng vẫn bo góc, không còn khối xám thô */
+@media(prefers-contrast:more),(forced-colors:active){
+  .db-dialog.ov{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(10,20,22,.72)}
+}
+@media print{.db-dialog-host{display:none!important}}
+
+/* ===== Bổ sung các lớp còn thiếu định nghĩa (bảng cuộn, hàng bằng chứng, ô kết quả) ===== */
+/* Thuộc tính hidden phải luôn thắng các luật display của bảng/danh sách bên dưới. */
+[hidden]{display:none!important}
+
+/* Hàng bằng chứng trong trang Mức độ nắm vững */
+.db-evidence-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:baseline;padding:6px 8px;border-radius:8px;background:var(--surface)}
+.db-evidence-row>b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.db-evidence-row>small{color:var(--muted);white-space:nowrap;font-size:.74rem}
+.db-evidence-detail{margin-top:6px}
+.db-evidence-detail>summary{cursor:pointer;font-size:.8rem;font-weight:600;color:var(--muted);padding:4px 0}
+.db-evidence-detail>summary:hover{color:var(--ink)}
+.db-evidence-detail[open]>summary{margin-bottom:4px}
+
+/* Cột trong hàng mục tiêu */
+.db-mrow-text{min-width:0;overflow-wrap:break-word}
+.db-mrow-bar{min-width:0}
+@media(max-width:640px){
+  .db-evidence-row{grid-template-columns:minmax(0,1fr) auto}
+  .db-evidence-row>small{grid-column:1/-1}
+}
+
+/* Bảng dữ liệu: cuộn ngang thay vì tràn khung */
+.tablewrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+/* Khung chat: trạng thái rỗng và nhãn câu hỏi trắc nghiệm */
+.db-chat-empty{display:grid;place-items:center;min-height:120px;padding:16px;text-align:center}
+.db-chat-quiz-meta{font-size:.74rem;font-weight:600;color:var(--muted);white-space:nowrap}
+.db-chat-quiz-opttxt{min-width:0;overflow-wrap:break-word}
+.db-chat-msg.is-pending{opacity:.85}
+
+/* Nhãn lớp tĩnh ở thanh trên (học sinh không đổi lớp được) */
+.user-class-static{white-space:nowrap}
+
+/* Hộp thoại gắn tài nguyên với mục tiêu */
+.db-link-dialog{display:grid;gap:10px;max-height:min(56vh,460px);overflow:auto;padding-right:2px}
+.db-link-field{margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.db-link-field>legend{padding:0 6px;font-size:.8rem;font-weight:700;color:var(--ink);max-width:100%;overflow-wrap:anywhere}
+.db-link-field .db-check{display:inline-flex;align-items:center;gap:5px;margin:6px 10px 0 0;font-size:.8rem;color:var(--muted)}
+
+/* Khối thông tin đơn vị in trên báo cáo */
+.db-org>summary{cursor:pointer;font-weight:650;color:var(--brand-ink,var(--brand))}
+.db-org[open]>summary{margin-bottom:6px}
+
+/* Nội dung các hộp thoại cài đặt nền / giao diện */
+.db-bg-dlg-content,.db-theme-dlg-content{display:grid;gap:10px}
+@media(max-width:560px){
+  .db-theme-dlg-content[style]{grid-template-columns:1fr!important}
+}
+
+/* Ngân hàng câu hỏi trong trình soạn bài tập */
+.db-asg-bank .db-bankfold-count{white-space:nowrap}
+.db-asg-bank .db-assignment-create-preview:empty{display:none}
+.db-asg-bank .db-assignment-create-preview{margin-top:8px}
+
+/* Nút bật/tắt âm thanh và dòng điểm chấm ở bài tập của học sinh */
+.db-assignment-game-sound{white-space:nowrap}
+.db-assignment-answer-grade{margin:6px 0 0;font-size:.82rem}
+
+/* Dòng "không tìm thấy" trong bảng lọc (ẩn/hiện bằng thuộc tính hidden) */
+.db-trash-no-results>td,.db-history-no-results>td{text-align:center;color:var(--muted);font-size:.85rem;padding:14px 10px}
+
+/* Hàng nút trong hộp thoại cài đặt nền */
+.db-bg-dlg-actions{flex-wrap:wrap}

@@ -83,6 +83,8 @@ js/
     03-classes.js … 13-report.js   Lớp học, nội dung, bài tập, câu hỏi, thi, tiến độ,
                            nhập/xuất, lịch & việc cần làm, báo cáo
     14-ai.js               AI tạo câu hỏi nháp (giáo viên)
+    14b-ai-chat.js         Trợ lý AI: khung chat nổi và trang chat
+    14c-ai-key.js          Quản lý API key Gemini (BYO key) + công tắc AI theo từng bài
     15-games.js            Trò chơi ôn tập 3 chế độ
     16-live.js             Realtime cho chuông thông báo (tự fallback polling)
   vendor/
@@ -163,35 +165,65 @@ tự kiểm tra mã ở trình duyệt và không tắt xác nhận email.
 Không lưu App Password trong mã nguồn, `supabase/config.toml` hay biến JavaScript phía trình duyệt.
 Nếu lộ App Password, hãy thu hồi ngay trong Google Account rồi tạo mật khẩu ứng dụng mới.
 
-### Cấu hình AI tạo câu hỏi bằng Gemini
+### Trợ lý AI và API key Gemini (mỗi người dùng tự đăng ký key)
 
-Gemini được gọi từ Supabase Edge Function. Mỗi giáo viên nhập API key của riêng mình trong
-**Tài khoản → Quản lý API key Gemini**; key được mã hóa ở máy chủ và không được trả lại trình duyệt.
-Ứng dụng không lưu một API key Gemini dùng chung. Các yêu cầu chạy nền theo từng lô tối đa 5 câu,
-tiến độ được ghi vào Supabase; các lỗi tạm thời từ Gemini được tự thử lại tối đa 3 lần và phần vẫn
-bị lỗi có thể thử lại thủ công. Ứng dụng không đặt hạn mức lượt/ngày;
-Google vẫn áp dụng hạn mức theo dự án gắn với API key (nhiều key cùng một dự án vẫn dùng chung quota).
+Toàn bộ lời gọi Gemini đi qua **máy chủ Express** (`server.js`), không gọi trực tiếp từ trình duyệt.
+Mô hình: **mỗi người dùng mang API key của mình (BYO key)**, không có key thì Trợ lý AI không chạy.
 
-Để triển khai backend lần đầu:
+- Người dùng vào **Tài khoản → Quản lý API key Gemini**, dán key tự đăng ký ở Google AI Studio và
+  bấm **Kiểm tra key** (kiểm tra được cả key chưa lưu) rồi **Lưu key**.
+- Trình duyệt gửi key **một lần** cho `POST /api/ai/key`. Máy chủ mã hoá **AES-256-GCM**
+  (khoá = `sha256(AI_KEY_ENCRYPTION_KEY)`, IV 12 byte ngẫu nhiên, AAD = uid) rồi ghi vào
+  Firestore `ai_keys/{uid}` **bằng chính ID token của người dùng** (quy tắc bảo mật cho phép mỗi người
+  chỉ đọc/ghi tài liệu của mình). Key thô không bao giờ được trả lại trình duyệt — giao diện chỉ hiện
+  4 ký tự cuối; ai đọc được Firestore cũng chỉ thấy bản mã.
+- Vai trò luôn lấy từ `profiles/{uid}.role` trên Firestore, không tin tham số do trình duyệt gửi.
+- Học sinh không cần key riêng: khi gọi `/api/ai/chat` kèm `class_id`, máy chủ dùng key của
+  **giáo viên chủ lớp** (`classes.owner_teacher_id`). Học sinh cũng có thể tự lưu key riêng.
+- Thiếu key ⇒ HTTP 400 `MISSING_API_KEY`; giao diện hiện lời nhắc mở Tài khoản → Quản lý API key.
+  Biến môi trường `GEMINI_API_KEY` chỉ là phương án dự phòng cho chính chủ máy chủ.
 
-1. Tạo `AI_KEY_ENCRYPTION_KEY` bằng `openssl rand -base64 32` và `AI_WORKER_TOKEN` bằng
-   `openssl rand -hex 32`. Thêm cả hai làm **Edge Function secrets** trong Supabase Dashboard.
-   Không lưu các giá trị này trong repository. Không làm mất hoặc thay `AI_KEY_ENCRYPTION_KEY`:
-   nếu đổi secret, các key giáo viên đã lưu sẽ không giải mã được.
-2. Tại terminal ở thư mục dự án, liên kết dự án, áp dụng migration và triển khai hai Edge Function:
+**Giới hạn của giáo viên với học sinh (theo từng bài)**
 
-   ```bash
-   supabase link --project-ref <project-ref>
-   supabase db push --remote
-   supabase functions deploy ai-generate
-   supabase functions deploy ai-credentials
-   ```
+- Mỗi bài tập và mỗi bài kiểm tra có công tắc **“Học sinh được dùng Trợ lý AI khi làm bài này”**
+  (trường `student_ai_enabled`, mặc định **bật**). Giáo viên tắt trong lúc tạo/sửa bài.
+- Trong lúc học sinh **đang làm bài**, Trợ lý AI bị khoá hoàn toàn cho tới khi nộp:
+  máy chủ kiểm tra `assessment_attempts` còn `IN_PROGRESS` và các câu trả lời bài tập chưa nộp,
+  nên tải lại trang, mở tab mới hay dùng khung chat nổi đều không mở khoá được (HTTP 423
+  `AI_LOCKED_WHILE_WORKING`). Công tắc cấp lớp trước đây đã được bỏ.
+- Tắt công tắc của một bài ⇒ máy chủ trả HTTP 403 `AI_DISABLED_FOR_WORK` khi học sinh hỏi Trợ lý AI
+  trong ngữ cảnh bài đó.
 
-3. Nếu muốn dùng model khác mặc định `gemini-4-hydrogen` hoặc giới hạn domain gọi CORS, đặt thêm secret `GEMINI_MODEL` và `ALLOWED_ORIGINS` (danh sách URL cách nhau dấu phẩy) trong Supabase.
-   Giáo viên cần xuất bản bản website có thay đổi JavaScript, sau đó tự nhập API key của mình trong
-   phần Tài khoản. Chỉ tên lớp/chủ đề/bài học/mục tiêu được gửi cho Gemini; dữ liệu học sinh không được gửi.
-   Câu hỏi sinh ra vẫn ở trạng thái chờ giáo viên duyệt.
-4. Sau khi triển khai, xóa secret cũ `GEMINI_API_KEY` khỏi Supabase nếu trước đây đã cấu hình key dùng chung.
+Chẩn đoán khi gặp lỗi **"fetch failed"** hoặc *"Máy chủ chưa kết nối được Google"*: đây là lỗi
+**hạ tầng phía máy chủ** (máy chủ không ra được Internet), không phải lỗi API key hay lỗi trình duyệt.
+Mở `GET /api/health/upstream` để xem máy chủ có gọi được `googleapis.com` (Firebase Auth) và
+`firestore.googleapis.com` hay không; kết quả kèm mã lỗi mạng (`ECONNRESET`, `ENOTFOUND`, …) và
+cho biết `AI_KEY_ENCRYPTION_KEY` đã cấu hình chưa. Mọi lời gọi ra Google đều có timeout 15 giây
+(`AI_UPSTREAM_TIMEOUT_MS` để đổi) và thử lại một lần; khi thất bại, API trả **502
+`UPSTREAM_UNREACHABLE`** kèm câu tiếng Việt thay vì chuỗi `fetch failed` thô.
+
+Để chạy trên máy chủ:
+
+1. Đặt trong `.env` (xem `.env.example`): `AI_KEY_ENCRYPTION_KEY` (tối thiểu 32 ký tự, tạo bằng
+   `openssl rand -base64 32`), tuỳ chọn `GEMINI_API_KEY`, `GEMINI_MODEL`. `server.js` tự nạp `.env`
+   khi khởi động (Node ≥ 20.12). Không commit `.env`; **không đổi** `AI_KEY_ENCRYPTION_KEY` sau khi
+   người dùng đã lưu key, vì key đã lưu sẽ không giải mã được.
+2. Áp dụng `firestore.rules` (đã có `ai_keys/{uid}` chỉ chủ sở hữu đọc/ghi, và trường
+   `student_ai_enabled` trong `assignments`/`assessments`).
+3. Mọi lời gọi `/api/*` gửi Firebase ID token ở header `Authorization`, header riêng
+   `X-EducMind-Token` và (chỉ với request có phần thân) trường `auth_token` trong thân JSON.
+   Request `GET`/`HEAD` **không bao giờ** có phần thân (trình duyệt chặn với lỗi
+   "Request with GET/HEAD method cannot have body"), nên trạng thái API key dùng
+   `POST /api/ai/key/status` (route `GET /api/ai/key` vẫn giữ cho tương thích). Lý do: một số proxy/khung nhúng (như lớp xem trước của trình soạn thảo)
+   chuyển tiếp thân request nhưng bỏ header `Authorization`, khiến máy chủ tưởng người dùng chưa đăng nhập.
+   Khi lấy token từ thân, máy chủ kiểm tra `Origin`/`Referer` (cùng host hoặc trong `ALLOWED_ORIGINS`,
+   danh sách URL cách nhau dấu phẩy) để trang khác không gọi hộ; `auth_token` bị xoá khỏi body trước khi
+   xử lý nên không được ghi vào Firestore hay gửi cho Gemini. Phản hồi 401 kèm `code: AUTH_REQUIRED` và
+   trường `auth` (chỉ báo có/không có token, không lộ token) để chẩn đoán; trình duyệt tự làm mới token
+   và thử lại một lần.
+4. Chỉ tên lớp/chủ đề/bài học/mục tiêu được gửi cho Gemini; dữ liệu cá nhân của học sinh không được gửi.
+   Câu hỏi do AI sinh ra vẫn ở trạng thái chờ giáo viên duyệt. Google áp hạn mức theo dự án gắn với
+   từng key (nhiều key cùng một dự án vẫn dùng chung quota).
 
 Lưu ý bảo mật của backend:
 

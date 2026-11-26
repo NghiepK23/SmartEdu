@@ -1,3 +1,10 @@
+/* Nạp biến môi trường từ .env (nếu có) trước khi đọc bất kỳ biến nào.
+   Node 20.12+ có process.loadEnvFile; thiếu tệp thì bỏ qua im lặng. */
+try {
+  const envLoader = typeof process.loadEnvFile === 'function' ? process.loadEnvFile : null;
+  if (envLoader) envLoader(new URL('./.env', import.meta.url));
+} catch (_) { /* không có .env hoặc không đọc được: dùng biến môi trường của hệ điều hành */ }
+
 import express from 'express';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -34,6 +41,44 @@ export const SECURITY_HEADERS = {
 const FIREBASE_CERTS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 let cachedCerts = { keys: null, expiresAt: 0 };
 
+/* Lỗi mạng (máy chủ không gọi được Google) là lỗi hạ tầng: báo rõ thay vì "fetch failed".
+   Mọi lời gọi ra ngoài đều đi qua helper này (timeout + thử lại) để tránh treo request. */
+class UpstreamError extends Error {
+  constructor(message, code, cause) {
+    super(message);
+    this.status = 502;
+    this.code = code;
+    this.cause = cause;
+  }
+}
+
+async function fetchUpstream(url, options, label) {
+  const timeoutMs = Number(process.env.AI_UPSTREAM_TIMEOUT_MS || 15000);
+  let lastCause;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await fetch(url, { ...(options || {}), signal: AbortSignal.timeout(timeoutMs) });
+    } catch (err) {
+      lastCause = err;
+      const code = (err && err.cause && err.cause.code) || (err && err.name) || '';
+      /* ECONNRESET / ENOTFOUND / ETIMEDOUT: thử lại một lần rồi mới báo lỗi. */
+      if (attempt === 0 && /ECONN|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|UND_ERR|TimeoutError/i.test(String(code) + String(err && err.message))) {
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
+      }
+      break;
+    }
+  }
+  const reason = (lastCause && lastCause.cause && (lastCause.cause.code || lastCause.cause.message))
+    || (lastCause && lastCause.message) || 'không rõ nguyên nhân';
+  console.error(`Không kết nối được ${label}:`, reason);
+  throw new UpstreamError(
+    `Máy chủ chưa kết nối được ${label}. Hãy kiểm tra máy chủ (mạng ra Internet) rồi thử lại.`,
+    'UPSTREAM_UNREACHABLE',
+    reason,
+  );
+}
+
 function loadFirebaseConfig(rootDir) {
   const cfgPath = path.join(rootDir, 'firebase-applet-config.json');
   if (!fs.existsSync(cfgPath)) return null;
@@ -54,9 +99,10 @@ async function getFirebasePublicCerts() {
   if (cachedCerts.keys && Date.now() < cachedCerts.expiresAt) {
     return cachedCerts.keys;
   }
-  const res = await fetch(FIREBASE_CERTS_URL);
+  const res = await fetchUpstream(FIREBASE_CERTS_URL, undefined, 'dịch vụ xác thực Firebase (googleapis.com)');
   if (!res.ok) {
-    throw new Error('Không tải được chứng chỉ xác thực Firebase.');
+    const err = new UpstreamError('Không tải được chứng chỉ xác thực Firebase.', 'UPSTREAM_UNREACHABLE', 'HTTP ' + res.status);
+    throw err;
   }
   const cc = String(res.headers.get('cache-control') || '');
   const maxAgeMatch = cc.match(/max-age=(\d+)/i);
@@ -145,21 +191,375 @@ async function verifyFirebaseIdToken(authorizationHeader, projectId) {
   return {
     uid: payload.sub,
     email: typeof payload.email === 'string' ? payload.email : '',
+    token,
   };
 }
 
-function getGeminiClient() {
-  const apiKey = (process.env.GEMINI_API_KEY || '').trim();
-  if (!apiKey) {
+/* ===== Xác thực người gọi =====
+   ID token thường nằm ở header Authorization. Một số proxy/khung nhúng trong trình soạn thảo
+   chuyển tiếp thân request nhưng bỏ header, nên client gửi kèm auth_token trong thân JSON.
+   Vì vậy khi lấy token từ thân request, phải kiểm tra Origin/Referer để chặn trang khác gọi hộ
+   (không dùng cookie nên không có CSRF dựa trên cookie; đây là lớp bảo vệ bổ sung). */
+function originAllowed(req) {
+  const allowed = (process.env.ALLOWED_ORIGINS || '').split(',').map((x) => x.trim()).filter(Boolean);
+  let site = String(req.headers.origin || '').trim();
+  if (!site) {
+    const ref = String(req.headers.referer || '').trim();
+    if (ref) {
+      try { site = new URL(ref).origin; } catch (_) { site = ''; }
+    }
+  }
+  if (!site || site === 'null') return false;
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '');
+  try {
+    /* Cùng nguồn với máy chủ, kể cả khi chạy sau proxy của lớp xem trước. */
+    if (host && new URL(site).host === host) return true;
+  } catch (_) { /* Origin không hợp lệ: xét tiếp danh sách cho phép */ }
+  for (const item of allowed) {
+    if (item === '*') return true;
+    if (item === site) return true;
+    try {
+      if (host && new URL(item).host === new URL(site).host) return true;
+    } catch (_) { /* mục cấu hình sai thì bỏ qua */ }
+  }
+  return false;
+}
+
+/* ID token của request: ưu tiên header Authorization, sau đó tới auth_token trong thân JSON.
+   Client gửi cả hai vì một số proxy/khung nhúng bỏ header Authorization khi chuyển tiếp. */
+function callerToken(req) {
+  const header = String(req.headers.authorization || '');
+  if (header.startsWith('Bearer ')) return header;
+  /* Header riêng: proxy hay bỏ Authorization nhưng thường giữ header lạ. */
+  const privateHeader = String(req.headers['x-educmind-token'] || '');
+  if (privateHeader.startsWith('Bearer ')) return privateHeader;
+  let bodyToken = '';
+  try {
+    const body = isRecord(req.body) ? req.body : {};
+    bodyToken = typeof body.auth_token === 'string' ? body.auth_token.trim() : '';
+  } catch (_) { bodyToken = ''; }
+  if (!bodyToken) return '';
+  /* Token ngoài header chỉ nhận khi request đến từ chính ứng dụng này (chống trang khác gọi hộ). */
+  if (!originAllowed(req)) {
+    const err = new Error('Yêu cầu xác thực phải đến từ ứng dụng EducMind.');
+    err.status = 401;
+    throw err;
+  }
+  /* verifyFirebaseIdToken nhận nguyên giá trị header Authorization. */
+  return 'Bearer ' + bodyToken;
+}
+
+/* Thông tin chẩn đoán cho phản hồi 401: giúp phân biệt "trình duyệt không gửi token" với
+   "token sai/hết hạn" mà không làm lộ token. */
+function authDiagnostics(req) {
+  const header = String(req.headers.authorization || '');
+  const body = isRecord(req.body) ? req.body : {};
+  return {
+    hasAuthHeader: header.startsWith('Bearer '),
+    hasAltHeader: String(req.headers['x-educmind-token'] || '').startsWith('Bearer '),
+    hasBodyToken: typeof body.auth_token === 'string' && !!body.auth_token,
+    origin: String(req.headers.origin || ''),
+    host: String(req.headers['x-forwarded-host'] || req.headers.host || ''),
+  };
+}
+
+/* ===== API key Gemini của từng người dùng =====
+   Người dùng dán key ở Tài khoản → Quản lý API key Gemini. Trình duyệt gửi key một lần cho
+   /api/ai/key; máy chủ mã hoá AES-256-GCM (khoá suy ra từ biến môi trường AI_KEY_ENCRYPTION_KEY)
+   rồi ghi vào Firestore bằng chính ID token của người đó. Khi gọi AI, máy chủ đọc bản mã và giải mã;
+   key thô không bao giờ được trả lại trình duyệt và không nằm dạng đọc được trong Firestore.
+   Key dùng chung của hệ thống (GEMINI_API_KEY) chỉ còn là phương án dự phòng khi máy chủ được cấu hình. */
+const AI_KEY_COLLECTION = 'ai_keys';
+const AI_ENCRYPTION_SECRET = (process.env.AI_KEY_ENCRYPTION_KEY || '').trim();
+
+function keyEncryptionKey(usage) {
+  if (AI_ENCRYPTION_SECRET.length < 32) {
+    const err = new Error('Máy chủ chưa cấu hình khoá mã hoá API key (AI_KEY_ENCRYPTION_KEY từ 32 ký tự).');
+    err.status = 503;
+    err.code = 'MISSING_ENCRYPTION_KEY';
+    throw err;
+  }
+  const digest = crypto.createHash('sha256').update(AI_ENCRYPTION_SECRET, 'utf8').digest();
+  return crypto.createSecretKey(digest);
+}
+function encryptUserKey(uid, apiKey) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', keyEncryptionKey(), iv);
+  cipher.setAAD(Buffer.from(String(uid), 'utf8'));
+  const ciphertext = Buffer.concat([cipher.update(String(apiKey), 'utf8'), cipher.final()]);
+  return {
+    ciphertext: ciphertext.toString('base64'),
+    iv: iv.toString('base64'),
+    tag: cipher.getAuthTag().toString('base64'),
+  };
+}
+function decryptUserKey(uid, doc) {
+  const iv = Buffer.from(String(doc.iv || ''), 'base64');
+  const tag = Buffer.from(String(doc.tag || ''), 'base64');
+  const data = Buffer.from(String(doc.ciphertext || ''), 'base64');
+  if (iv.length !== 12 || tag.length !== 16 || !data.length) {
+    const err = new Error('Bản ghi API key không hợp lệ; hãy lưu lại key trong Tài khoản.');
+    err.status = 400;
+    err.code = 'KEY_RECORD_INVALID';
+    throw err;
+  }
+  const decipher = crypto.createDecipheriv('aes-256-gcm', keyEncryptionKey(), iv);
+  decipher.setAAD(Buffer.from(String(uid), 'utf8'));
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
+}
+
+/* Gọi Firestore REST bằng chính ID token của người dùng (rules áp dụng như trình duyệt). */
+function firestoreRest(projectId, databaseId, auth) {
+  const base = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}`
+    + `/databases/${encodeURIComponent(databaseId || '(default)')}/documents`;
+  const headers = { Authorization: 'Bearer ' + auth.token };
+  return {
+    async getDoc(path) {
+      const res = await fetchUpstream(`${base}/${path}`, { headers }, 'Firestore');
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        const err = new Error('Không đọc được bản ghi trên Firestore.');
+        err.status = res.status === 401 || res.status === 403 ? 403 : 502;
+        err.code = res.status === 403 ? 'FIRESTORE_DENIED' : 'FIRESTORE_ERROR';
+        throw err;
+      }
+      return res.json();
+    },
+    /* Ghi tài liệu với mốc thời gian do MÁY CHỦ Firestore đặt (setToServerTimestamp),
+       nhờ vậy rules dạng createdAt == request.time mới thoả. create: true khi tạo mới. */
+    async commitDoc(path, fields, opts) {
+      const create = !!(opts && opts.create);
+      const transforms = create
+        ? [{ fieldPath: 'createdAt', setToServerTimestamp: {} }, { fieldPath: 'updatedAt', setToServerTimestamp: {} }]
+        : [{ fieldPath: 'updatedAt', setToServerTimestamp: {} }];
+      const res = await fetchUpstream(`${base}:commit`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          writes: [{
+            update: { name: `projects/${projectId}/databases/${databaseId || '(default)'}/documents/${path}`, fields },
+            updateTransforms: transforms,
+            currentDocument: create ? { exists: false } : { exists: true },
+          }],
+        }),
+      }, 'Firestore');
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        console.error('Firestore commit bị từ chối:', res.status, body.slice(0, 300));
+        const err = new Error('Không lưu được bản ghi trên Firestore.');
+        err.status = res.status === 401 || res.status === 403 ? 403 : 502;
+        throw err;
+      }
+      return true;
+    },
+    async patchDoc(path, fields) {
+      const masked = Object.keys(fields).map((k) => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&');
+      const res = await fetchUpstream(`${base}/${path}?${masked}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields }),
+      }, 'Firestore');
+      if (!res.ok) {
+        const err = new Error('Không lưu được bản ghi trên Firestore.');
+        err.status = res.status === 401 || res.status === 403 ? 403 : 502;
+        throw err;
+      }
+      return res.json();
+    },
+    async deleteDoc(path) {
+      const res = await fetchUpstream(`${base}/${path}`, { method: 'DELETE', headers }, 'Firestore');
+      if (!res.ok && res.status !== 404) {
+        const err = new Error('Không xoá được bản ghi trên Firestore.');
+        err.status = res.status === 401 || res.status === 403 ? 403 : 502;
+        throw err;
+      }
+    },
+    async runQuery(structuredQuery) {
+      const res = await fetchUpstream(`${base}:runQuery`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ structuredQuery }),
+      }, 'Firestore');
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        console.error('Firestore runQuery bị từ chối:', res.status, body.slice(0, 300));
+        return { ok: false, status: res.status };
+      }
+      const rows = await res.json();
+      return { ok: true, rows: Array.isArray(rows) ? rows.filter((r) => r.document).map((r) => r.document) : [] };
+    },
+  };
+}
+
+const FS = {
+  str: (v) => ({ stringValue: String(v) }),
+  bool: (v) => ({ booleanValue: !!v }),
+  int: (v) => ({ integerValue: String(Math.trunc(v)) }),
+  ts: (v) => ({ timestampValue: String(v) }),
+};
+function fsRead(field) {
+  if (!field || typeof field !== 'object') return null;
+  if ('stringValue' in field) return field.stringValue;
+  if ('booleanValue' in field) return field.booleanValue;
+  if ('integerValue' in field) return Number(field.integerValue);
+  if ('doubleValue' in field) return Number(field.doubleValue);
+  if ('timestampValue' in field) return field.timestampValue;
+  if ('nullValue' in field) return null;
+  return null;
+}
+const fsFields = (doc) => (doc && doc.fields) || {};
+const keyDocPath = (uid) => `${AI_KEY_COLLECTION}/${encodeURIComponent(uid)}`;
+
+/* Lấy key của một người: ưu tiên key riêng đã lưu, sau đó (nếu máy chủ cho phép) key dùng chung. */
+async function resolveUserApiKey({ projectId, databaseId, uid, token }) {
+  const api = firestoreRest(projectId, databaseId, { token });
+  let ownError = null;
+  try {
+    const doc = await api.getDoc(keyDocPath(uid));
+    if (doc && doc.fields && doc.fields.ciphertext) {
+      const apiKey = decryptUserKey(uid, {
+        ciphertext: fsRead(doc.fields.ciphertext),
+        iv: fsRead(doc.fields.iv),
+        tag: fsRead(doc.fields.tag),
+      }).trim();
+      if (apiKey) return { apiKey, source: 'user' };
+    }
+  } catch (err) {
+    ownError = err;
+  }
+  const shared = (process.env.GEMINI_API_KEY || '').trim();
+  if (shared) return { apiKey: shared, source: 'server' };
+  if (ownError) throw ownError;
+  const err = new Error('Bạn chưa lưu API key Gemini. Mở Tài khoản → Quản lý API key Gemini để thiết lập.');
+  err.status = 400;
+  err.code = 'MISSING_API_KEY';
+  throw err;
+}
+
+/* Vai trò luôn lấy từ hồ sơ trên Firestore, không tin tham số do trình duyệt gửi. */
+async function loadUserProfile({ projectId, databaseId, uid, token }) {
+  const api = firestoreRest(projectId, databaseId, { token });
+  const doc = await api.getDoc(`profiles/${encodeURIComponent(uid)}`);
+  const f = fsFields(doc);
+  return {
+    role: fsRead(f.role) === 'TEACHER' ? 'TEACHER' : 'STUDENT',
+    fullName: fsRead(f.full_name) || '',
+  };
+}
+
+/* Giáo viên chủ lớp của một lớp (học sinh dùng chung key của giáo viên). */
+async function loadClassOwner({ projectId, databaseId, uid, token, classId }) {
+  if (!classId) return null;
+  const api = firestoreRest(projectId, databaseId, { token });
+  const doc = await api.getDoc(`classes/${encodeURIComponent(classId)}`);
+  const owner = fsRead(fsFields(doc).owner_teacher_id);
+  return owner && owner !== uid ? owner : null;
+}
+
+const AI_LOCK_MSG = 'Trợ lý AI đang tạm khoá vì em đang làm bài. Hãy nộp bài trước khi dùng lại.';
+/* Học sinh đang trong phiên làm bài tập/bài kiểm tra chưa nộp?
+   Kiểm tra trực tiếp trên máy chủ để tải lại trang hay đổi tab đều không mở khoá được:
+   - Có lượt làm bài kiểm tra IN_PROGRESS còn thời gian;
+   - Hoặc đã lưu câu trả lời cho một bài tập chưa nộp. */
+async function studentAiLocked({ projectId, databaseId, uid, token }) {
+  const api = firestoreRest(projectId, databaseId, { token });
+  const nowIso = new Date().toISOString();
+  const attempts = await api.runQuery({
+    from: [{ collectionId: 'assessment_attempts' }],
+    where: {
+      compositeFilter: {
+        op: 'AND',
+        filters: [
+          { fieldFilter: { field: { fieldPath: 'student_id' }, op: 'EQUAL', value: FS.str(uid) } },
+          { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: FS.str('IN_PROGRESS') } },
+        ],
+      },
+    },
+    limit: 10,
+  });
+  if (!attempts.ok) {
+    /* Không đọc được (rules/schema) thì không coi là đang làm bài: máy chủ vẫn còn lớp bảo vệ
+       đọc dữ liệu bài làm bên dưới và trạng thái phiên trên trình duyệt. */
+    return false;
+  }
+  if (attempts.rows.length) {
+    for (const doc of attempts.rows) {
+      const f = fsFields(doc);
+      const startedMs = Date.parse(fsRead(f.started_at) || '');
+      const endsMs = Number(fsRead(f.ends_at) || 0);
+      if (Number.isFinite(endsMs) && endsMs > 0) {
+        if (endsMs > Date.now()) return true;
+        continue;
+      }
+      /* Không có mốc kết thúc: coi như còn hiệu lực trong 6 giờ kể từ lúc bắt đầu. */
+      if (Number.isFinite(startedMs) && Date.now() - startedMs < 6 * 3600 * 1000) return true;
+    }
+  }
+  /* Đã lưu câu trả lời cho bài tập chưa nộp = đang trong phiên làm bài. */
+  const drafts = await api.runQuery({
+    from: [{ collectionId: 'assignment_submission_answers' }],
+    where: {
+      fieldFilter: { field: { fieldPath: 'student_id' }, op: 'EQUAL', value: FS.str(uid) },
+    },
+    limit: 60,
+  });
+  if (!drafts.ok || !drafts.rows.length) return false;
+  const submitted = new Set();
+  const subs = await api.runQuery({
+    from: [{ collectionId: 'assignment_submissions' }],
+    where: {
+      fieldFilter: { field: { fieldPath: 'student_id' }, op: 'EQUAL', value: FS.str(uid) },
+    },
+    limit: 200,
+  });
+  if (subs.ok) {
+    subs.rows.forEach((doc) => {
+      const f = fsFields(doc);
+      /* Đã nộp: có trạng thái hoặc mốc nộp. */
+      const status = fsRead(f.status);
+      if (status === 'SUBMITTED' || status === 'LATE' || fsRead(f.submitted_at)) submitted.add(fsRead(f.assignment_id));
+    });
+  }
+  return drafts.rows.some((doc) => {
+    const f = fsFields(doc);
+    const aid = fsRead(f.assignment_id);
+    if (!aid || submitted.has(aid)) return false;
+    const answeredAt = Date.parse(fsRead(f.updated_at) || fsRead(f.created_at) || '');
+    /* Câu trả lời quá cũ (ngoài 14 ngày) không còn coi là đang làm bài. */
+    return !Number.isFinite(answeredAt) || Date.now() - answeredAt < 14 * 86400000;
+  });
+}
+
+/* Giáo viên có thể tắt Trợ lý AI cho từng bài tập / bài kiểm tra (mặc định bật).
+   Trả về false khi bài đó bị tắt; bài không tồn tại hoặc đọc lỗi thì coi như bật. */
+async function workAllowsAi({ projectId, databaseId, uid, token, kind, workId }) {
+  if (!workId) return true;
+  const idOk = /^[a-zA-Z0-9_-]{1,200}$/.test(workId);
+  if (!idOk) return true;
+  const collection = kind === 'assessment' ? 'assessments' : 'assignments';
+  try {
+    const api = firestoreRest(projectId, databaseId, { token });
+    const doc = await api.getDoc(`${collection}/${encodeURIComponent(workId)}`);
+    if (!doc) return true;
+    return fsRead(fsFields(doc).student_ai_enabled) !== false;
+  } catch (_) {
+    return true;
+  }
+}
+
+function getGeminiClient(apiKey) {
+  const key = String(apiKey || '').trim() || (process.env.GEMINI_API_KEY || '').trim();
+  if (!key) {
     const err = new Error('Dịch vụ Gemini chưa được cấu hình trên máy chủ.');
     err.status = 503;
     err.code = 'MISSING_SERVER_API_KEY';
     throw err;
   }
   return {
-    apiKey,
+    apiKey: key,
     ai: new GoogleGenAI({
-      apiKey,
+      apiKey: key,
       httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
     }),
   };
@@ -182,7 +582,10 @@ async function withGeminiRetry(fn) {
       lastError = error;
       const msg = error instanceof Error ? error.message.toLowerCase() : '';
       const status = typeof error?.status === 'number' ? error.status : 0;
-      const retryable = RETRYABLE_STATUS.has(status) || /\b(429|500|502|503|504|unavailable|overloaded|timeout)\b/.test(msg);
+      /* Lỗi mạng của máy chủ (không gọi được Gemini) cũng thử lại rồi báo rõ nguyên nhân. */
+      const networkIssue = /fetch failed|econnreset|enotfound|etimedout|eai_again|network|socket hang up/i.test(msg);
+      const retryable = RETRYABLE_STATUS.has(status) || networkIssue
+        || /\b(429|500|502|503|504|unavailable|overloaded|timeout)\b/.test(msg);
       if (!retryable || attempt + 1 === MAX_AI_ATTEMPTS) throw error;
       await new Promise((resolve) => setTimeout(resolve, 900 * (2 ** attempt)));
     }
@@ -603,6 +1006,7 @@ export function createApp(options = {}) {
     : (options.serveSource === false ? true : (process.env.EDUCMIND_SERVE_SOURCE !== '1' && fs.existsSync(distIndex)));
   const firebaseCfg = loadFirebaseConfig(rootDir);
   const firebaseProjectId = firebaseCfg?.projectId || '';
+  const firebaseDatabaseId = firebaseCfg?.firestoreDatabaseId || '';
 
   const app = express();
   app.disable('x-powered-by');
@@ -614,6 +1018,36 @@ export function createApp(options = {}) {
   app.use(compressionMiddleware);
   app.use('/api', express.json({ limit: '1mb' }));
 
+  /* Chẩn đoán hạ tầng: máy chủ có kết nối được Google (Firebase Auth + Firestore) hay không.
+     Không trả về thông tin bí mật; dùng khi gặp lỗi "fetch failed". */
+  app.get('/api/health/upstream', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const probe = async (url, label) => {
+      const startedAt = Date.now();
+      try {
+        const r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(8000) });
+        return { label, ok: true, status: r.status, ms: Date.now() - startedAt };
+      } catch (err) {
+        return {
+          label,
+          ok: false,
+          ms: Date.now() - startedAt,
+          reason: (err && err.cause && (err.cause.code || err.cause.message)) || (err && err.message) || 'unknown',
+        };
+      }
+    };
+    const [certs, firestore] = await Promise.all([
+      probe(FIREBASE_CERTS_URL, 'Firebase Auth (googleapis.com)'),
+      probe(`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseProjectId || 'x')}/databases/${encodeURIComponent(firebaseDatabaseId || '(default)')}/documents?pageSize=1`, 'Firestore'),
+    ]);
+    res.status(certs.ok ? 200 : 503).json({
+      ok: certs.ok,
+      encryptionKeyConfigured: (process.env.AI_KEY_ENCRYPTION_KEY || '').trim().length >= 32,
+      firebaseProjectId: firebaseProjectId ? 'da cau hinh' : 'thieu',
+      probes: [certs, firestore],
+    });
+  });
+
   app.get('/api/server-now', (_req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({ now: new Date().toISOString() });
@@ -622,7 +1056,12 @@ export function createApp(options = {}) {
   app.post('/api/ai/generate', async (req, res) => {
     let apiKeyForRedaction = '';
     try {
-      await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId);
+      const auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId);
+      const profile = await loadUserProfile({ projectId: firebaseProjectId, databaseId: firebaseDatabaseId, uid: auth.uid, token: auth.token })
+        .catch(() => ({ role: 'STUDENT' }));
+      if (profile.role !== 'TEACHER') {
+        return res.status(403).json({ error: 'Chỉ giáo viên mới được dùng chức năng tạo câu hỏi bằng AI.' });
+      }
       const body = isRecord(req.body) ? req.body : {};
       const quantity = Number(body.quantity);
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
@@ -690,7 +1129,8 @@ export function createApp(options = {}) {
         `CONTEXT:\n${contextJson}`,
       ].join('\n');
 
-      const { ai, apiKey } = getGeminiClient();
+      const resolved = await resolveUserApiKey({ projectId: firebaseProjectId, databaseId: firebaseDatabaseId, uid: auth.uid, token: auth.token });
+      const { ai, apiKey } = getGeminiClient(resolved.apiKey);
       apiKeyForRedaction = apiKey;
       const configuredModel = (process.env.GEMINI_MODEL || '').trim();
       const model = /^[a-zA-Z0-9._-]+$/.test(configuredModel) && !/^gemini-(1\.5|2\.0|pro)/i.test(configuredModel)
@@ -728,10 +1168,149 @@ export function createApp(options = {}) {
     }
   });
 
+  /* ===== Quản lý API key Gemini của từng người ===== */
+  async function withAiAuth(req, res, fn) {
+    let auth;
+    try {
+      auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId);
+    } catch (err) {
+      res.status(err.status || 401).json({
+        error: err.message,
+        code: err.code || (err.status === 401 ? 'AUTH_REQUIRED' : ''),
+        ...(err.status === 401 ? { auth: authDiagnostics(req) } : {}),
+      });
+      return null;
+    }
+    if (!firebaseProjectId) {
+      res.status(500).json({ error: 'Thiếu cấu hình Firebase projectId.' });
+      return null;
+    }
+    const api = firestoreRest(firebaseProjectId, firebaseDatabaseId, { token: auth.token });
+    const profile = await loadUserProfile({ projectId: firebaseProjectId, databaseId: firebaseDatabaseId, uid: auth.uid, token: auth.token })
+      .catch(() => ({ role: 'STUDENT', fullName: '' }));
+    try {
+      return await fn({ auth, api, profile });
+    } catch (err) {
+      /* Lỗi mạng của máy chủ (không gọi được Google) trả 502 kèm code để giao diện báo đúng. */
+      const status = err.status || (err instanceof UpstreamError ? 502 : 500);
+      const code = err.code || (err instanceof UpstreamError ? 'UPSTREAM_UNREACHABLE' : '');
+      if (code === 'UPSTREAM_UNREACHABLE') console.error('Lỗi kết nối ra ngoài:', err.cause || err.message);
+      return res.status(status).json({ error: err.message, ...(code ? { code } : {}) });
+    }
+  }
+
+  /* Trạng thái key: POST để token dự phòng đi kèm được trong thân request
+     (GET/HEAD không được có phần thân). Vẫn giữ GET cho tương thích. */
+  const aiKeyStatusHandler = (req, res) => withAiAuth(req, res, async ({ auth, api, profile }) => {
+    const doc = await api.getDoc(keyDocPath(auth.uid));
+    const f = fsFields(doc);
+    const hasKey = !!(doc && f.ciphertext);
+    let classOwner = null;
+    if (profile.role !== 'TEACHER') {
+      const classId = String(req.query.classId || (isRecord(req.body) ? req.body.classId : '') || '');
+      if (classId) {
+        const owner = await loadClassOwner({ projectId: firebaseProjectId, databaseId: firebaseDatabaseId, uid: auth.uid, token: auth.token, classId }).catch(() => null);
+        if (owner) {
+          const ownerDoc = await api.getDoc(keyDocPath(owner)).catch(() => null);
+          classOwner = { hasKey: !!(ownerDoc && fsFields(ownerDoc).ciphertext) };
+        }
+      }
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      role: profile.role,
+      hasKey,
+      hint: hasKey ? (fsRead(f.key_hint) || '') : '',
+      updatedAt: hasKey ? (fsRead(f.updated_at) || '') : '',
+      classOwner,
+      sharedKeyAvailable: !!(process.env.GEMINI_API_KEY || '').trim(),
+    });
+  });
+  app.get('/api/ai/key', aiKeyStatusHandler);
+  app.post('/api/ai/key/status', aiKeyStatusHandler);
+
+  app.post('/api/ai/key', (req, res) => withAiAuth(req, res, async ({ auth, api }) => {
+    /* Kiểm tra khoá mã hoá trước: thiếu thì báo 503 rõ ràng thay vì để lỗi lúc mã hoá. */
+    if (AI_ENCRYPTION_SECRET.length < 32) {
+      return res.status(503).json({
+        error: 'Máy chủ chưa cấu hình khoá mã hoá API key (AI_KEY_ENCRYPTION_KEY từ 32 ký tự).',
+        code: 'MISSING_ENCRYPTION_KEY',
+      });
+    }
+    const body = isRecord(req.body) ? req.body : {};
+    const raw = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+    if (raw.length < 20 || raw.length > 200 || /\s/.test(raw)) {
+      return res.status(400).json({ error: 'API key không hợp lệ: cần chuỗi 20–200 ký tự, không có dấu cách.' });
+    }
+    let encrypted;
+    try {
+      encrypted = encryptUserKey(auth.uid, raw);
+    } catch (err) {
+      return res.status(err.status || 500).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+    }
+    const nowIso = new Date().toISOString();
+    const existingDoc = await api.getDoc(keyDocPath(auth.uid)).catch(() => null);
+    const fields = {
+      id: FS.str(auth.uid),
+      ciphertext: FS.str(encrypted.ciphertext),
+      iv: FS.str(encrypted.iv),
+      tag: FS.str(encrypted.tag),
+      key_hint: FS.str(raw.slice(-4)),
+      updated_at: FS.str(nowIso),
+    };
+    if (!existingDoc) {
+      fields.created_at = FS.str(nowIso);
+    }
+    /* createdAt / updatedAt do Firestore tự đặt (server timestamp) để khớp quy tắc bảo mật. */
+    await api.commitDoc(keyDocPath(auth.uid), fields, { create: !existingDoc });
+    res.json({ ok: true, hint: raw.slice(-4) });
+  }));
+
+  app.delete('/api/ai/key', (req, res) => withAiAuth(req, res, async ({ auth, api }) => {
+    await api.deleteDoc(keyDocPath(auth.uid));
+    res.json({ ok: true });
+  }));
+
+  /* Kiểm tra key thật sự dùng được với Gemini (gọi 1 phép sinh nội dung rất ngắn). */
+  app.post('/api/ai/key/test', (req, res) => withAiAuth(req, res, async ({ auth, api }) => {
+    /* Có thể kiểm tra key đang gõ (trước khi lưu) để người dùng biết key dùng được ngay. */
+    const body = isRecord(req.body) ? req.body : {};
+    const draftKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+    let key;
+    if (draftKey) {
+      if (draftKey.length < 20 || draftKey.length > 200 || /\s/.test(draftKey)) {
+        return res.status(400).json({ error: 'API key không hợp lệ: cần chuỗi 20–200 ký tự, không có dấu cách.' });
+      }
+      key = draftKey;
+    } else {
+      const doc = await api.getDoc(keyDocPath(auth.uid));
+      const f = fsFields(doc);
+      if (!doc || !f.ciphertext) {
+        return res.status(400).json({ error: 'Bạn chưa lưu API key Gemini.', code: 'MISSING_API_KEY' });
+      }
+      key = decryptUserKey(auth.uid, {
+        ciphertext: fsRead(f.ciphertext), iv: fsRead(f.iv), tag: fsRead(f.tag),
+      });
+    }
+    try {
+      const { ai } = getGeminiClient(key);
+      const out = await withGeminiRetry(() => ai.models.generateContent({
+        model: AI_MODELS.FAST,
+        contents: 'Trả lời đúng một từ: OK',
+        config: { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } },
+      }));
+      const text = String(out.text ?? '').trim();
+      res.json({ ok: true, model: AI_MODELS.FAST, sample: text.slice(0, 40) });
+    } catch (error) {
+      const err = sanitizeAiError(error, key);
+      res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+    }
+  }));
+
   app.post('/api/ai/chat', async (req, res) => {
     let apiKeyForRedaction = '';
     try {
-      await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId);
+      const auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId);
       const body = isRecord(req.body) ? req.body : {};
       const rawMessage = typeof body.message === 'string' ? body.message.trim() : '';
       if (!rawMessage || rawMessage.length > 4000) {
@@ -743,7 +1322,43 @@ export function createApp(options = {}) {
       const tier = typeof body.tier === 'string' && validTiers.has(body.tier) ? body.tier : 'auto';
       const includeContext = body.include_context !== false;
       const wantQuiz = body.want_quiz === true || (mode === 'quiz' && tier !== 'fast');
-      const isTeacher = body.role === 'TEACHER';
+      /* Vai trò lấy từ hồ sơ trên Firestore (không tin body.role do trình duyệt gửi). */
+      let profile;
+      try {
+        profile = await loadUserProfile({ projectId: firebaseProjectId, databaseId: firebaseDatabaseId, uid: auth.uid, token: auth.token });
+      } catch (_) {
+        profile = { role: body.role === 'TEACHER' ? 'TEACHER' : 'STUDENT', fullName: '' };
+      }
+      const isTeacher = profile.role === 'TEACHER';
+      /* Học sinh: giáo viên chủ lớp bật/tắt AI và trong lúc đang làm bài thì khoá hẳn. */
+      const classId = typeof body.class_id === 'string' ? body.class_id : '';
+      let teacherOwnedKey = '';
+      if (!isTeacher) {
+        if (await studentAiLocked({ projectId: firebaseProjectId, databaseId: firebaseDatabaseId, uid: auth.uid, token: auth.token }).catch(() => false)) {
+          return res.status(423).json({ error: AI_LOCK_MSG, code: 'AI_LOCKED_WHILE_WORKING' });
+        }
+        /* Giáo viên tắt Trợ lý AI cho đúng bài tập / bài kiểm tra này. */
+        const workKind = body.work_kind === 'assessment' ? 'assessment' : (body.work_kind === 'assignment' ? 'assignment' : '');
+        const workId = typeof body.work_id === 'string' ? body.work_id : '';
+        if (workKind && (await workAllowsAi({ projectId: firebaseProjectId, databaseId: firebaseDatabaseId, uid: auth.uid, token: auth.token, kind: workKind, workId }).catch(() => true)) === false) {
+          return res.status(403).json({
+            error: workKind === 'assessment' ? 'Giáo viên không cho dùng Trợ lý AI cho bài kiểm tra này.' : 'Giáo viên không cho dùng Trợ lý AI cho bài tập này.',
+            code: 'AI_DISABLED_FOR_WORK',
+          });
+        }
+        if (classId) {
+          const owner = await loadClassOwner({ projectId: firebaseProjectId, databaseId: firebaseDatabaseId, uid: auth.uid, token: auth.token, classId }).catch(() => null);
+          if (owner) {
+            const key = await resolveUserApiKey({ projectId: firebaseProjectId, databaseId: firebaseDatabaseId, uid: owner, token: auth.token }).catch((err) => ({ error: err }));
+            if (key && !key.error) {
+              /* dùng key của giáo viên chủ lớp cho học sinh */
+              teacherOwnedKey = key.apiKey;
+            } else if (key && key.error && key.error.code !== 'MISSING_API_KEY') {
+              throw key.error;
+            }
+          }
+        }
+      }
       const contextData = isRecord(body.contextData) ? body.contextData : {};
       const contextSummary = isRecord(body.contextSummary)
         ? body.contextSummary
@@ -754,7 +1369,12 @@ export function createApp(options = {}) {
         parts: [{ text: String(row?.content || '').slice(0, 8000) }],
       }));
 
-      const { ai, apiKey } = getGeminiClient();
+      let chatKey = teacherOwnedKey;
+      if (!chatKey) {
+        const resolved = await resolveUserApiKey({ projectId: firebaseProjectId, databaseId: firebaseDatabaseId, uid: auth.uid, token: auth.token });
+        chatKey = resolved.apiKey;
+      }
+      const { ai, apiKey } = getGeminiClient(chatKey);
       apiKeyForRedaction = apiKey;
 
       const selected = resolveChatModelConfig(tier, mode, rawMessage, wantQuiz);
@@ -817,6 +1437,274 @@ export function createApp(options = {}) {
         ...(err.code ? { code: err.code } : {}),
         ...(err.suggestedModel ? { suggestedModel: err.suggestedModel } : {}),
       });
+    }
+  });
+
+  /* ===== Adaptive Practice APIs (Staircase + Secure Grading + Mastery Recalc) ===== */
+  const PRACTICE_LEVELS = ['EASY', 'MEDIUM', 'HARD'];
+  const PRACTICE_DEFAULTS = {
+    practice_weight: 0.3,
+    practice_unlock_min_official: 1,
+    practice_session_length: 8,
+    practice_daily_scored_sessions: 3,
+    practice_max_share: 0.5,
+    dash_reteach_share: 0.4,
+    dash_min_students: 5,
+    dash_advanced_threshold: 0.8,
+    dash_inactive_days: 14,
+    dash_question_min_answers: 10,
+  };
+  const practiceStore = {
+    sessions: new Map(),
+    answers: new Map(),
+    mastery: new Map(),
+    evidence: new Map(),
+    snapshots: [],
+  };
+
+  function practiceNormText(s) {
+    return String(s == null ? '' : s).normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+  function gradePracticeAnswer(question, answer) {
+    if (!question) return { is_correct: false, score: 0 };
+    const kind = question.kind;
+    const key = question.correct_answer;
+    if (key == null) return { is_correct: false, score: 0 };
+    if (answer == null || answer === '') return { is_correct: false, score: 0 };
+    let ok = false;
+    if (kind === 'SINGLE_CHOICE') {
+      ok = Number(answer) === Number(key);
+    } else if (kind === 'TRUE_FALSE') {
+      const aBool = answer === true || String(answer).toLowerCase() === 'true' || Number(answer) === 1;
+      const kBool = key === true || String(key).toLowerCase() === 'true' || Number(key) === 1;
+      ok = aBool === kBool;
+    } else if (kind === 'MULTIPLE_CHOICE') {
+      const kSet = new Set([].concat(key).map(Number));
+      const aSet = new Set(Array.isArray(answer) ? answer.map(Number) : [Number(answer)]);
+      ok = kSet.size > 0 && kSet.size === aSet.size && [...kSet].every((x) => aSet.has(x));
+    } else if (kind === 'FILL_IN_BLANK') {
+      const kArr = Array.isArray(key) ? key : [String(key)];
+      const aArr = Array.isArray(answer) ? answer : [String(answer)];
+      ok = kArr.length > 0 && kArr.every((kVal, i) => practiceNormText(aArr[i]) !== '' && practiceNormText(aArr[i]) === practiceNormText(kVal));
+    } else if (kind === 'MATCHING') {
+      const kArr = Array.isArray(key) ? key.map(Number) : [];
+      const aArr = Array.isArray(answer) ? answer.map(Number) : [];
+      ok = kArr.length > 0 && kArr.every((kVal, i) => aArr[i] != null && Number(aArr[i]) === kVal);
+    } else {
+      return { is_correct: false, score: 0 };
+    }
+    return { is_correct: ok, score: ok ? 1 : 0 };
+  }
+  function practiceNextLevel(current, isCorrect, consecutiveCorrect) {
+    const idx = PRACTICE_LEVELS.indexOf(current);
+    if (isCorrect) {
+      if (consecutiveCorrect >= 2 && idx < PRACTICE_LEVELS.length - 1) return PRACTICE_LEVELS[idx + 1];
+      return current;
+    }
+    if (idx > 0) return PRACTICE_LEVELS[idx - 1];
+    return current;
+  }
+  function recalcMasteryWithPractice(officialScores, practiceScores, cfg) {
+    const wP = Number(cfg.practice_weight ?? PRACTICE_DEFAULTS.practice_weight);
+    const maxShare = Number(cfg.practice_max_share ?? PRACTICE_DEFAULTS.practice_max_share);
+    const allOfficial = officialScores.filter((v) => typeof v === 'number');
+    const allPractice = practiceScores.filter((v) => typeof v === 'number');
+    if (!allOfficial.length && !allPractice.length) return 0;
+    if (!allPractice.length) return allOfficial.reduce((a, b) => a + b, 0) / allOfficial.length;
+    if (!allOfficial.length) {
+      const avgP = allPractice.reduce((a, b) => a + b, 0) / allPractice.length;
+      return avgP * maxShare;
+    }
+    const nO = allOfficial.length;
+    const nP = allPractice.length;
+    const avgO = allOfficial.reduce((a, b) => a + b, 0) / nO;
+    const avgP = allPractice.reduce((a, b) => a + b, 0) / nP;
+    const wO = nO;
+    const wPP = nP * wP;
+    const share = wPP / (wO + wPP);
+    const f = Math.min(1, (share / Math.max(0.0001, 1 - share)) * (wO / Math.max(0.0001, wP * nO)));
+    const limitedPracticeWeight = Math.min(wPP, maxShare * (wO + wPP));
+    const effectiveWPP = limitedPracticeWeight * f;
+    const totalW = wO + effectiveWPP;
+    return (wO * avgO + effectiveWPP * avgP) / totalW;
+  }
+
+  app.get('/api/practice/config/:courseId', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ defaults: PRACTICE_DEFAULTS, courseId: req.params.courseId });
+  });
+
+  app.post('/api/practice/start', async (req, res) => {
+    try {
+      const auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId).catch(() => ({ uid: req.body?.student_id || 'demo-user' }));
+      const body = isRecord(req.body) ? req.body : {};
+      const objectiveId = String(body.objective_id || '').trim();
+      const courseId = String(body.course_id || '').trim();
+      const classId = String(body.class_id || '').trim();
+      if (!objectiveId || !courseId) return res.status(400).json({ error: 'Thiếu objective_id hoặc course_id.' });
+      const sessionLength = Math.min(50, Math.max(1, Number(body.session_length) || PRACTICE_DEFAULTS.practice_session_length));
+      const startLevel = PRACTICE_LEVELS.includes(body.start_level) ? body.start_level : 'MEDIUM';
+      const sessionId = crypto.randomUUID().replace(/-/g, '');
+      const nowIso = new Date().toISOString();
+      const session = {
+        id: sessionId,
+        class_id: classId,
+        course_id: courseId,
+        student_id: auth.uid,
+        objective_id: objectiveId,
+        recommendation_id: body.recommendation_id || null,
+        status: 'ACTIVE',
+        start_level: startLevel,
+        current_level: startLevel,
+        consecutive_correct: 0,
+        target_count: sessionLength,
+        answered_count: 0,
+        weighted_score: 0,
+        evidence_recorded: false,
+        started_at: nowIso,
+        completed_at: null,
+      };
+      practiceStore.sessions.set(sessionId, session);
+      return res.json({ session });
+    } catch (e) {
+      return res.status(500).json({ error: e.message || 'Không khởi tạo được phiên luyện tập.' });
+    }
+  });
+
+  app.post('/api/practice/next-question', async (req, res) => {
+    try {
+      await verifyFirebaseIdToken(callerToken(req), firebaseProjectId).catch(() => null);
+      const body = isRecord(req.body) ? req.body : {};
+      const sessionId = String(body.session_id || '');
+      const session = practiceStore.sessions.get(sessionId);
+      if (!session) return res.status(404).json({ error: 'Không tìm thấy phiên luyện tập.' });
+      if (session.status !== 'ACTIVE') return res.status(400).json({ error: 'Phiên đã kết thúc.' });
+      const q = body.question || null;
+      if (!q) return res.json({ done: false, question: null, seq: session.answered_count + 1, level: session.current_level });
+      const sanitized = {
+        id: q.id,
+        content: q.content,
+        kind: q.kind,
+        options: q.options || null,
+        difficulty: q.difficulty || session.current_level,
+        objective_ids: q.objective_ids || [],
+      };
+      return res.json({ done: false, question: sanitized, seq: session.answered_count + 1, level: session.current_level });
+    } catch (e) {
+      return res.status(500).json({ error: e.message || 'Lỗi lấy câu hỏi.' });
+    }
+  });
+
+  app.post('/api/practice/submit-answer', async (req, res) => {
+    try {
+      const auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId).catch(() => ({ uid: req.body?.student_id || 'anon' }));
+      const body = isRecord(req.body) ? req.body : {};
+      const sessionId = String(body.session_id || '');
+      const question = body.question || null;
+      const studentAnswer = body.answer;
+      const session = practiceStore.sessions.get(sessionId);
+      if (!session) return res.status(404).json({ error: 'Không tìm thấy phiên luyện tập.' });
+      if (!question) return res.status(400).json({ error: 'Thiếu câu hỏi.' });
+      const graded = gradePracticeAnswer(question, studentAnswer);
+      let nextConsecutive = graded.is_correct ? (session.consecutive_correct || 0) + 1 : 0;
+      const nextLevel = practiceNextLevel(session.current_level, graded.is_correct, nextConsecutive);
+      if (nextLevel !== session.current_level) nextConsecutive = 0;
+      session.consecutive_correct = nextConsecutive;
+      session.current_level = nextLevel;
+      session.answered_count = (session.answered_count || 0) + 1;
+      session.weighted_score = Number(session.weighted_score || 0) + Number(graded.score || 0);
+      if (session.answered_count >= session.target_count) {
+        session.status = 'COMPLETED';
+        session.completed_at = new Date().toISOString();
+      }
+      practiceStore.sessions.set(sessionId, session);
+      const answerId = crypto.randomUUID().replace(/-/g, '');
+      practiceStore.answers.set(answerId, {
+        id: answerId,
+        session_id: sessionId,
+        student_id: auth.uid,
+        objective_id: session.objective_id,
+        seq: session.answered_count,
+        question_id: question.id,
+        level: question.difficulty || session.current_level,
+        answer: studentAnswer,
+        is_correct: graded.is_correct,
+        score: graded.score,
+        answered_at: new Date().toISOString(),
+      });
+      return res.json({
+        is_correct: graded.is_correct,
+        score: graded.score,
+        correct_answer: question.correct_answer,
+        explain: question.explain || '',
+        next_level: nextLevel,
+        consecutive_correct: nextConsecutive,
+        answered_count: session.answered_count,
+        target_count: session.target_count,
+        completed: session.status === 'COMPLETED',
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message || 'Không chấm được câu trả lời.' });
+    }
+  });
+
+  app.post('/api/practice/finish', async (req, res) => {
+    try {
+      const auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId).catch(() => ({ uid: req.body?.student_id || 'anon' }));
+      const body = isRecord(req.body) ? req.body : {};
+      const sessionId = String(body.session_id || '');
+      let session = practiceStore.sessions.get(sessionId);
+      if (!session) return res.status(404).json({ error: 'Không tìm thấy phiên luyện tập.' });
+      const total = Number(session.target_count || PRACTICE_DEFAULTS.practice_session_length);
+      const answered = Number(session.answered_count || 0);
+      const rawScore = answered ? Number(session.weighted_score || 0) / Math.max(1, total) : 0;
+      const dailyCount = [...practiceStore.sessions.values()].filter((s) => s.student_id === auth.uid && s.objective_id === session.objective_id && s.status === 'COMPLETED' && s.started_at && new Date(s.started_at).toDateString() === new Date().toDateString()).length;
+      const cfg = { ...PRACTICE_DEFAULTS, ...(body.course_config || {}) };
+      const canScore = dailyCount <= Number(cfg.practice_daily_scored_sessions || 3);
+      const officialScores = Array.isArray(body.official_scores) ? body.official_scores : [];
+      const practiceScores = canScore ? [rawScore] : [];
+      const newMastery = recalcMasteryWithPractice(officialScores, practiceScores, cfg);
+      session.status = 'COMPLETED';
+      session.completed_at = new Date().toISOString();
+      session.evidence_recorded = canScore;
+      practiceStore.sessions.set(sessionId, session);
+      if (canScore) {
+        const evKey = `${session.student_id}_${session.objective_id}`;
+        if (!practiceStore.evidence.has(evKey)) practiceStore.evidence.set(evKey, []);
+        practiceStore.evidence.get(evKey).push({ score: rawScore, observed_at: session.completed_at, source_type: 'PRACTICE', source_id: sessionId });
+        const masteryKey = `${session.student_id}_${session.objective_id}`;
+        const prev = practiceStore.mastery.get(masteryKey) || { mastery_score: 0, evidence_count: 0 };
+        const evArr = practiceStore.evidence.get(evKey) || [];
+        practiceStore.mastery.set(masteryKey, { mastery_score: newMastery, evidence_count: prev.evidence_count + 1 });
+        practiceStore.snapshots.push({ id: crypto.randomUUID().replace(/-/g, ''), student_id: auth.uid, objective_id: session.objective_id, mastery_score: newMastery, evidence_count: prev.evidence_count + 1, recorded_at: session.completed_at });
+      }
+      return res.json({
+        session_id: sessionId,
+        total,
+        answered,
+        correct: Number(session.weighted_score || 0),
+        rate: rawScore,
+        mastery_score: newMastery,
+        evidence_recorded: canScore,
+        daily_scored: dailyCount,
+        daily_limit: Number(cfg.practice_daily_scored_sessions || 3),
+        message: canScore ? 'Đã ghi nhận điểm luyện tập vào mức nắm vững.' : 'Vượt giới hạn 3 phiên tính điểm/ngày — phiên này chỉ để ôn tập, không cộng điểm.',
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message || 'Không kết thúc được phiên.' });
+    }
+  });
+
+  app.get('/api/practice/history/:objectiveId', async (req, res) => {
+    try {
+      const auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId).catch(() => ({ uid: 'anon' }));
+      const objectiveId = req.params.objectiveId;
+      const key = `${auth.uid}_${objectiveId}`;
+      const list = (practiceStore.evidence.get(key) || []).slice(-20);
+      const mastery = practiceStore.mastery.get(key) || null;
+      return res.json({ evidence: list, mastery });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
     }
   });
 

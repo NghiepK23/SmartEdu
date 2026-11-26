@@ -2,9 +2,7 @@
    Giao diện Trợ lý AI Gemini (Cửa sổ nổi + Không gian trò chuyện) theo ngôn ngữ Daylight Sky & Azure Glass / Slate Night. */
 
 /* Nút điều hướng sidebar & nút bật nhanh trên thanh trên */
-.nav-ic-tile[data-nav-tone="chat"]{
-  background:linear-gradient(155deg,#2a8580,#1b5f5c);
-}
+/* Nút Trợ lý AI dùng tông tím của logo mới (xem bộ màu nav-ic-tile trong css/08). */
 .db-chat-top-btn{
   display:inline-flex;align-items:center;gap:6px;
   height:36px;min-height:36px;padding:0 12px;
@@ -13,11 +11,11 @@
   white-space:nowrap;
 }
 .db-chat-top-btn.is-active{
-  background:var(--brand)!important;
-  background-image:none!important;
+  background:linear-gradient(135deg,#4f8ef7,#6f5bd6)!important;
+  background-image:linear-gradient(135deg,#4f8ef7,#6f5bd6)!important;
   color:#fff!important;
   border-color:transparent!important;
-  box-shadow:0 6px 16px -6px rgba(31,111,107,.48);
+  box-shadow:0 6px 16px -6px rgba(79,110,220,.5);
 }
 .db-chat-top-btn.is-locked{
   opacity:.68;
@@ -113,7 +111,7 @@
 .db-chat-badge-ic{
   display:grid;place-items:center;flex:none;
   width:34px;height:34px;border-radius:11px;
-  background:linear-gradient(145deg,#2a8580,#175754);
+  background:var(--brand-logo-grad);
   color:#fff;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.35);
 }
@@ -603,4 +601,53 @@ body:has(.db-chat-drawer-host.is-open) .app-bg-controls{
   .db-chat-quiz-opt{min-height:44px}
   .db-chat-send-btn{min-height:42px}
   .db-chat-model-hint{display:none}
+}
+
+/* ===== Quản lý API key Gemini (Tài khoản) ===== */
+.db-ai-key-card{
+  display:grid;gap:10px;
+  margin:14px 0 4px;padding:14px 15px;
+  border:1px solid var(--lg-edge,var(--line));border-radius:16px;
+  background-image:linear-gradient(168deg,var(--lg-nested-a,var(--surface)),var(--lg-nested-b,var(--fill)));
+  box-shadow:var(--lg-nested-rim,0 0 0 .5px var(--line));
+}
+.db-ai-key-head{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:start}
+.db-ai-key-ic{
+  display:grid;place-items:center;width:34px;height:34px;border-radius:11px;
+  background:color-mix(in srgb,var(--brand-logo-accent,#6f5bd6) 16%,transparent);
+  color:var(--brand-logo-accent,#6f5bd6);
+}
+.db-ai-key-head b{display:block;font-size:.92rem;color:var(--ink);line-height:1.3}
+.db-ai-key-head small{display:block;margin-top:2px;font-size:.76rem;line-height:1.45;color:var(--muted)}
+.db-ai-key-note{
+  display:flex;align-items:flex-start;gap:7px;margin:0;
+  padding:7px 10px;border-radius:10px;
+  font-size:.78rem;line-height:1.45;
+}
+.db-ai-key-note .ic{flex:none;margin-top:1px}
+.db-ai-key-note.is-ok{background:var(--good-soft);color:var(--good)}
+.db-ai-key-note.is-warn{background:var(--need-soft);color:var(--need)}
+.db-ai-key-note.is-bad{background:var(--err-bg);color:var(--err-ink)}
+.db-ai-key-form{display:grid;gap:8px}
+.db-ai-key-form input{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.82rem;letter-spacing:.02em;width:100%}
+.db-ai-key-actions{display:flex;flex-wrap:wrap;gap:7px}
+.db-ai-key-help{margin:0;font-size:.74rem;line-height:1.5;color:var(--subtle,var(--muted))}
+.db-ai-key-help a{color:var(--brand-ink,var(--brand));font-weight:600}
+
+/* ===== Công tắc "cho phép học sinh dùng Trợ lý AI" trong form bài tập / bài kiểm tra ===== */
+.db-ai-switch{margin:12px 0 4px}
+.db-ai-switch-row{
+  display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:9px;
+  padding:11px 13px;border-radius:14px;
+  border:1px dashed var(--lg-edge,var(--line));
+  background:color-mix(in srgb,var(--fill) 55%,transparent);
+  cursor:pointer;
+}
+.db-ai-switch-row input{margin-top:2px;flex:none}
+.db-ai-switch-copy{display:grid;gap:2px;min-width:0}
+.db-ai-switch-copy b{font-size:.84rem;font-weight:650;color:var(--ink);line-height:1.35}
+.db-ai-switch-copy small{font-size:.75rem;line-height:1.45;color:var(--muted)}
+@media(max-width:560px){
+  .db-ai-key-card{padding:12px 12px}
+  .db-ai-key-actions .btn{flex:1 1 auto;justify-content:center}
 }

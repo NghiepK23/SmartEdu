@@ -5,13 +5,16 @@
 /* Danh mục điều hướng: [tên nhóm, [[khóa trang, nhãn, biểu tượng], …]] */
 const DB_NAV_T = [
   ['', [['home', 'Tổng quan', 'dashboard'], ['schedule', 'Lịch & việc cần làm', 'calendar']]],
-  ['Dạy học', [['content', 'Thư mục học tập', 'lessons'], ['assignments', 'Bài tập', 'navAsg'], ['questions', 'Ngân hàng câu hỏi', 'questionBank'], ['assessments', 'Bài kiểm tra', 'exam'], ['ai', 'AI tạo câu hỏi', 'spark'], ['chat', 'Trợ lý AI', 'chat']]],
-  ['Đánh giá học tập', [['progress', 'Mức độ nắm vững', 'mastery'], ['gaps', 'Lỗ hổng kiến thức', 'gaps'], ['recommend', 'Gợi ý học tập', 'recommend'], ['report', 'Báo cáo tiến bộ', 'trend']]],
+  ['Dạy học', [['content', 'Thư mục học tập', 'lessons'], ['assignments', 'Bài tập', 'navAsg'], ['questions', 'Ngân hàng câu hỏi', 'questionBank'], ['assessments', 'Bài kiểm tra', 'exam'], ['ai', 'AI tạo câu hỏi', 'spark']]],
+  /* 'chat' không nằm trong thanh bên: Trợ lý AI đã có nút riêng trên thanh trên
+     (mở khung chat nổi, có nút phóng to sang trang đầy đủ). Giữ mục này ở đây sẽ
+     tạo hai lối vào trùng nhau. */
+  ['Đánh giá học tập', [['progress', 'Mức độ nắm vững', 'mastery'], ['gaps', 'Lỗ hổng kiến thức', 'gaps'], ['recommend', 'Gợi ý học tập', 'recommend'], ['report', 'Báo cáo tiến bộ', 'trend'], ['class_overview', 'Chất lượng lớp học', 'target']]],
   ['Quản lý', [['classes', 'Lớp học phụ trách', 'classes'], ['trash', 'Thùng rác', 'trash'], ['history', 'Lịch sử chỉnh sửa', 'history']]],
 ];
 const DB_NAV_S = [
   ['', [['home', 'Tổng quan', 'dashboard'], ['schedule', 'Lịch & việc cần làm', 'calendar']]],
-  ['Học tập', [['lessons', 'Bài học', 'lessons'], ['assignments', 'Bài tập', 'assignments'], ['assessments', 'Bài kiểm tra', 'exam'], ['chat', 'Trợ lý AI', 'chat']]],
+  ['Học tập', [['lessons', 'Bài học', 'lessons'], ['assignments', 'Bài tập', 'assignments'], ['assessments', 'Bài kiểm tra', 'exam']]],
   ['Kết quả', [['progress', 'Mức nắm vững', 'mastery'], ['gaps', 'Lỗ hổng kiến thức', 'gaps'], ['recommend', 'Gợi ý học tập', 'recommend'], ['report', 'Báo cáo tiến bộ', 'trend']]],
   ['Lớp học', [['classes', 'Lớp của em', 'classes']]],
 ];
@@ -247,6 +250,29 @@ function dbDockSubItems(T) {
       { sub: 'hist-search', label: 'Tìm kiếm', icon: 'search', active: sub === 'hist-search' },
       { sub: 'hist-clear', label: 'Xóa lọc', icon: 'refresh', active: false },
     );
+  } else if (p === 'class_overview') {
+    items.push(
+      { sub: 'co-kpi', label: 'Chỉ số nhanh', icon: 'dashboard', active: !sub || sub === 'co-kpi' },
+      { sub: 'co-reteach', label: 'Cần dạy lại', icon: 'alert', active: sub === 'co-reteach' },
+      { sub: 'co-groups', label: 'Nhóm học sinh', icon: 'students', active: sub === 'co-groups' },
+      { sub: 'co-coverage', label: 'Độ phủ tài liệu', icon: 'target', active: sub === 'co-coverage' },
+      { sub: 'co-settings', label: 'Ngưỡng đánh giá', icon: 'settings', active: sub === 'co-settings' },
+    );
+  } else if (p === 'practice') {
+    const pr = typeof DB_PRACTICE !== 'undefined' ? DB_PRACTICE : null;
+    const active = !!(pr && pr.session && pr.session.status === 'ACTIVE');
+    if (active) {
+      items.push(
+        { sub: 'pr-answer', label: 'Trả lời', icon: 'play', active: !sub || sub === 'pr-answer' },
+        { sub: 'pr-trail', label: 'Lộ trình cấp độ', icon: 'mastery', active: sub === 'pr-trail' },
+      );
+    } else {
+      items.push(
+        { sub: 'pr-start', label: 'Bắt đầu', icon: 'play', active: !sub || sub === 'pr-start' },
+        { sub: 'pr-stats', label: 'Sẵn sàng', icon: 'list', active: sub === 'pr-stats' },
+        { sub: 'pr-resources', label: 'Tài liệu', icon: 'lessons', active: sub === 'pr-resources' },
+      );
+    }
   } else if (p === 'games') {
     items.push(
       { sub: 'game-modes', label: 'Chế độ chơi', icon: 'play', active: !sub || sub === 'game-modes' },
@@ -270,6 +296,16 @@ function dbSyncDockActive() {
     if (on) btn.setAttribute('aria-current', 'true');
     else btn.removeAttribute('aria-current');
   });
+  dbDockPillSync(dock);
+}
+
+/* Đặt viên thuốc trượt đúng vị trí mục đang chọn (kiểu tab bar iOS). */
+function dbDockPillSync(dock) {
+  if (!dock) return;
+  const active = dock.querySelector('.db-dock-item.is-active');
+  if (!active) { dock.style.setProperty('--dock-w', '0px'); return; }
+  dock.style.setProperty('--dock-x', active.offsetLeft + 'px');
+  dock.style.setProperty('--dock-w', active.offsetWidth + 'px');
 }
 
 function dbQuickCreateItems(T) {
@@ -297,8 +333,9 @@ function dbBottomDockHtml(T) {
     const badge = it.badge > 0 ? `<span class="db-dock-badge" aria-hidden="true">${it.badge > 9 ? '9+' : it.badge}</span>` : '';
     return `<button type="button" class="db-dock-item${it.active ? ' is-active' : ''}" data-act="dockSubAction" data-sub="${h(it.sub)}" ${it.active ? 'aria-current="true"' : ''} aria-label="${h(it.label)}" title="${h(it.label)}">${ic(it.icon, 16)}<span>${h(it.label)}</span>${badge}</button>`;
   }).join('');
-  return `<div class="db-dock-wrap" aria-label="Chức năng trang hiện tại">
-    <nav class="db-bottom-dock" aria-label="Chức năng bên trong mục hiện tại">${tabs}</nav>
+  const ctx = DB.page || 'home';
+  return `<div class="db-dock-wrap" aria-label="Chức năng trang hiện tại" data-context="${h(ctx)}">
+    <nav class="db-bottom-dock" aria-label="Chức năng bên trong mục hiện tại" data-context="${h(ctx)}">${tabs}</nav>
   </div>`;
 }
 
@@ -376,6 +413,11 @@ function dbGlobalSearchMatches(rawQuery) {
         out.push({ kind: 'act', act: s.act, icon: s.icon, title: s.title, sub: s.sub });
       }
     });
+    /* Trợ lý AI không còn mục riêng ở thanh bên; tìm kiếm vẫn phải mở được. */
+    const chatKeys = 'tro ly ai chat gemini hoi dap tu van';
+    if (dbFoldSearch('Trợ lý AI').includes(q) || chatKeys.includes(q)) {
+      out.push({ kind: 'act', act: 'toggleChatDrawer', icon: 'chat', title: 'Trợ lý AI', sub: 'Mở khung chat nổi' });
+    }
   }
   (DB.classes || []).forEach((c) => {
     if (q && dbFoldSearch(c.name).includes(q)) {
@@ -437,9 +479,9 @@ function dbShell(P, body) {
   const sub = typeof P.sub === 'function' ? P.sub() : P.sub;
   const activeClass = DB.classes.find((c) => c.id === DB.classId) || DB.classes[0] || null;
   const topClassPicker = DB.classes.length
-    ? (P.hideClass
+    ? (T || P.hideClass
         ? `<span class="user-role user-class-static">· Lớp: ${h(activeClass ? activeClass.name : '')}</span>`
-        : `<label class="user-class-picker" for="classSelect" title="${T ? 'Lớp đang chọn' : 'Lớp'}"><span class="user-class-label">Lớp:</span><select id="classSelect" data-change="setClass" aria-label="${T ? 'Lớp đang chọn' : 'Chọn lớp'}">${DB.classes.map((c) => `<option value="${h(c.id)}" ${c.id === DB.classId ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></label>`)
+        : `<label class="user-class-picker" for="classSelect" title="Lớp"><span class="user-class-label">Lớp:</span><select id="classSelect" data-change="setClass" aria-label="Chọn lớp">${DB.classes.map((c) => `<option value="${h(c.id)}" ${c.id === DB.classId ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></label>`)
     : `<span class="user-role user-class-static">· Chưa có lớp</span>`;
   const iconBtn = (label, icon, attrs, extra, cls) => `<button type="button" class="btn light icon-only ${cls || ''}" data-iconified="1" ${attrs} aria-label="${label}" title="${label}">${ic(icon, 18)}<span class="sr">${label}</span>${extra || ''}</button>`;
   const greetingName = h(dbName(DB.me));
@@ -459,7 +501,7 @@ function dbShell(P, body) {
     : '';
   const sideHeader = `
     <div class="side-brand">
-      <span class="side-brand-mark" aria-hidden="true">${ic('classes', 18)}</span>
+      ${brandMarkHtml()}
       <div class="side-brand-copy"><b>EducMind</b><small>${T ? 'Không gian giảng dạy' : 'Không gian học tập'}</small></div>
     </div>`;
   const searchResults = DB_UI.globalOpen ? dbGlobalSearchHtml(dbGlobalSearchMatches(DB_UI.globalQuery), DB_UI.globalQuery) : '';
@@ -488,10 +530,65 @@ function dbShell(P, body) {
       ${typeof dbNetBannerHtml === 'function' ? dbNetBannerHtml() : ''}
       ${setupNotice}
       ${studentHero}
-      <div class="view">${body}</div>${dbDialogHtml()}
+      <div class="view">${body}</div>
     </main>
-  </div>${dbBottomDockHtml(T)}${typeof dbChatDrawerHtml === 'function' ? dbChatDrawerHtml() : ''}<div class="db-settings-global-wrap" aria-hidden="true">${dbSettingsMenuHtml()}</div>`;
+  </div>${dbDialogHostHtml()}${dbBottomDockHtml(T)}${typeof dbChatDrawerHtml === 'function' ? dbChatDrawerHtml() : ''}<div class="db-settings-global-wrap" aria-hidden="true">${dbSettingsMenuHtml()}</div>`;
   applyLayer4Background();
+  dbMountDialogHost();
+  // iOS 26 adaptive morph — trigger morph animation khi đổi ngữ cảnh
+  requestAnimationFrame(()=>{
+    const w=document.querySelector('.db-dock-wrap');
+    if(w){ w.classList.remove('is-morphing'); void w.offsetWidth; w.classList.add('is-morphing'); setTimeout(()=>w.classList.remove('is-morphing'),520); }
+    dbDockPillSync(document.querySelector('.db-bottom-dock'));
+  });
+  if(!window.__dbDockPillBound){
+    window.__dbDockPillBound = true;
+    const sync=()=>dbDockPillSync(document.querySelector('.db-bottom-dock'));
+    window.addEventListener('resize',sync,{passive:true});
+    document.addEventListener('scroll',(e)=>{ if(e.target && e.target.classList && e.target.classList.contains('db-bottom-dock')) sync(); },{capture:true,passive:true});
+  }
+  // Đánh dấu body có dock để CSS ẩn nút trùng lặp trong khung chính
+  document.body.classList.toggle('has-db-dock', !!document.querySelector('.db-bottom-dock'));
+}
+
+/* Đưa hộp thoại ra khỏi #app (về body) để lớp phủ .ov phủ đúng toàn khung nhìn.
+   Nếu để trong #app/#main, backdrop-filter của khung kính biến #main thành
+   containing block khiến lớp phủ chỉ còn hình chữ nhật của #main (góc sắc, xám thô). */
+function dbMountDialogHost() {
+  if (typeof document === 'undefined' || !document.body) return;
+  const host = document.querySelector('#app .db-dialog-host');
+  if (!host) {
+    document.querySelectorAll('body > .db-dialog-host').forEach((n) => n.remove());
+    return;
+  }
+  let fixed = document.getElementById('db-dialog-root');
+  if (!fixed) {
+    fixed = document.createElement('div');
+    fixed.id = 'db-dialog-root';
+    fixed.className = 'db-dialog-host';
+    document.body.appendChild(fixed);
+  }
+  if (fixed.dataset.mark !== host.dataset.mark) {
+    /* Giữ nguyên giá trị người dùng đã gõ khi hộp thoại được vẽ lại (ví dụ sau lỗi). */
+    const typed = {};
+    fixed.querySelectorAll('.db-dialog input, .db-dialog textarea, .db-dialog select').forEach((f) => {
+      if (f.name) typed[f.name] = f.value;
+    });
+    fixed.innerHTML = host.innerHTML;
+    fixed.dataset.mark = host.dataset.mark;
+    Object.entries(typed).forEach(([name, value]) => {
+      const f = fixed.querySelector(`.db-dialog [name="${name}"]`);
+      if (f && !f.value) f.value = value;
+    });
+    /* Đưa tiêu điểm vào ô đầu tiên / nút Lưu: hộp thoại vừa được dời sang cổng ngoài #app. */
+    const target = fixed.querySelector('.db-dialog [autofocus], .db-dialog input, .db-dialog textarea, .db-dialog select, .db-dialog #db-dlg-ok');
+    if (target && fixed.contains(document.activeElement) === false) {
+      const active = document.activeElement;
+      const wasInside = active && active.closest && active.closest('#db-dialog-root');
+      if (!wasInside) target.focus({ preventScroll: true });
+    }
+  }
+  host.remove();
 }
 
 function dbFoldSearch(s) {
@@ -868,6 +965,18 @@ DB_ACT.dockSubAction = async (el) => {
   if (sub === 'hist-search') { dbDockScrollTo('#db-history-search', '#db-history-search'); dbSyncDockActive(); return; }
   if (sub === 'hist-clear' && typeof DB_ACT.clearHistoryFilters === 'function') { DB_UI.dockSub = ''; DB_ACT.clearHistoryFilters(); dbSyncDockActive(); return; }
 
+  if (sub === 'pr-start') { dbDockScrollTo('.db-practice-intro [data-act="practiceStart"]'); dbSyncDockActive(); return; }
+  if (sub === 'pr-stats') { dbDockScrollTo('.db-practice-stats'); dbSyncDockActive(); return; }
+  if (sub === 'pr-resources') { dbDockScrollTo('#db-practice-resources'); dbSyncDockActive(); return; }
+  if (sub === 'pr-answer') { dbDockScrollTo('.db-practice-question'); dbSyncDockActive(); return; }
+  if (sub === 'pr-trail') { dbDockScrollTo('.db-practice-trail'); dbSyncDockActive(); return; }
+
+  if (sub === 'co-kpi') { dbDockScrollTo('#db-co-kpi'); dbSyncDockActive(); return; }
+  if (sub === 'co-reteach') { dbDockScrollTo('#db-co-reteach'); dbSyncDockActive(); return; }
+  if (sub === 'co-coverage') { dbDockScrollTo('#db-co-coverage'); dbSyncDockActive(); return; }
+  if (sub === 'co-settings') { dbDockScrollTo('#db-co-settings', '#db-dash-reteach'); dbSyncDockActive(); return; }
+  if (sub === 'co-groups') { dbDockScrollTo('#db-co-groups'); dbSyncDockActive(); return; }
+
   if (sub === 'game-modes') { dbDockScrollTo('#db-h-gl'); dbSyncDockActive(); return; }
   if (sub === 'game-src') { dbDockScrollTo('#db-game-src', '#db-game-src'); dbSyncDockActive(); return; }
   if (sub === 'game-sound' && typeof DB_ACT.gameToggleSound === 'function') { DB_ACT.gameToggleSound(); return; }
@@ -1009,7 +1118,8 @@ DB_ACT.openAccount = async () => {
       ${dbField('Họ và tên', 'db-acc-name', `<input id="db-acc-name" name="full_name" maxlength="120" value="${h(DB.me.full_name)}" autocomplete="name">`)}
       ${hasPasswordProvider
         ? `<div class="field"><span class="db-label">Mật khẩu</span>${dbBtn('Đổi mật khẩu', 'changePassword', {}, 'light')}</div>`
-        : `<div class="field"><span class="db-label">Đăng nhập</span><p class="muted">Tài khoản Google</p></div>`}`,
+        : `<div class="field"><span class="db-label">Đăng nhập</span><p class="muted">Tài khoản Google</p></div>`}
+      ${typeof dbAiKeyPanelMarked === 'function' ? dbAiKeyPanelMarked() : ''}`,
     onOk: async (v) => {
       if (!v.full_name) throw new Error('Nhập họ và tên.');
       const className = String(v.class_name || '').trim(), subject = String(v.subject || '').trim();

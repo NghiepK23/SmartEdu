@@ -350,16 +350,17 @@ html[data-lg-scrolled="1"] .top{
 
 /* Thương hiệu EducMind ở đầu sidebar */
 .side-brand{
-  display:flex;align-items:center;gap:8px;
+  display:flex;align-items:center;gap:9px;
   padding:0 3px 6px;
 }
-.side-brand-mark{
-  display:grid;place-items:center;flex:none;
-  width:30px;height:30px;border-radius:9px;
-  background:linear-gradient(145deg,#2d918a 0%,#123e3b 100%);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.32),0 4px 10px -4px rgba(9,32,30,.45);
-  color:#ffffff;
+/* Dùng chung khối .logo-mark với màn hình đăng nhập/thanh trên, chỉ thu nhỏ lại,
+   để biểu tượng mở sách ở thanh bên và ở màn hình khoá là một hình giống hệt. */
+.side-brand .logo-mark{
+  width:34px;height:34px;border-radius:11px;
+  background:var(--brand-logo-grad);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.38),0 4px 10px -4px var(--brand-logo-shadow);
 }
+.side-brand .logo-mark svg{width:26px;height:26px}
 .side-brand-copy{min-width:0;display:grid;gap:1px}
 .side-brand-copy b{font:750 .98rem/1.1 var(--font-head);letter-spacing:-.025em;color:#ffffff}
 .side-brand-copy small{font-size:.73rem;color:rgba(210,235,230,.82);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -485,11 +486,12 @@ html[data-lg-scrolled="1"] .top{
 .nav-ic-tile[data-nav-tone="questions"]{background:linear-gradient(155deg,#c9883a,#a66921)}
 .nav-ic-tile[data-nav-tone="assessments"]{background:linear-gradient(155deg,#28968c,#1a6d66)}
 .nav-ic-tile[data-nav-tone="ai"]{background:linear-gradient(155deg,#d47451,#b35232)}
-.nav-ic-tile[data-nav-tone="chat"]{background:linear-gradient(155deg,#2f8f85,#1b655e)}
+.nav-ic-tile[data-nav-tone="chat"]{background:linear-gradient(155deg,#6f5bd6,#493f9d)}
 .nav-ic-tile[data-nav-tone="progress"]{background:linear-gradient(155deg,#4c95ad,#316f84)}
 .nav-ic-tile[data-nav-tone="gaps"]{background:linear-gradient(155deg,#d98b32,#b46d1b)}
 .nav-ic-tile[data-nav-tone="recommend"]{background:linear-gradient(155deg,#c89b3c,#9f7722)}
 .nav-ic-tile[data-nav-tone="report"]{background:linear-gradient(155deg,#399e6b,#24784d)}
+.nav-ic-tile[data-nav-tone="class_overview"]{background:linear-gradient(155deg,#8e7cc3,#63539b)}
 .nav-ic-tile[data-nav-tone="classes"]{background:linear-gradient(155deg,#3c7f8f,#275d6a)}
 .nav-ic-tile[data-nav-tone="trash"]{background:linear-gradient(155deg,#63777a,#47585b)}
 .nav-ic-tile[data-nav-tone="history"]{background:linear-gradient(155deg,#32949c,#216b72)}
@@ -555,7 +557,7 @@ html[data-lg-scrolled="1"] .top{
   border-radius:999px!important;
   color:var(--ink)!important;
   box-shadow:0 2px 10px -2px rgba(19,34,38,.18),inset 0 1px 0 #ffffff!important;
-  transition:transform .22s var(--ease-spring),box-shadow .22s var(--ease),left .22s var(--ease);
+  transition:transform .22s var(--ease-spring),box-shadow .22s var(--ease);
 }
 :root[data-theme="dark"] #app .layout>.side-toggle{
   background-image:linear-gradient(180deg,rgba(35,56,62,.95),rgba(22,36,41,.92))!important;
@@ -847,8 +849,8 @@ input[type="file"]::file-selector-button{
 }
 :root[data-theme="dark"] .avatar{background-image:linear-gradient(155deg,#1d4947,#143433);color:#d7ece8}
 .logo-mark{
-  background:linear-gradient(145deg,#2d918a 0%,#154946 100%);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 6px 14px -6px rgba(31,111,107,.45);
+  background:var(--brand-logo-grad);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.38),0 6px 14px -6px var(--brand-logo-shadow);
 }
 
 /* ---------------------------------------------------------------------
