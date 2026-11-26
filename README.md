@@ -268,6 +268,9 @@ Lưu ý bảo mật của backend:
 ### Học sinh
 
 - Vào lớp bằng mã lớp; xem bài học, mục tiêu và tài liệu đã xuất bản.
+  Mỗi học sinh chỉ thuộc **một lớp cho mỗi giáo viên (mỗi môn học)**: em không tự chuyển
+  lớp (thanh trên chỉ hiện tên lớp, không có ô chọn lớp) — giáo viên là người thêm, gỡ
+  hoặc chuyển lớp cho học sinh. Chỉ giáo viên dạy nhiều lớp mới có ô chọn lớp để chuyển.
 - Nộp/nộp lại bài tập bằng **tệp đính kèm** hoặc văn bản (kèm **thanh tiến trình** khi tải tệp);
   **xem trước** tệp đã nộp; xem điểm, nhận xét, rubric.
 - Làm bài kiểm tra có đồng hồ đếm ngược (tự lưu, tự nộp khi hết giờ, làm nhiều lượt

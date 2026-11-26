@@ -37,6 +37,49 @@ const DB_UI = {
 const dbActive = () => !!(logged && sess && sess.backend && DB.me);
 const dbIsTeacher = () => !!DB.me && DB.me.role === 'TEACHER';
 const dbClass = () => DB.classes.find((c) => c.id === DB.classId) || null;
+
+/* ===== Lớp của học sinh =====
+   Học sinh không tự chọn lớp: mỗi em chỉ thuộc MỘT lớp cho mỗi giáo viên (mỗi môn học).
+   Giáo viên là người tạo lớp, thêm / gỡ học sinh; muốn chuyển lớp thì giáo viên gỡ khỏi lớp cũ rồi thêm vào lớp mới.
+   Chỉ giáo viên (có nhiều lớp do mình tạo) hoặc học sinh học nhiều giáo viên khác nhau mới thấy ô chọn lớp. */
+const dbClassTeacherId = (c) => String((c && c.owner_teacher_id) || '');
+/* Học sinh được mở lớp khi đó là lớp hiện tại của em hoặc lớp của giáo viên khác (môn học khác). */
+function dbStudentCanOpenClass(id) {
+  if (dbIsTeacher()) return true;
+  if (!id) return false;
+  const target = DB.classes.find((c) => c.id === id);
+  if (!target) return false;
+  const current = dbClass();
+  if (!current || current.id === target.id) return true;
+  return dbClassTeacherId(current) !== dbClassTeacherId(target);
+}
+/* Ô chọn lớp ở thanh trên: giáo viên có nhiều lớp, hoặc học sinh học nhiều giáo viên khác nhau. */
+function dbShowClassPicker() {
+  if (dbIsTeacher()) return DB.classes.length > 1;
+  return new Set(DB.classes.map(dbClassTeacherId)).size > 1;
+}
+/* Chỉ giữ một lớp cho mỗi giáo viên: ưu tiên lớp ghi trong liên kết giáo viên – học sinh,
+   sau đó là lớp học sinh vào sớm nhất. Dùng để đọc danh sách lớp của học sinh. */
+function dbOneClassPerTeacher(classes, members, links) {
+  const list = (classes || []).filter((c) => c && c.id && !c.deleted_at);
+  const joinedAt = new Map((members || []).map((m) => [String(m.class_id), String(m.joined_at || '')]));
+  const linkedClass = new Map();
+  (links || []).forEach((l) => {
+    if (l && l.teacher_id && l.class_id) linkedClass.set(String(l.teacher_id), String(l.class_id));
+  });
+  const picked = new Map();
+  list.forEach((c) => {
+    const teacher = dbClassTeacherId(c);
+    const prev = picked.get(teacher);
+    if (!prev) { picked.set(teacher, c); return; }
+    const mine = linkedClass.get(teacher) === c.id, theirs = linkedClass.get(teacher) === prev.id;
+    if (mine !== theirs) { if (mine) picked.set(teacher, c); return; }
+    const a = joinedAt.get(c.id) || '', b = joinedAt.get(prev.id) || '';
+    if (a && (!b || a < b)) picked.set(teacher, c);
+  });
+  const keep = new Set([...picked.values()].map((c) => c.id));
+  return list.filter((c) => keep.has(c.id));
+}
 const dbTeacherSetupRequired = () => {
   if (!dbIsTeacher()) return false;
   const c = dbClass(), course = DB.course;
@@ -447,11 +490,14 @@ async function dbNavigateFromHash() {
   const page = parsed ? parsed.page : 'home';
   const arg = parsed ? parsed.arg : {};
   const classId = parsed ? parsed.classId : '';
-  if (classId && classId !== DB.classId && DB.classes.some((c) => c.id === classId)) {
-    await dbSetClass(classId, page, arg, { history: 'pop' });
-  } else {
-    await dbGo(page, arg, { history: 'pop' });
+  const wantedClass = classId && classId !== DB.classId && DB.classes.some((c) => c.id === classId) ? classId : '';
+  if (wantedClass && dbStudentCanOpenClass(wantedClass)) {
+    await dbSetClass(wantedClass, page, arg, { history: 'pop' });
+    return;
   }
+  await dbGo(page, arg, { history: 'pop' });
+  /* Học sinh không mở được lớp ghi trong URL (lớp khác của cùng giáo viên): đưa hash về lớp đang học. */
+  if (wantedClass) dbSyncUrl(true);
 }
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
   window.addEventListener('hashchange', () => {
@@ -516,8 +562,13 @@ async function dbLoadCourse() {
   if (typeof dbAiKeyLoad === 'function') dbAiKeyLoad(true).then(() => {}).catch(() => {});
 }
 async function dbSetClass(id, page, arg, opts) {
-  if (!dbIsTeacher()) {
-    toast('Học sinh không được đổi lớp - liên hệ giáo viên.');
+  if (!dbStudentCanOpenClass(id)) {
+    /* Học sinh không tự chuyển lớp trong cùng một môn học / cùng một giáo viên: trả ô chọn về lớp hiện tại. */
+    const sel = typeof document !== 'undefined' ? document.getElementById('classSelect') : null;
+    if (sel) sel.value = DB.classId;
+    toast('Lớp của em do giáo viên phân công nên không thể tự chuyển sang lớp khác trong cùng môn học. Hãy liên hệ giáo viên nếu cần chuyển lớp.');
+    /* Điều hướng bằng URL: đưa hash về lớp đang học thay vì lớp bị chặn. */
+    if (opts && opts.history === 'pop') dbSyncUrl(true);
     return;
   }
   DB.classId = id || '';
@@ -528,13 +579,15 @@ async function dbSetClass(id, page, arg, opts) {
 }
 async function dbLoadClasses(preferredId) {
   DB.classes = await dbCall(EducMindDB.listClasses());
-  if (preferredId && DB.classes.some((c) => c.id === preferredId)) {
-    DB.classId = preferredId;
-  } else if (!DB.classes.some((c) => c.id === DB.classId)) {
-    let saved = '';
-    try { saved = localStorage.getItem('educmind.db.class') || ''; } catch (_) {}
-    DB.classId = (DB.classes.find((c) => c.id === saved) || DB.classes[0] || { id: '' }).id;
-  }
+  const known = new Set(DB.classes.map((c) => c.id));
+  if (DB.classId && !known.has(DB.classId)) DB.classId = '';
+  let saved = '';
+  try { saved = localStorage.getItem('educmind.db.class') || ''; } catch (_) {}
+  /* Thứ tự ưu tiên: lớp trong URL → lớp đang chọn → lớp đã lưu của máy này → lớp đầu tiên.
+     Học sinh chỉ nhận lớp mà em được phép mở (lớp hiện tại hoặc lớp của giáo viên khác). */
+  const next = [preferredId, DB.classId, saved, DB.classes[0] && DB.classes[0].id]
+    .find((id) => !!id && known.has(id) && dbStudentCanOpenClass(id));
+  DB.classId = next || '';
   if (DB.classId) {
     try { localStorage.setItem('educmind.db.class', DB.classId); } catch (_) {}
   }

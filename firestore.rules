@@ -1024,6 +1024,8 @@ service cloud.firestore {
       allow list: if isSignedIn() && (
         existing().student_id == request.auth.uid || existing().teacher_id == request.auth.uid
       );
+      /* Mỗi học sinh chỉ có MỘT lớp cho mỗi giáo viên: không tạo tư cách thành viên thứ hai của cùng giáo viên.
+         Muốn chuyển lớp, giáo viên phải gỡ học sinh khỏi lớp cũ (liên kết teacher_students bị xóa) trước. */
       allow create: if isVerifiedUser()
         && isValidId(memberId)
         && isValidClassMember(incoming())
@@ -1034,6 +1036,11 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/classes/$(incoming().class_id)).data.owner_teacher_id == incoming().teacher_id
         && existsAfter(/databases/$(database)/documents/teacher_students/$(incoming().teacher_id + '_' + incoming().student_id))
         && existsAfter(/databases/$(database)/documents/student_teachers/$(incoming().student_id + '_' + incoming().teacher_id))
+        && (
+          !exists(/databases/$(database)/documents/teacher_students/$(incoming().teacher_id + '_' + incoming().student_id))
+          || get(/databases/$(database)/documents/teacher_students/$(incoming().teacher_id + '_' + incoming().student_id)).data.class_id == null
+          || get(/databases/$(database)/documents/teacher_students/$(incoming().teacher_id + '_' + incoming().student_id)).data.class_id == incoming().class_id
+        )
         && (
           incoming().teacher_id == request.auth.uid
           || (
