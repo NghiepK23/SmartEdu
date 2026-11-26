@@ -77,6 +77,9 @@
   .top .db-student-top-title,.top .user-greeting,.top .user-role,.top .user-class-label{display:none!important}
   .top .user-class-picker{padding:0 6px 0 8px}
   .top .user-class-picker>select#classSelect{max-width:105px;font-size:.76rem}
+  /* Lớp của học sinh là thông tin cố định: vẫn hiện chip (bỏ nhãn “Lớp:”) trên màn hình hẹp. */
+  .top .user .user-class-static{display:inline-flex!important;padding:0 9px;max-width:112px;overflow:hidden}
+  .top .user .user-class-static b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .app-bg-trigger,.login-bg-trigger{right:10px;bottom:10px;padding:6px 10px;font-size:.74rem}
 }
 @media(max-width:380px){

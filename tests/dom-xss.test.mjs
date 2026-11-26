@@ -950,14 +950,99 @@ test('DOM & XSS interactive tests for Botanical Teal shell, user card, global se
   assert.ok(document.getElementById('db-home-work-panel'), 'student home renders unified work table');
   assert.ok(document.querySelector('.db-dock-item[data-sub="home-todo"]'), 'student home dock shows internal todo filter');
   assert.equal(document.getElementById('db-dock-plus'), null, 'student bottom dock does not render + button');
-  const stuClassSelect = document.querySelector('.top .user #classSelect');
-  assert.ok(stuClassSelect, 'student topbar displays current class in role slot');
+  // Học sinh chỉ thuộc một lớp cho mỗi giáo viên: thanh trên hiện tên lớp cố định, KHÔNG có ô chọn lớp.
+  assert.equal(document.querySelector('.top .user #classSelect'), null, 'student topbar has no class switcher');
+  const stuClassChip = document.querySelector('.top .user .user-class-static');
+  assert.ok(stuClassChip && /10A1/.test(stuClassChip.textContent), 'student topbar shows the assigned class as static text');
   // Lớp của học sinh do giáo viên phân công: đổi lớp bị chặn ở tầng hành động.
   assert.equal(evalExpr('(DB_ACT.setClass({ value: "c2" }), role)'), 'S');
   assert.equal(evalExpr('DB.classId'), 'c1', 'student cannot switch class (action is guarded)');
   evalExpr(`DB.page = 'exam'; DBX = { assessment: { id: 'ex1', title: 'KT' }, attempt: { id: 'att1', status: 'IN_PROGRESS' }, questions: [], answers: {}, state: {}, debounce: {} }; dbRender();`);
   assert.equal(document.querySelector('.db-bottom-dock'), null, 'bottom dock is hidden during active exam');
   evalExpr(`DB_PAGES.exam && dbExamStop(false);`);
+});
+
+test('Class rules: one class per teacher, students cannot switch, teachers can', async () => {
+  const classes = [
+    { id: 'c1', name: '10A1', owner_teacher_id: 't1', created_at: '2026-09-01T00:00:00Z' },
+    { id: 'c2', name: '10A2', owner_teacher_id: 't1', created_at: '2026-09-02T00:00:00Z' },
+    { id: 'c3', name: '11B1', owner_teacher_id: 't2', created_at: '2026-09-03T00:00:00Z' },
+  ];
+  const members = [
+    { class_id: 'c2', student_id: 's1', teacher_id: 't1', joined_at: '2026-09-05T00:00:00Z' },
+    { class_id: 'c1', student_id: 's1', teacher_id: 't1', joined_at: '2026-09-04T00:00:00Z' },
+    { class_id: 'c3', student_id: 's1', teacher_id: 't2', joined_at: '2026-09-06T00:00:00Z' },
+  ];
+  const { evalExpr, document } = createDomTestContext({
+    EducMindDB: { listClasses: async () => ({ data: classes, error: null }) },
+  });
+  const json = (v) => JSON.stringify(v);
+
+  // Dữ liệu cũ có nhiều lớp cùng một giáo viên: mỗi giáo viên chỉ còn đúng một lớp.
+  const linked = evalExpr(`dbOneClassPerTeacher(${json(classes)}, ${json(members)}, [{ teacher_id: 't1', class_id: 'c2' }]).map((c) => c.id).join(',')`);
+  assert.equal(linked, 'c2,c3', 'link giáo viên – học sinh quyết định lớp đang học của mỗi môn');
+  const earliest = evalExpr(`dbOneClassPerTeacher(${json(classes)}, ${json(members)}, []).map((c) => c.id).join(',')`);
+  assert.equal(earliest, 'c1,c3', 'không có liên kết thì giữ lớp học sinh vào sớm nhất của mỗi giáo viên');
+
+  // Học sinh lớp 10A1 (giáo viên t1): không mở được lớp khác của cùng giáo viên.
+  evalExpr(`
+    role = 'S';
+    sess = { email: 'hs@edu.vn', role: 'S', t: Date.now(), backend: true, userId: 's1' };
+    DB.me = { id: 's1', email: 'hs@edu.vn', full_name: 'Minh', role: 'STUDENT' };
+    DB.classes = ${json(classes)};
+    DB.classId = 'c1';
+    DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.page = 'classes';
+    DB.data = { members: [], profiles: {}, courses: {} };
+  `);
+  assert.equal(evalExpr('dbStudentCanOpenClass("c2")'), false, 'học sinh không mở được lớp khác của cùng giáo viên');
+  assert.equal(evalExpr('dbStudentCanOpenClass("c1")'), true, 'học sinh vẫn ở lớp hiện tại của mình');
+  assert.equal(evalExpr('dbStudentCanOpenClass("c3")'), true, 'học sinh xem được lớp của giáo viên khác (môn khác)');
+  assert.equal(evalExpr('dbShowClassPicker()'), true, 'chỉ hiện ô chọn lớp khi học nhiều giáo viên khác nhau');
+  evalExpr('DB.classes = DB.classes.slice(0, 2);');
+  assert.equal(evalExpr('dbShowClassPicker()'), false, 'học sinh một giáo viên không có ô chọn lớp');
+  evalExpr(`DB.classes = ${json(classes)};`);
+
+  // Trang Lớp học của học sinh một giáo viên: không có nút đổi lớp, chỉ hiện lớp đang học.
+  evalExpr(`
+    DB.classes = ${json(classes.slice(0, 2))};
+    DB.classId = 'c1';
+    dbRender();
+  `);
+  assert.equal(document.querySelector('.top .user #classSelect'), null, 'học sinh một giáo viên không có ô chọn lớp ở thanh trên');
+  assert.equal(document.querySelector('#main .classcard button[data-act="selectClass"]'), null, 'thẻ lớp của học sinh không phải nút chuyển lớp');
+  assert.equal(document.querySelector('#main #classSelect'), null, 'trang lớp của học sinh không có ô chọn lớp');
+  assert.ok(/Đang học/.test(document.querySelector('#main .classcard').textContent), 'thẻ lớp ghi rõ lớp đang học');
+  evalExpr(`DB.classes = ${json(classes)}; DB.data = { members: [], profiles: {}, courses: {} };`);
+
+  // URL hash (hoặc lớp đã lưu) không kéo được học sinh sang lớp khác của cùng giáo viên.
+  const routed = await evalExpr(`(async () => {
+    DB.classId = 'c1';
+    await dbLoadClasses('c2');
+    const blocked = DB.classId;
+    await dbLoadClasses('c3');
+    return blocked + ',' + DB.classId;
+  })()`);
+  assert.equal(routed, 'c1,c3', 'học sinh chỉ được mở lớp khác khi lớp đó thuộc giáo viên khác');
+
+  // Giáo viên dạy nhiều lớp: có ô chọn lớp ở thanh trên và chuyển được giữa các lớp mình tạo.
+  evalExpr(`
+    role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 't1' };
+    DB.me = { id: 't1', email: 'gv@edu.vn', full_name: 'Cô Lan', role: 'TEACHER' };
+    DB.classes = [
+      { id: 'c1', name: '10A1', owner_teacher_id: 't1' },
+      { id: 'c2', name: '10A2', owner_teacher_id: 't1' },
+    ];
+    DB.classId = 'c1';
+    DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.page = 'classes';
+    DB.data = { members: [], invites: [], profiles: {}, courses: {}, archived: [] };
+    dbRender();
+  `);
+  assert.equal(evalExpr('dbStudentCanOpenClass("c2")'), true, 'giáo viên chuyển được sang lớp khác do mình tạo');
+  assert.ok(document.querySelector('.top .user #classSelect'), 'giáo viên nhiều lớp có ô chọn lớp ở thanh trên');
+  assert.equal(evalExpr('dbShowClassPicker()'), true, 'giáo viên có nhiều lớp luôn thấy ô chọn lớp');
 });
 
 test('Adaptive practice page (17-practice.js) exposes a floating dock and styled stats', async () => {

@@ -317,6 +317,20 @@ const EducMindDB = (() => {
     return idx[field];
   }
 
+  /* Mỗi học sinh chỉ thuộc MỘT lớp của một giáo viên (mỗi môn học).
+     Trả về lớp khác của cùng giáo viên mà học sinh đang thuộc, hoặc null.
+     Học sinh đọc được class_members của chính mình; giáo viên đọc được thành viên các lớp mình dạy. */
+  async function membershipInOtherClass(studentId, teacherId, exceptClassId) {
+    if (!studentId || !teacherId) return null;
+    const rows = teacherId === me()
+      ? await queryByField('class_members', 'teacher_id', teacherId).catch(() => [])
+      : await queryByField('class_members', 'student_id', studentId).catch(() => []);
+    const hit = rows.find((m) => m && m.student_id === studentId && m.teacher_id === teacherId && m.class_id !== exceptClassId);
+    if (!hit) return null;
+    const cls = await getById('classes', hit.class_id).catch(() => null);
+    return { class_id: hit.class_id, name: (cls && cls.name) || '' };
+  }
+
   async function recordRevision(classId, teacherId, entityType, entityId, action, beforeState, afterState) {
     if (!classId || teacherId !== me()) return;
     const { doc, setDoc, serverTimestamp } = api();
@@ -670,10 +684,16 @@ const EducMindDB = (() => {
           .filter((c) => !c.deleted_at)
           .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
       }
-      const members = await queryByField('class_members', 'student_id', uid);
+      const [members, links] = await Promise.all([
+        queryByField('class_members', 'student_id', uid),
+        queryByField('student_teachers', 'student_id', uid).catch(() => []),
+      ]);
       const classes = await getByIds('classes', members.map((m) => m.class_id));
-      return classes.filter((c) => !c.deleted_at)
-        .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+      /* Học sinh chỉ học MỘT lớp cho mỗi giáo viên: dữ liệu cũ (nhiều lớp cùng một giáo viên) được gộp về một lớp. */
+      const onePerTeacher = typeof dbOneClassPerTeacher === 'function'
+        ? dbOneClassPerTeacher(classes, members, links)
+        : classes.filter((c) => !c.deleted_at);
+      return onePerTeacher.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
     }, OperationType.LIST, 'classes'),
 
     listArchivedClasses: () => safeWrap(async () => {
@@ -814,6 +834,12 @@ const EducMindDB = (() => {
       const existingMember = await getById('class_members', memberId).catch(() => null);
       if (existingMember) return classId;
 
+      /* Học sinh đã ở một lớp khác của cùng giáo viên: không cho tự chuyển lớp. */
+      const other = await membershipInOtherClass(uid, teacherId, classId);
+      if (other) {
+        throw new Error('Em đã ở lớp “' + (other.name || 'khác') + '” của giáo viên này. Mỗi học sinh chỉ học một lớp cho mỗi môn học — hãy liên hệ giáo viên nếu cần chuyển lớp.');
+      }
+
       const tsId = `${teacherId}_${uid}`;
       const stId = `${uid}_${teacherId}`;
       const [hasTs, hasSt] = await Promise.all([
@@ -868,6 +894,10 @@ const EducMindDB = (() => {
       const memberId = `${classId}_${studentId}`;
       const existingMember = await getById('class_members', memberId).catch(() => null);
       if (existingMember) return 'ALREADY_MEMBER';
+
+      /* Một học sinh chỉ học một lớp cho mỗi giáo viên: giáo viên phải gỡ khỏi lớp cũ trước khi thêm vào lớp khác. */
+      const other = await membershipInOtherClass(studentId, teacherId, classId);
+      if (other) return 'ALREADY_IN_OTHER_CLASS:' + String(other.name || '');
 
       const tsId = `${teacherId}_${studentId}`;
       const stId = `${studentId}_${teacherId}`;

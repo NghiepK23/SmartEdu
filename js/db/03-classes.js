@@ -22,6 +22,12 @@ DB_PAGES.classes = {
 };
 
 const dbClassMeta = (c) => [c.grade ? 'Khối ' + h(c.grade) : '', h(c.school_year || '')].filter(Boolean).join(' · ');
+/* Kết quả EducMindDB.addStudentByEmail: "MÃ" hoặc "MÃ:tên lớp khác" (mã ALREADY_IN_OTHER_CLASS kèm tên lớp cũ). */
+function dbSplitStudentAddResult(raw) {
+  const text = String(raw || '');
+  const at = text.indexOf(':');
+  return at < 0 ? [text, ''] : [text.slice(0, at), text.slice(at + 1).trim()];
+}
 /* Mã lớp đang dùng: mã mới nhất chưa bị thu hồi và chưa hết hạn. */
 function dbActiveCode(invites, classId) {
   const now = dbNow();
@@ -112,8 +118,12 @@ function dbClassMembersPanel(c, d) {
 
 function dbClassesStudent(d) {
   const joined = Object.fromEntries((d.members || []).map((m) => [m.class_id, m.joined_at]));
+  /* Học sinh chỉ học một lớp cho mỗi giáo viên nên chỉ khi có nhiều giáo viên (nhiều môn) mới cần chọn lớp. */
+  const switchable = dbShowClassPicker();
   const cards = DB.classes.map((c) => `<div class="classcard${c.id === DB.classId ? ' selected' : ''}">
-      <div class="classcard-top"><button type="button" class="classcard-name" data-act="selectClass" data-id="${h(c.id)}" ${c.id === DB.classId ? 'aria-current="true"' : ''}><b>${h(c.name)}</b></button></div>
+      <div class="classcard-top">${switchable
+        ? `<button type="button" class="classcard-name" data-act="selectClass" data-id="${h(c.id)}" ${c.id === DB.classId ? 'aria-current="true"' : ''}><b>${h(c.name)}</b></button>`
+        : `<span class="classcard-name"><b>${h(c.name)}</b></span>`}${c.id === DB.classId ? '<span class="pill good">Đang học</span>' : ''}</div>
       <div class="meta">${dbClassMeta(c)}</div>
       <div class="meta">Môn học: <b>${h(((d.courses || {})[c.id] || {}).title || 'Chưa thiết lập')}</b></div>
       <div class="meta">Giáo viên: <b>${h(dbName(d.profiles[c.owner_teacher_id]))}</b></div>
@@ -122,6 +132,7 @@ function dbClassesStudent(d) {
   return `
   <section class="panel" aria-labelledby="db-h-join">
     <h2 id="db-h-join">Vào lớp bằng mã</h2>
+    <p class="lead">Mỗi học sinh chỉ vào một lớp cho mỗi giáo viên (mỗi môn học). Nếu em đã ở một lớp của giáo viên này, hãy nhờ giáo viên chuyển lớp.</p>
     <form data-act="joinClass" class="db-form-row" novalidate>
       ${dbField('Mã lớp', 'db-join-code-input', `<input id="db-join-code-input" name="code" maxlength="12" placeholder="Ví dụ: 3FA9C2D1" autocomplete="off" autocapitalize="characters" required>`)}
       <button type="submit" class="btn">Vào lớp</button>
@@ -130,15 +141,16 @@ function dbClassesStudent(d) {
   </section>
   <section class="panel" aria-labelledby="db-h-classes">
     <h2 id="db-h-classes">Lớp đang học</h2>
-    ${cards ? `<p class="lead">Bấm vào tên lớp để chọn lớp đang xem.</p><div class="grid db-class-grid">${cards}</div>` : dbEmpty('Em chưa vào lớp nào.')}
+    ${cards
+      ? switchable
+        ? `<p class="lead">Mỗi giáo viên phụ trách một lớp của em. Bấm vào tên lớp để xem nội dung môn học đó.</p><div class="grid db-class-grid">${cards}</div>`
+        : `<p class="lead">Lớp của em do giáo viên phân công nên em không tự chuyển lớp được.</p><div class="grid db-class-grid">${cards}</div>`
+      : dbEmpty('Em chưa vào lớp nào.')}
   </section>`;
 }
 
 /* ===== Thao tác ===== */
-DB_ACT.selectClass = (el) => {
-  if (!dbIsTeacher()) { toast('Học sinh không được đổi lớp - lớp do giáo viên phân công.'); return; }
-  dbSetClass(el.dataset.id, 'classes');
-};
+DB_ACT.selectClass = (el) => dbSetClass(el.dataset.id, 'classes');
 DB_ACT.copyCode = async (el) => {
   try { await navigator.clipboard.writeText(el.dataset.code); toast('Đã sao chép mã lớp ' + el.dataset.code + '.'); }
   catch (_) { toast('Không sao chép tự động được. Mã lớp: ' + el.dataset.code); }
@@ -210,13 +222,15 @@ DB_ACT.archiveClass = (el) => {
 DB_ACT.addStudent = (form) => dbRun(form, async (v) => {
   const email = (v.email || '').trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Nhập đúng địa chỉ email của học sinh.');
-  const r = await dbCall(EducMindDB.addStudentByEmail(DB.classId, email));
+  const r = String(await dbCall(EducMindDB.addStudentByEmail(DB.classId, email)) || '');
   if (r === 'ADDED') return void toast('Đã thêm ' + email + ' vào lớp.');
+  const [code, otherClass] = dbSplitStudentAddResult(r);
   throw new Error({
     ALREADY_MEMBER: 'Học sinh này đã ở trong lớp.',
+    ALREADY_IN_OTHER_CLASS: 'Học sinh này đang học lớp ' + (otherClass || 'khác') + ' của bạn. Mỗi học sinh chỉ học một lớp cho mỗi môn — hãy mở lớp đó, gỡ em khỏi lớp rồi thêm lại vào lớp này.',
     NOT_FOUND: 'Chưa có tài khoản nào dùng email này. Học sinh cần đăng ký tài khoản trước, hoặc tự vào lớp bằng mã lớp.',
     NOT_A_STUDENT: 'Email này thuộc tài khoản giáo viên nên không thêm vào lớp như học sinh được.',
-  }[r] || 'Không thêm được học sinh (' + r + ').');
+  }[code] || 'Không thêm được học sinh (' + r + ').');
 });
 DB_ACT.downloadClassStudentsTemplate = () => {
   DBTF.exportExcel('Mau_them_hoc_sinh_vao_lop.xlsx', [{
@@ -246,7 +260,7 @@ DB_ACT.importClassStudents = async (el) => {
     const emailIndex = headers.indexOf('email');
     const numberIndex = headers.indexOf('stt');
     if (numberIndex < 0 || nameIndex < 0 || emailIndex < 0) throw new Error('Tệp cần có đủ các cột STT, Họ và tên, Email.');
-    const report = { added: [], notFound: [], alreadyMember: [], notStudent: [], skipped: [], failed: [] };
+    const report = { added: [], notFound: [], alreadyMember: [], otherClass: [], notStudent: [], skipped: [], failed: [] };
     const seen = new Set(), candidates = [];
     rows.slice(headerIndex + 1).forEach((row, index) => {
       if (!row.some((cell) => String(cell == null ? '' : cell).trim())) return;
@@ -271,10 +285,12 @@ DB_ACT.importClassStudents = async (el) => {
     for (const student of candidates) {
       try {
         const result = await dbCall(EducMindDB.addStudentByEmail(classId, student.email));
-        if (result === 'ADDED') report.added.push(student);
-        else if (result === 'NOT_FOUND') report.notFound.push(student);
-        else if (result === 'ALREADY_MEMBER') report.alreadyMember.push(student);
-        else if (result === 'NOT_A_STUDENT') report.notStudent.push(student);
+        const [code, otherClass] = dbSplitStudentAddResult(result);
+        if (code === 'ADDED') report.added.push(student);
+        else if (code === 'NOT_FOUND') report.notFound.push(student);
+        else if (code === 'ALREADY_MEMBER') report.alreadyMember.push(student);
+        else if (code === 'ALREADY_IN_OTHER_CLASS') report.otherClass.push({ ...student, className: otherClass });
+        else if (code === 'NOT_A_STUDENT') report.notStudent.push(student);
         else report.failed.push({ ...student, reason: 'Máy chủ trả về kết quả không xác định (' + String(result) + ').' });
       } catch (error) {
         dbLogError(error);
@@ -282,13 +298,14 @@ DB_ACT.importClassStudents = async (el) => {
       }
     }
     const list = (items) => items.length
-      ? `<ul>${items.map((student) => `<li>Dòng ${h(student.line || student.number)} · ${h(student.name)} · ${h(student.email)}${student.reason ? ' — ' + h(student.reason) : ''}</li>`).join('')}</ul>`
+      ? `<ul>${items.map((student) => `<li>Dòng ${h(student.line || student.number)} · ${h(student.name)} · ${h(student.email)}${student.className ? ' — đang ở lớp ' + h(student.className) : ''}${student.reason ? ' — ' + h(student.reason) : ''}</li>`).join('')}</ul>`
       : '';
     const section = (title, items) => items.length ? `<p><b>${title} (${items.length})</b></p>${list(items)}` : '';
     const body = `<p>Đã kiểm tra ${candidates.length + report.skipped.length} dòng học sinh trong tệp <b>${h(file.name)}</b>.</p>
       ${section('Đã thêm vào lớp', report.added)}
       ${section('Chưa thể thêm vì email chưa có tài khoản học sinh', report.notFound)}
       ${section('Đã ở trong lớp', report.alreadyMember)}
+      ${section('Đang học lớp khác của cùng giáo viên (cần gỡ khỏi lớp cũ trước)', report.otherClass)}
       ${section('Email thuộc tài khoản không phải học sinh', report.notStudent)}
       ${section('Dòng bị bỏ qua', report.skipped)}
       ${section('Lỗi khi thêm', report.failed)}
