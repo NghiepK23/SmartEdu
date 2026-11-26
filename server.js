@@ -156,6 +156,70 @@ async function verifyFirebaseIdToken(authorizationHeader, projectId) {
   };
 }
 
+/* ===== Xác thực người gọi =====
+   ID token thường nằm ở header Authorization. Một số proxy/khung nhúng trong trình soạn thảo
+   chuyển tiếp thân request nhưng bỏ header, nên client gửi kèm auth_token trong thân JSON.
+   Vì vậy khi lấy token từ thân request, phải kiểm tra Origin/Referer để chặn trang khác gọi hộ
+   (không dùng cookie nên không có CSRF dựa trên cookie; đây là lớp bảo vệ bổ sung). */
+function originAllowed(req) {
+  const allowed = (process.env.ALLOWED_ORIGINS || '').split(',').map((x) => x.trim()).filter(Boolean);
+  let site = String(req.headers.origin || '').trim();
+  if (!site) {
+    const ref = String(req.headers.referer || '').trim();
+    if (ref) {
+      try { site = new URL(ref).origin; } catch (_) { site = ''; }
+    }
+  }
+  if (!site || site === 'null') return false;
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '');
+  try {
+    /* Cùng nguồn với máy chủ, kể cả khi chạy sau proxy của lớp xem trước. */
+    if (host && new URL(site).host === host) return true;
+  } catch (_) { /* Origin không hợp lệ: xét tiếp danh sách cho phép */ }
+  for (const item of allowed) {
+    if (item === '*') return true;
+    if (item === site) return true;
+    try {
+      if (host && new URL(item).host === new URL(site).host) return true;
+    } catch (_) { /* mục cấu hình sai thì bỏ qua */ }
+  }
+  return false;
+}
+
+/* ID token của request: ưu tiên header Authorization, sau đó tới auth_token trong thân JSON.
+   Client gửi cả hai vì một số proxy/khung nhúng bỏ header Authorization khi chuyển tiếp. */
+function callerToken(req) {
+  const header = String(req.headers.authorization || '');
+  let bodyToken = '';
+  try {
+    const body = isRecord(req.body) ? req.body : {};
+    bodyToken = typeof body.auth_token === 'string' ? body.auth_token.trim() : '';
+  } catch (_) { bodyToken = ''; }
+  if (header.startsWith('Bearer ')) return header;
+  if (!bodyToken) return '';
+  /* Chỉ nhận token trong thân khi request đến từ chính ứng dụng này (chống trang khác gọi hộ). */
+  if (!originAllowed(req)) {
+    const err = new Error('Yêu cầu xác thực phải đến từ ứng dụng EducMind.');
+    err.status = 401;
+    throw err;
+  }
+  /* verifyFirebaseIdToken nhận nguyên giá trị header Authorization. */
+  return 'Bearer ' + bodyToken;
+}
+
+/* Thông tin chẩn đoán cho phản hồi 401: giúp phân biệt "trình duyệt không gửi token" với
+   "token sai/hết hạn" mà không làm lộ token. */
+function authDiagnostics(req) {
+  const header = String(req.headers.authorization || '');
+  const body = isRecord(req.body) ? req.body : {};
+  return {
+    hasAuthHeader: header.startsWith('Bearer '),
+    hasBodyToken: typeof body.auth_token === 'string' && !!body.auth_token,
+    origin: String(req.headers.origin || ''),
+    host: String(req.headers['x-forwarded-host'] || req.headers.host || ''),
+  };
+}
+
 /* ===== API key Gemini của từng người dùng =====
    Người dùng dán key ở Tài khoản → Quản lý API key Gemini. Trình duyệt gửi key một lần cho
    /api/ai/key; máy chủ mã hoá AES-256-GCM (khoá suy ra từ biến môi trường AI_KEY_ENCRYPTION_KEY)
@@ -915,7 +979,7 @@ export function createApp(options = {}) {
   app.post('/api/ai/generate', async (req, res) => {
     let apiKeyForRedaction = '';
     try {
-      const auth = await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId);
+      const auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId);
       const profile = await loadUserProfile({ projectId: firebaseProjectId, databaseId: firebaseDatabaseId, uid: auth.uid, token: auth.token })
         .catch(() => ({ role: 'STUDENT' }));
       if (profile.role !== 'TEACHER') {
@@ -1031,9 +1095,13 @@ export function createApp(options = {}) {
   async function withAiAuth(req, res, fn) {
     let auth;
     try {
-      auth = await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId);
+      auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId);
     } catch (err) {
-      res.status(err.status || 401).json({ error: err.message });
+      res.status(err.status || 401).json({
+        error: err.message,
+        code: err.code || (err.status === 401 ? 'AUTH_REQUIRED' : ''),
+        ...(err.status === 401 ? { auth: authDiagnostics(req) } : {}),
+      });
       return null;
     }
     if (!firebaseProjectId) {
@@ -1150,7 +1218,7 @@ export function createApp(options = {}) {
   app.post('/api/ai/chat', async (req, res) => {
     let apiKeyForRedaction = '';
     try {
-      const auth = await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId);
+      const auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId);
       const body = isRecord(req.body) ? req.body : {};
       const rawMessage = typeof body.message === 'string' ? body.message.trim() : '';
       if (!rawMessage || rawMessage.length > 4000) {
@@ -1376,7 +1444,7 @@ export function createApp(options = {}) {
 
   app.post('/api/practice/start', async (req, res) => {
     try {
-      const auth = await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId).catch(() => ({ uid: req.body?.student_id || 'demo-user' }));
+      const auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId).catch(() => ({ uid: req.body?.student_id || 'demo-user' }));
       const body = isRecord(req.body) ? req.body : {};
       const objectiveId = String(body.objective_id || '').trim();
       const courseId = String(body.course_id || '').trim();
@@ -1413,7 +1481,7 @@ export function createApp(options = {}) {
 
   app.post('/api/practice/next-question', async (req, res) => {
     try {
-      await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId).catch(() => null);
+      await verifyFirebaseIdToken(callerToken(req), firebaseProjectId).catch(() => null);
       const body = isRecord(req.body) ? req.body : {};
       const sessionId = String(body.session_id || '');
       const session = practiceStore.sessions.get(sessionId);
@@ -1437,7 +1505,7 @@ export function createApp(options = {}) {
 
   app.post('/api/practice/submit-answer', async (req, res) => {
     try {
-      const auth = await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId).catch(() => ({ uid: req.body?.student_id || 'anon' }));
+      const auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId).catch(() => ({ uid: req.body?.student_id || 'anon' }));
       const body = isRecord(req.body) ? req.body : {};
       const sessionId = String(body.session_id || '');
       const question = body.question || null;
@@ -1490,7 +1558,7 @@ export function createApp(options = {}) {
 
   app.post('/api/practice/finish', async (req, res) => {
     try {
-      const auth = await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId).catch(() => ({ uid: req.body?.student_id || 'anon' }));
+      const auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId).catch(() => ({ uid: req.body?.student_id || 'anon' }));
       const body = isRecord(req.body) ? req.body : {};
       const sessionId = String(body.session_id || '');
       let session = practiceStore.sessions.get(sessionId);
@@ -1537,7 +1605,7 @@ export function createApp(options = {}) {
 
   app.get('/api/practice/history/:objectiveId', async (req, res) => {
     try {
-      const auth = await verifyFirebaseIdToken(req.headers.authorization, firebaseProjectId).catch(() => ({ uid: 'anon' }));
+      const auth = await verifyFirebaseIdToken(callerToken(req), firebaseProjectId).catch(() => ({ uid: 'anon' }));
       const objectiveId = req.params.objectiveId;
       const key = `${auth.uid}_${objectiveId}`;
       const list = (practiceStore.evidence.get(key) || []).slice(-20);

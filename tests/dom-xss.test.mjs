@@ -1720,3 +1720,55 @@ test('API key Gemini panel: status, save/test/delete, and the per-work AI switch
   const offSwitch = evalExpr(`dbAiSwitchHtml('assessment', false, 'Học sinh được dùng Trợ lý AI')`);
   assert.doesNotMatch(offSwitch, /\schecked/);
 });
+
+test('Server API auth: header Authorization and body auth_token both accepted, foreign origin rejected', async () => {
+  const { createApp } = await import('../server.js');
+  const app = createApp({ rootDir: ROOT, serveSource: false });
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  const post = (headers, body) => new Promise((resolve, reject) => {
+    const req = http.request(
+      { host: '127.0.0.1', port, path: '/api/ai/key', method: 'POST', headers: { Connection: 'close', 'Content-Type': 'application/json', ...headers } },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
+      },
+    );
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase-applet-config.json'), 'utf8'));
+  const jwt = [b64({ alg: 'RS256', kid: 'test' }), b64({ sub: 'u1', aud: cfg.projectId, iss: `https://securetoken.google.com/${cfg.projectId}`, exp: 9999999999, iat: 1, email_verified: true }), 'sig'].join('.');
+  const payload = { apiKey: 'AIzaXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' };
+
+  try {
+    // 1. Không có thông tin đăng nhập -> 401 kèm chẩn đoán, KHÔNG lộ token.
+    const none = await post({}, JSON.stringify(payload));
+    assert.equal(none.status, 401);
+    const noneJson = JSON.parse(none.body);
+    assert.equal(noneJson.code, 'AUTH_REQUIRED');
+    assert.equal(noneJson.auth.hasAuthHeader, false);
+    assert.equal(noneJson.auth.hasBodyToken, false);
+
+    // 2. Token chỉ nằm trong thân request nhưng đến từ nguồn khác -> từ chối (chống trang khác gọi hộ).
+    const foreign = await post({ Origin: 'https://evil.example' }, JSON.stringify({ ...payload, auth_token: jwt }));
+    assert.equal(foreign.status, 401);
+    assert.match(JSON.parse(foreign.body).error, /phải đến từ ứng dụng EducMind/);
+
+    // 3. Token trong thân, Origin cùng nguồn -> qua lớp xác thực (đi tiếp tới Firestore).
+    const sameOrigin = await post({ Origin: `http://127.0.0.1:${port}` }, JSON.stringify({ ...payload, auth_token: jwt }));
+    assert.doesNotMatch(sameOrigin.body, /Cần đăng nhập/, 'token trong thân phải được chấp nhận');
+    assert.doesNotMatch(sameOrigin.body, /phải đến từ ứng dụng/);
+
+    // 4. Token trong header Authorization (đường chuẩn) -> cũng qua lớp xác thực.
+    const viaHeader = await post({ Authorization: 'Bearer ' + jwt }, JSON.stringify(payload));
+    assert.doesNotMatch(viaHeader.body, /Cần đăng nhập/);
+    assert.doesNotMatch(viaHeader.body, new RegExp(jwt.slice(0, 24)), 'không phản chiếu token về trình duyệt');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

@@ -202,7 +202,15 @@ Mô hình: **mỗi người dùng mang API key của mình (BYO key)**, không c
    người dùng đã lưu key, vì key đã lưu sẽ không giải mã được.
 2. Áp dụng `firestore.rules` (đã có `ai_keys/{uid}` chỉ chủ sở hữu đọc/ghi, và trường
    `student_ai_enabled` trong `assignments`/`assessments`).
-3. Chỉ tên lớp/chủ đề/bài học/mục tiêu được gửi cho Gemini; dữ liệu cá nhân của học sinh không được gửi.
+3. Mọi lời gọi `/api/*` gửi Firebase ID token ở **cả** header `Authorization` **và** trường
+   `auth_token` trong thân JSON. Lý do: một số proxy/khung nhúng (như lớp xem trước của trình soạn thảo)
+   chuyển tiếp thân request nhưng bỏ header `Authorization`, khiến máy chủ tưởng người dùng chưa đăng nhập.
+   Khi lấy token từ thân, máy chủ kiểm tra `Origin`/`Referer` (cùng host hoặc trong `ALLOWED_ORIGINS`,
+   danh sách URL cách nhau dấu phẩy) để trang khác không gọi hộ; `auth_token` bị xoá khỏi body trước khi
+   xử lý nên không được ghi vào Firestore hay gửi cho Gemini. Phản hồi 401 kèm `code: AUTH_REQUIRED` và
+   trường `auth` (chỉ báo có/không có token, không lộ token) để chẩn đoán; trình duyệt tự làm mới token
+   và thử lại một lần.
+4. Chỉ tên lớp/chủ đề/bài học/mục tiêu được gửi cho Gemini; dữ liệu cá nhân của học sinh không được gửi.
    Câu hỏi do AI sinh ra vẫn ở trạng thái chờ giáo viên duyệt. Google áp hạn mức theo dự án gắn với
    từng key (nhiều key cùng một dự án vẫn dùng chung quota).
 

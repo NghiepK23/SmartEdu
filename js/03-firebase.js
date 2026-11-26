@@ -131,15 +131,34 @@ const EducMindDB = (() => {
     return await user.getIdToken(forceRefresh);
   }
 
-  async function apiRequest(method, url, body) {
-    const token = await getFreshIdToken(false);
+  /* Gọi API máy chủ kèm ID token.
+     Token được gửi ở CẢ header Authorization và trường auth_token trong thân request vì một số
+     proxy/khung nhúng (ví dụ lớp xem trước của trình soạn thảo) chuyển tiếp thân request nhưng
+     bỏ header Authorization — khi đó máy chủ vẫn xác thực được người dùng.
+     Không dùng cookie nên không có nguy cơ CSRF; máy chủ vẫn kiểm tra Origin/Referer cho request
+     có token trong thân (xem callerToken trong server.js). */
+  async function apiRequest(method, url, body, retried) {
+    let token;
+    try {
+      token = await getFreshIdToken(!!retried);
+    } catch (tokenErr) {
+      const err = new Error('Phiên đăng nhập đã hết hạn. Hãy tải lại trang và đăng nhập lại.');
+      err.status = 401;
+      err.details = { code: 'AUTH_REQUIRED', error: err.message, cause: tokenErr && tokenErr.message };
+      throw err;
+    }
+    if (!token) {
+      const err = new Error('Phiên đăng nhập đã hết hạn. Hãy tải lại trang và đăng nhập lại.');
+      err.status = 401;
+      err.details = { code: 'AUTH_REQUIRED', error: err.message };
+      throw err;
+    }
+    const hasBody = body !== undefined && body !== null;
+    const outgoing = hasBody ? { ...body, auth_token: token } : { auth_token: token };
     const res = await fetch(url, {
       method,
-      headers: {
-        Authorization: 'Bearer ' + token,
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(outgoing),
     });
     let payload = null;
     try { payload = await res.json(); } catch (_) { payload = null; }
@@ -148,6 +167,25 @@ const EducMindDB = (() => {
       const err = new Error(msg);
       err.status = res.status;
       err.details = payload;
+      /* Máy chủ trả 401 vì không nhận được thông tin đăng nhập: làm mới token rồi thử lại một lần
+         (token có thể vừa hết hạn trong tab đang mở lâu). */
+      if (res.status === 401 && !retried && payload && payload.code === 'AUTH_REQUIRED') {
+        retried = true;
+        const fresh = await getFreshIdToken(true);
+        const retryRes = await fetch(url, {
+          method,
+          headers: { Authorization: 'Bearer ' + fresh, 'Content-Type': 'application/json' },
+          body: JSON.stringify(hasBody ? { ...body, auth_token: fresh } : { auth_token: fresh }),
+        });
+        let retryPayload = null;
+        try { retryPayload = await retryRes.json(); } catch (_) { retryPayload = null; }
+        if (retryRes.ok) return retryPayload;
+        const retryMsg = (retryPayload && (retryPayload.error || retryPayload.message)) || ('HTTP ' + retryRes.status);
+        const retryErr = new Error(retryMsg);
+        retryErr.status = retryRes.status;
+        retryErr.details = retryPayload;
+        throw retryErr;
+      }
       throw err;
     }
     return payload;

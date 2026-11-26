@@ -25,7 +25,11 @@ async function dbAiKeyLoad(force) {
   try {
     const { data, error } = await EducMindDB.aiKeyStatus(DB.classId || '');
     if (error) {
-      DB_AI_KEY.error = error.message || 'Không kiểm tra được API key.';
+      /* Lỗi 401 ở đây là chuyện của phiên đăng nhập, không phải của API key:
+         báo đúng nguyên nhân để người dùng không tưởng là đã lưu key thất bại. */
+      DB_AI_KEY.error = error.status === 401
+        ? 'Phiên đăng nhập chưa sẵn sàng nên chưa kiểm tra được API key. Hãy tải lại trang (F5) rồi thử lại.'
+        : (error.message || 'Không kiểm tra được API key.');
       DB_AI_KEY.status = null;
     } else {
       DB_AI_KEY.status = data || null;
@@ -141,7 +145,12 @@ DB_ACT.aiKeySave = async () => {
   dbAiKeyPaint();
   try {
     const { data, error } = await EducMindDB.aiKeySave(key);
-    if (error) throw new Error(error.message || 'Không lưu được API key.');
+    if (error) {
+      if (error.status === 401) {
+        throw new Error('Máy chủ chưa nhận được thông tin đăng nhập. Hãy tải lại trang (F5) rồi lưu lại key.');
+      }
+      throw new Error(error.message || 'Không lưu được API key.');
+    }
     DB_UI.aiKeyDraft = '';
     await dbAiKeyLoad(true);
     toast(data && data.hint ? `Đã lưu API key (••••${data.hint}).` : 'Đã lưu API key.');

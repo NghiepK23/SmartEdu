@@ -162,3 +162,53 @@ test('AI access follows role, exam/assignment sessions, and the per-work teacher
   assert.equal(noKeyState.allowed, false);
   assert.match(noKeyState.reason, /API key/);
 });
+
+test('apiRequest sends the ID token in header and body, and retries once with a fresh token on AUTH_REQUIRED', async () => {
+  // Dựng ngữ cảnh riêng với fetch giả lập để quan sát request thật.
+  const fsMod = await import('node:fs');
+  const pathMod = await import('node:path');
+  const vmMod = await import('node:vm');
+  const root = pathMod.resolve(pathMod.dirname(new URL(import.meta.url).pathname), '..');
+  const seen = [];
+  let tokenVersion = 'TOKEN1';
+  const responses = [
+    { ok: false, status: 401, json: async () => ({ error: 'Cần đăng nhập', code: 'AUTH_REQUIRED' }) },
+    { ok: true, status: 200, json: async () => ({ ok: true, hint: '4321' }) },
+  ];
+  const noop = () => {};
+  const sandbox = {
+    console, Date, Math, JSON, Number, String, Boolean, Array, Object, Set, Map, RegExp, Error, Promise,
+    document: { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener: noop },
+    location: { origin: 'http://localhost:3000', pathname: '/', search: '', hash: '' },
+    history: { pushState: noop, replaceState: noop },
+    localStorage: { getItem: () => null, setItem: noop, removeItem: noop, clear: noop },
+    addEventListener: noop, removeEventListener: noop, toast: noop, render: noop,
+    app: { innerHTML: '', addEventListener: noop, querySelector: () => null, querySelectorAll: () => [] },
+    fetch: async (url, opts) => {
+      seen.push({ url, headers: opts.headers, body: JSON.parse(opts.body) });
+      return responses.shift();
+    },
+  };
+  /* 03-firebase.js đọc runtime Firebase từ window.EducMindFirebase. */
+  sandbox.window = sandbox;
+  sandbox.EducMindFirebase = {
+    firestoreApi: {},
+    authApi: { onAuthStateChanged: () => {} },
+    auth: { currentUser: { uid: 'u1', email: 'gv@edu.vn', getIdToken: async (force) => { if (force) tokenVersion = 'TOKEN2'; return tokenVersion; } } },
+  };
+  sandbox.globalThis = sandbox;
+  const ctx = vmMod.createContext(sandbox);
+  for (const rel of ['js/00-grade-config.js', 'js/02-state.js', 'js/03-firebase.js']) {
+    vmMod.runInContext(fsMod.readFileSync(pathMod.join(root, rel), 'utf8'), ctx, { filename: rel });
+  }
+  vmMod.runInContext("sess = { userId: 'u1', backend: true }; role = 'T'; DB = { me: { id: 'u1', role: 'TEACHER' } };", ctx);
+  const res = await vmMod.runInContext("EducMindDB.aiKeySave('AIzaTestKey0123456789abcdef')", ctx);
+
+  assert.equal(res.error, null, 'lần thử lại với token mới phải thành công');
+  assert.equal(seen.length, 2, 'đúng một lần thử lại');
+  assert.equal(seen[0].headers.Authorization, 'Bearer TOKEN1');
+  assert.equal(seen[0].body.auth_token, 'TOKEN1', 'token cũng nằm trong thân request (proxy có thể bỏ header)');
+  assert.equal(seen[1].headers.Authorization, 'Bearer TOKEN2', 'lần thử lại dùng token đã làm mới');
+  assert.equal(seen[1].body.auth_token, 'TOKEN2');
+  assert.equal(seen[0].body.apiKey, 'AIzaTestKey0123456789abcdef');
+});
