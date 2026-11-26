@@ -190,14 +190,17 @@ function originAllowed(req) {
    Client gửi cả hai vì một số proxy/khung nhúng bỏ header Authorization khi chuyển tiếp. */
 function callerToken(req) {
   const header = String(req.headers.authorization || '');
+  if (header.startsWith('Bearer ')) return header;
+  /* Header riêng: proxy hay bỏ Authorization nhưng thường giữ header lạ. */
+  const privateHeader = String(req.headers['x-educmind-token'] || '');
+  if (privateHeader.startsWith('Bearer ')) return privateHeader;
   let bodyToken = '';
   try {
     const body = isRecord(req.body) ? req.body : {};
     bodyToken = typeof body.auth_token === 'string' ? body.auth_token.trim() : '';
   } catch (_) { bodyToken = ''; }
-  if (header.startsWith('Bearer ')) return header;
   if (!bodyToken) return '';
-  /* Chỉ nhận token trong thân khi request đến từ chính ứng dụng này (chống trang khác gọi hộ). */
+  /* Token ngoài header chỉ nhận khi request đến từ chính ứng dụng này (chống trang khác gọi hộ). */
   if (!originAllowed(req)) {
     const err = new Error('Yêu cầu xác thực phải đến từ ứng dụng EducMind.');
     err.status = 401;
@@ -214,6 +217,7 @@ function authDiagnostics(req) {
   const body = isRecord(req.body) ? req.body : {};
   return {
     hasAuthHeader: header.startsWith('Bearer '),
+    hasAltHeader: String(req.headers['x-educmind-token'] || '').startsWith('Bearer '),
     hasBodyToken: typeof body.auth_token === 'string' && !!body.auth_token,
     origin: String(req.headers.origin || ''),
     host: String(req.headers['x-forwarded-host'] || req.headers.host || ''),
@@ -1118,13 +1122,15 @@ export function createApp(options = {}) {
     }
   }
 
-  app.get('/api/ai/key', (req, res) => withAiAuth(req, res, async ({ auth, api, profile }) => {
+  /* Trạng thái key: POST để token dự phòng đi kèm được trong thân request
+     (GET/HEAD không được có phần thân). Vẫn giữ GET cho tương thích. */
+  const aiKeyStatusHandler = (req, res) => withAiAuth(req, res, async ({ auth, api, profile }) => {
     const doc = await api.getDoc(keyDocPath(auth.uid));
     const f = fsFields(doc);
     const hasKey = !!(doc && f.ciphertext);
     let classOwner = null;
     if (profile.role !== 'TEACHER') {
-      const classId = String(req.query.classId || '');
+      const classId = String(req.query.classId || (isRecord(req.body) ? req.body.classId : '') || '');
       if (classId) {
         const owner = await loadClassOwner({ projectId: firebaseProjectId, databaseId: firebaseDatabaseId, uid: auth.uid, token: auth.token, classId }).catch(() => null);
         if (owner) {
@@ -1142,7 +1148,9 @@ export function createApp(options = {}) {
       classOwner,
       sharedKeyAvailable: !!(process.env.GEMINI_API_KEY || '').trim(),
     });
-  }));
+  });
+  app.get('/api/ai/key', aiKeyStatusHandler);
+  app.post('/api/ai/key/status', aiKeyStatusHandler);
 
   app.post('/api/ai/key', (req, res) => withAiAuth(req, res, async ({ auth, api }) => {
     const body = isRecord(req.body) ? req.body : {};

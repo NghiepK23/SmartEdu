@@ -132,20 +132,28 @@ const EducMindDB = (() => {
   }
 
   /* Gọi API máy chủ kèm ID token.
-     Token được gửi ở CẢ header Authorization và trường auth_token trong thân request vì một số
-     proxy/khung nhúng (ví dụ lớp xem trước của trình soạn thảo) chuyển tiếp thân request nhưng
-     bỏ header Authorization — khi đó máy chủ vẫn xác thực được người dùng.
+     Token được gửi ở header Authorization, header riêng X-EducMind-Token và (chỉ với request có
+     phần thân) trường auth_token trong thân JSON. Lý do: một số proxy/khung nhúng chuyển tiếp thân
+     request nhưng bỏ header Authorization. GET/HEAD không bao giờ có phần thân (trình duyệt chặn:
+     "Request with GET/HEAD method cannot have body").
      Không dùng cookie nên không có nguy cơ CSRF; máy chủ vẫn kiểm tra Origin/Referer cho request
      có token trong thân (xem callerToken trong server.js). */
   async function apiRequest(method, url, body, retried) {
+    const verb = String(method || 'GET').toUpperCase();
+    const allowsBody = verb !== 'GET' && verb !== 'HEAD';
+    const hasBody = allowsBody && body !== undefined && body !== null;
     let token;
     try {
       token = await getFreshIdToken(!!retried);
     } catch (tokenErr) {
-      const err = new Error('Phiên đăng nhập đã hết hạn. Hãy tải lại trang và đăng nhập lại.');
-      err.status = 401;
-      err.details = { code: 'AUTH_REQUIRED', error: err.message, cause: tokenErr && tokenErr.message };
-      throw err;
+      token = '';
+      if (!retried) token = await getFreshIdToken(true).catch(() => '');
+      if (!token) {
+        const err = new Error('Phiên đăng nhập đã hết hạn. Hãy tải lại trang và đăng nhập lại.');
+        err.status = 401;
+        err.details = { code: 'AUTH_REQUIRED', error: err.message, cause: tokenErr && tokenErr.message };
+        throw err;
+      }
     }
     if (!token) {
       const err = new Error('Phiên đăng nhập đã hết hạn. Hãy tải lại trang và đăng nhập lại.');
@@ -153,39 +161,32 @@ const EducMindDB = (() => {
       err.details = { code: 'AUTH_REQUIRED', error: err.message };
       throw err;
     }
-    const hasBody = body !== undefined && body !== null;
-    const outgoing = hasBody ? { ...body, auth_token: token } : { auth_token: token };
-    const res = await fetch(url, {
-      method,
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify(outgoing),
-    });
-    let payload = null;
-    try { payload = await res.json(); } catch (_) { payload = null; }
+
+    const send = async (tk) => {
+      const headers = { Authorization: 'Bearer ' + tk, 'X-EducMind-Token': 'Bearer ' + tk };
+      if (hasBody) headers['Content-Type'] = 'application/json';
+      const res = await fetch(url, {
+        method: verb,
+        headers,
+        ...(hasBody ? { body: JSON.stringify({ ...body, auth_token: tk }) } : {}),
+      });
+      let payload = null;
+      try { payload = await res.json(); } catch (_) { payload = null; }
+      return { res, payload };
+    };
+
+    let { res, payload } = await send(token);
+    /* 401 vì máy chủ không nhận được thông tin đăng nhập: làm mới token rồi thử lại đúng một lần. */
+    if (res.status === 401 && !retried && payload && payload.code === 'AUTH_REQUIRED') {
+      retried = true;
+      const fresh = await getFreshIdToken(true);
+      ({ res, payload } = await send(fresh));
+    }
     if (!res.ok) {
       const msg = (payload && (payload.error || payload.message)) || ('HTTP ' + res.status);
       const err = new Error(msg);
       err.status = res.status;
       err.details = payload;
-      /* Máy chủ trả 401 vì không nhận được thông tin đăng nhập: làm mới token rồi thử lại một lần
-         (token có thể vừa hết hạn trong tab đang mở lâu). */
-      if (res.status === 401 && !retried && payload && payload.code === 'AUTH_REQUIRED') {
-        retried = true;
-        const fresh = await getFreshIdToken(true);
-        const retryRes = await fetch(url, {
-          method,
-          headers: { Authorization: 'Bearer ' + fresh, 'Content-Type': 'application/json' },
-          body: JSON.stringify(hasBody ? { ...body, auth_token: fresh } : { auth_token: fresh }),
-        });
-        let retryPayload = null;
-        try { retryPayload = await retryRes.json(); } catch (_) { retryPayload = null; }
-        if (retryRes.ok) return retryPayload;
-        const retryMsg = (retryPayload && (retryPayload.error || retryPayload.message)) || ('HTTP ' + retryRes.status);
-        const retryErr = new Error(retryMsg);
-        retryErr.status = retryRes.status;
-        retryErr.details = retryPayload;
-        throw retryErr;
-      }
       throw err;
     }
     return payload;
@@ -2574,7 +2575,9 @@ const EducMindDB = (() => {
     }, OperationType.LIST, 'content_revisions'),
 
     /* ----- API key Gemini của từng người (máy chủ mã hoá rồi lưu Firestore) ----- */
-    aiKeyStatus: (classId) => apiFetch('GET', '/api/ai/key' + (classId ? '?classId=' + encodeURIComponent(classId) : '')),
+    /* POST (không phải GET) để token dự phòng đi kèm được trong thân request:
+       GET/HEAD bị trình duyệt cấm có phần thân. */
+    aiKeyStatus: (classId) => apiFetch('POST', '/api/ai/key/status', { classId: classId || '' }),
     aiKeySave: (apiKey) => apiFetch('POST', '/api/ai/key', { apiKey }),
     aiKeyDelete: () => apiFetch('DELETE', '/api/ai/key'),
     /* Tham số tuỳ chọn: key đang gõ (để kiểm tra trước khi lưu). */

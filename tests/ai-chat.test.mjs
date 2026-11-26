@@ -212,3 +212,49 @@ test('apiRequest sends the ID token in header and body, and retries once with a 
   assert.equal(seen[1].body.auth_token, 'TOKEN2');
   assert.equal(seen[0].body.apiKey, 'AIzaTestKey0123456789abcdef');
 });
+
+test('apiRequest never sends a body with GET/HEAD (browsers reject "Request with GET/HEAD method cannot have body")', async () => {
+  const fsMod = await import('node:fs');
+  const pathMod = await import('node:path');
+  const vmMod = await import('node:vm');
+  const root = pathMod.resolve(pathMod.dirname(new URL(import.meta.url).pathname), '..');
+  const seen = [];
+  const noop = () => {};
+  const sandbox = {
+    console, Date, Math, JSON, Number, String, Boolean, Array, Object, Set, Map, RegExp, Error, Promise,
+    document: { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener: noop },
+    location: { origin: 'http://localhost:3000', pathname: '/', search: '', hash: '' },
+    history: { pushState: noop, replaceState: noop },
+    localStorage: { getItem: () => null, setItem: noop, removeItem: noop, clear: noop },
+    addEventListener: noop, removeEventListener: noop, toast: noop, render: noop,
+    app: { innerHTML: '', addEventListener: noop, querySelector: () => null, querySelectorAll: () => [] },
+    fetch: async (url, opts) => {
+      /* Mô phỏng đúng lỗi của trình duyệt. */
+      const verb = String((opts && opts.method) || 'GET').toUpperCase();
+      if ((verb === 'GET' || verb === 'HEAD') && opts && opts.body !== undefined) {
+        throw new TypeError("Failed to execute 'fetch' on 'Window': Request with GET/HEAD method cannot have body.");
+      }
+      seen.push({ url, method: verb, headers: opts.headers, hasBody: opts.body !== undefined });
+      return { ok: true, status: 200, json: async () => ({ role: 'TEACHER', hasKey: false }) };
+    },
+  };
+  sandbox.window = sandbox;
+  sandbox.EducMindFirebase = {
+    firestoreApi: {},
+    authApi: { onAuthStateChanged: () => {} },
+    auth: { currentUser: { uid: 'u1', email: 'gv@edu.vn', getIdToken: async () => 'TOKEN1' } },
+  };
+  sandbox.globalThis = sandbox;
+  const ctx = vmMod.createContext(sandbox);
+  for (const rel of ['js/00-grade-config.js', 'js/02-state.js', 'js/03-firebase.js']) {
+    vmMod.runInContext(fsMod.readFileSync(pathMod.join(root, rel), 'utf8'), ctx, { filename: rel });
+  }
+  vmMod.runInContext("sess = { userId: 'u1', backend: true }; role = 'T'; DB = { me: { id: 'u1', role: 'TEACHER' }, classId: 'c1' };", ctx);
+
+  const status = await vmMod.runInContext('EducMindDB.aiKeyStatus("c1")', ctx);
+  assert.equal(status.error, null, 'trạng thái key phải gọi được: ' + JSON.stringify(status.error));
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].hasBody, true, 'POST /api/ai/key/status có thân để mang token dự phòng');
+  assert.equal(seen[0].headers.Authorization, 'Bearer TOKEN1');
+  assert.equal(seen[0].headers['X-EducMind-Token'], 'Bearer TOKEN1', 'gửi thêm header riêng phòng khi proxy bỏ Authorization');
+});

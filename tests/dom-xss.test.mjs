@@ -1768,6 +1768,12 @@ test('Server API auth: header Authorization and body auth_token both accepted, f
     const viaHeader = await post({ Authorization: 'Bearer ' + jwt }, JSON.stringify(payload));
     assert.doesNotMatch(viaHeader.body, /Cần đăng nhập/);
     assert.doesNotMatch(viaHeader.body, new RegExp(jwt.slice(0, 24)), 'không phản chiếu token về trình duyệt');
+
+    // 5. Header riêng X-EducMind-Token (proxy hay bỏ Authorization nhưng giữ header lạ).
+    const viaAltHeader = await post({ 'X-EducMind-Token': 'Bearer ' + jwt }, JSON.stringify(payload));
+    assert.doesNotMatch(viaAltHeader.body, /Cần đăng nhập/);
+    const noneDiag = JSON.parse(none.body).auth;
+    assert.equal(noneDiag.hasAltHeader, false, 'chẩn đoán có báo trạng thái header riêng');
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

@@ -202,8 +202,11 @@ Mô hình: **mỗi người dùng mang API key của mình (BYO key)**, không c
    người dùng đã lưu key, vì key đã lưu sẽ không giải mã được.
 2. Áp dụng `firestore.rules` (đã có `ai_keys/{uid}` chỉ chủ sở hữu đọc/ghi, và trường
    `student_ai_enabled` trong `assignments`/`assessments`).
-3. Mọi lời gọi `/api/*` gửi Firebase ID token ở **cả** header `Authorization` **và** trường
-   `auth_token` trong thân JSON. Lý do: một số proxy/khung nhúng (như lớp xem trước của trình soạn thảo)
+3. Mọi lời gọi `/api/*` gửi Firebase ID token ở header `Authorization`, header riêng
+   `X-EducMind-Token` và (chỉ với request có phần thân) trường `auth_token` trong thân JSON.
+   Request `GET`/`HEAD` **không bao giờ** có phần thân (trình duyệt chặn với lỗi
+   "Request with GET/HEAD method cannot have body"), nên trạng thái API key dùng
+   `POST /api/ai/key/status` (route `GET /api/ai/key` vẫn giữ cho tương thích). Lý do: một số proxy/khung nhúng (như lớp xem trước của trình soạn thảo)
    chuyển tiếp thân request nhưng bỏ header `Authorization`, khiến máy chủ tưởng người dùng chưa đăng nhập.
    Khi lấy token từ thân, máy chủ kiểm tra `Origin`/`Referer` (cùng host hoặc trong `ALLOWED_ORIGINS`,
    danh sách URL cách nhau dấu phẩy) để trang khác không gọi hộ; `auth_token` bị xoá khỏi body trước khi
