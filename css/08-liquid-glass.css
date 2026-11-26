@@ -62,7 +62,7 @@
   --lg-spec-1:rgba(255,255,255,.92);
   --lg-spec-2:rgba(224,242,238,.42);
   --lg-spec-3:rgba(255,255,255,0);
-  --lg-edge:rgba(19,34,38,.09);
+  --lg-edge:rgba(19,34,38,.045);
   --lg-inner-glow:rgba(255,255,255,.65);
 
   /* Điều hướng trên nền Botanical Teal */
@@ -95,7 +95,7 @@
   --surface:#ffffff;
   --fill:rgba(31,111,107,.055);
   --fill-2:rgba(31,111,107,.10);
-  --line:rgba(19,34,38,.09);
+  --line:rgba(19,34,38,.045);
   --line-strong:rgba(19,34,38,.18);
   --track:rgba(19,34,38,.10);
   --ink:#132226;
@@ -108,7 +108,7 @@
   --prog:#2f7487;--prog-soft:#e1eff4;--prog-bar:#3b8da1;
   --need:#c27829;--need-soft:#f9eedc;--need-bar:#d98b32;
   --glass:rgba(255,255,255,.86);
-  --glass-line:rgba(19,34,38,.09);
+  --glass-line:rgba(19,34,38,.045);
   --btn-light:rgba(31,111,107,.06);
   --btn-light-hover:rgba(31,111,107,.11);
   --shadow:var(--lg-content-rim),var(--lg-content-shadow);
@@ -162,7 +162,7 @@
   --lg-spec-1:rgba(164,226,219,.18);
   --lg-spec-2:rgba(164,226,219,.05);
   --lg-spec-3:rgba(164,226,219,0);
-  --lg-edge:rgba(212,235,232,.12);
+  --lg-edge:rgba(212,235,232,.06);
   --lg-inner-glow:rgba(212,235,232,.11);
 
   --lg-nav-ink:rgba(233,241,239,.92);
@@ -328,22 +328,25 @@ html[data-lg-scrolled="1"] .top{
 .layout:not(.teacher-layout) .side{
   background-color:#154946;
   background-image:
-    radial-gradient(120% 50% at 18% 0%,rgba(255,255,255,.10),transparent 58%),
+    radial-gradient(120% 50% at 18% 0%,rgba(255,255,255,.14),transparent 58%),
     linear-gradient(168deg,#1b5c58 0%,#144542 100%)!important;
   color:#f2faf8!important;
-  border:1px solid rgba(255,255,255,.14)!important;
-  -webkit-backdrop-filter:var(--lg-blur-chrome);
-  backdrop-filter:var(--lg-blur-chrome);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 18px 40px -18px rgba(12,42,40,.42);
+  border:1px solid rgba(255,255,255,.24)!important;
+  -webkit-backdrop-filter:blur(10px) saturate(110%)!important;
+  backdrop-filter:blur(10px) saturate(110%)!important;
+  box-shadow:0 18px 40px -18px rgba(12,42,40,.32);
   transition:box-shadow .4s var(--ease),width .28s var(--ease),padding .28s var(--ease);
 }
 :root[data-theme="dark"] #app .layout>.side{
   background-color:#0e2021;
   background-image:
-    radial-gradient(120% 50% at 18% 0%,rgba(72,184,174,.10),transparent 58%),
+    radial-gradient(120% 50% at 18% 0%,rgba(72,184,174,.14),transparent 58%),
     linear-gradient(168deg,#132c2d 0%,#0e2021 100%)!important;
-  border-color:rgba(212,235,232,.14)!important;
-  box-shadow:inset 0 1px 0 rgba(212,235,232,.12),0 20px 44px -18px rgba(2,10,10,.78);
+  color:#f2faf8!important;
+  border-color:rgba(123,224,215,.24)!important;
+  -webkit-backdrop-filter:blur(10px) saturate(110%)!important;
+  backdrop-filter:blur(10px) saturate(110%)!important;
+  box-shadow:0 20px 44px -18px rgba(2,10,10,.68);
 }
 .layout>.side>*,
 .layout>.side .nav{position:relative;z-index:1}
@@ -577,8 +580,8 @@ html[data-lg-scrolled="1"] .top{
     background-image:
       radial-gradient(480px circle at var(--lg-mx,35%) var(--lg-my,0%),rgba(255,255,255,.14),transparent 68%),
       linear-gradient(164deg,rgba(255,255,255,.14),rgba(243,247,246,.07));
-    -webkit-backdrop-filter:blur(18px) saturate(125%);
-    backdrop-filter:blur(18px) saturate(125%);
+    -webkit-backdrop-filter:blur(13.5px) saturate(125%);
+    backdrop-filter:blur(13.5px) saturate(125%);
     box-shadow:none;
     border:0;
   }

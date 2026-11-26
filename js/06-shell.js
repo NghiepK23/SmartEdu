@@ -56,6 +56,7 @@ const APP_ACT={
   authCompleteOnboarding:()=>doCompleteOnboarding(),
   authCancelOnboarding:()=>cancelGoogleOnboarding(),
   authSignupRoleChanged:(el)=>signupRoleChanged(el.value),
+  layer4BgOpacityChanged:(el)=>layer4BgOpacityChanged(el),
 };
 const appEventRoot=(typeof document!=='undefined'&&document&&typeof document.addEventListener==='function')
   ?document
@@ -77,6 +78,12 @@ if(appEventRoot){
     const el=ev.target&&ev.target.closest?ev.target.closest('[data-app-change]'):null;
     if(!el)return;
     const fn=APP_ACT[el.dataset.appChange];
+    if(fn)fn(el,ev);
+  });
+  appEventRoot.addEventListener('input',(ev)=>{
+    const el=ev.target&&ev.target.closest?ev.target.closest('[data-app-input]'):null;
+    if(!el)return;
+    const fn=APP_ACT[el.dataset.appInput];
     if(fn)fn(el,ev);
   });
 }

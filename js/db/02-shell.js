@@ -682,6 +682,7 @@ DB_ACT.openBgSettings = () => {
   if (sm) sm.hidden = true;
   if (st) st.setAttribute('aria-expanded', 'false');
   const current = typeof layer4BackgroundData === 'function' ? layer4BackgroundData() : '';
+  const opacity = typeof layer4BgOpacityData === 'function' ? layer4BgOpacityData() : 1;
   const hasBg = !!current;
   dbOpenDialog({
     title: 'Đổi hình nền',
@@ -702,6 +703,10 @@ DB_ACT.openBgSettings = () => {
       <div class="field" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px">
         <label for="app-bg-file">Hoặc tải ảnh lên</label>
         <input id="app-bg-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-app-change="layer4BgFileChanged">
+      </div>
+      <div class="field" style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+        <label for="app-bg-opacity">Độ trong suốt hình nền: <span id="app-bg-opacity-val">${Math.round(opacity*100)}%</span></label>
+        <input id="app-bg-opacity" type="range" min="0.1" max="1" step="0.05" value="${opacity}" data-app-input="layer4BgOpacityChanged" style="width:100%;margin-top:6px;accent-color:var(--primary, #1f6f6b)">
       </div>
       <div class="app-bg-status" id="app-bg-status" role="status" style="margin-top:6px;font-size:.78rem;color:var(--muted)"></div>
     </div>`,
