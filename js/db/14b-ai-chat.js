@@ -24,6 +24,16 @@ const DB_CHAT_MODES_S = [
   { id: 'quiz', label: 'Luyện tập nhanh' },
 ];
 
+const DB_CHAT_SIDEBAR_STORAGE_KEY = 'em_chat_sidebar_collapsed';
+
+function dbChatReadSidebarCollapsed() {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem(DB_CHAT_SIDEBAR_STORAGE_KEY) === '1';
+  } catch (_) {
+    return false;
+  }
+}
+
 const DB_CHAT = {
   drawerOpen: false,
   threads: [],
@@ -45,6 +55,7 @@ const DB_CHAT = {
   quizAnswers: {},
   quizSaved: {},
   mobileThreadsOpen: false,
+  sidebarCollapsed: dbChatReadSidebarCollapsed(),
 };
 
 function dbChatReset() {
@@ -69,6 +80,7 @@ function dbChatReset() {
     quizAnswers: {},
     quizSaved: {},
     mobileThreadsOpen: false,
+    sidebarCollapsed: false,
   });
 }
 
@@ -84,10 +96,6 @@ function dbChatActiveMode() {
 
 function dbChatExamLocked() {
   return !dbIsTeacher() && DB.page === 'exam' && typeof DBX !== 'undefined' && DBX && DBX.attempt && DBX.attempt.status === 'IN_PROGRESS';
-}
-
-function dbChatStudentDisabled() {
-  return !dbIsTeacher() && DB.course && DB.course.student_ai_enabled === false;
 }
 
 function dbChatRecommendModel(tier, mode, text, wantQuiz) {
@@ -131,7 +139,8 @@ function dbChatFormatMarkdown(raw) {
   const codeBlocks = [];
   const withTokens = source.replace(/```([A-Za-z0-9_+-]*)\n?([\s\S]*?)```/g, (_m, lang, code) => {
     const token = `\u0000CODE_${codeBlocks.length}\u0000`;
-    codeBlocks.push(`<pre class="db-chat-code"${lang ? ` data-lang="${h(lang)}"` : ''}><code>${h(code.replace(/\n$/, ''))}</code></pre>`);
+    const langTag = lang ? h(lang) : 'code';
+    codeBlocks.push(`<div class="db-chat-code" data-lang="${langTag}"><div class="db-chat-code-head"><span class="db-chat-code-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="db-chat-code-lang">${langTag}</span></div><pre><code>${h(code.replace(/\n$/, ''))}</code></pre></div>`);
     return token;
   });
 
@@ -330,36 +339,41 @@ function dbChatMessagesHtml() {
 function dbChatErrorBannerHtml() {
   const err = DB_CHAT.error;
   if (!err) return '';
-  const T = dbIsTeacher();
   return `<div class="db-chat-error" role="alert">
     <div class="db-chat-error-copy">${ic('alert', 16)} <span>${h(err.message)}</span></div>
     <div class="db-chat-error-actions">
-      ${err.code === 'MISSING_API_KEY' && T ? dbBtn('Mở cài đặt API key', 'aiKeySettings', {}, 'light mini') : ''}
+      ${(err.code === 'QUOTA_OR_PAID_KEY_REQUIRED' || err.code === 'KEY_PERMISSION_OR_INVALID' || err.code === 'MISSING_API_KEY' || err.code === 'KEY_RECORD_INVALID')
+        ? dbBtn(ic('spark', 15) + ' Quản lý API key', 'openAiKey', {}, 'light mini') : ''}
       ${(err.code === 'QUOTA_OR_PAID_KEY_REQUIRED' || err.code === 'KEY_PERMISSION_OR_INVALID') && err.retryPayload
         ? dbBtn('Thử lại với Cân bằng', 'chatRetryBalanced', {}, 'light mini') : ''}
-      ${err.retryPayload && err.code !== 'MISSING_API_KEY' ? dbBtn('Thử lại', 'chatRetryLast', {}, 'light mini') : ''}
+      ${err.retryPayload ? dbBtn('Thử lại', 'chatRetryLast', {}, 'light mini') : ''}
       <button type="button" class="db-chat-link-btn" data-act="chatDismissError">Đóng</button>
     </div>
   </div>`;
 }
 
 function dbChatComposerHtml(surface) {
-  const disabled = DB_CHAT.sending || dbChatExamLocked() || dbChatStudentDisabled();
+  /* Một nguồn quyết định duy nhất: dbAiStudentState() (khoá khi đang làm bài, công tắc của giáo viên,
+     lớp bị tắt AI, chưa có API key). Giáo viên luôn được dùng. */
+  const aiState = typeof dbAiStudentState === 'function' ? dbAiStudentState() : { allowed: true, reason: '' };
+  const disabled = DB_CHAT.sending || !aiState.allowed;
   const modeList = dbIsTeacher() ? DB_CHAT_MODES_T : DB_CHAT_MODES_S;
   const activeMode = dbChatActiveMode();
   const rec = dbChatRecommendModel(DB_CHAT.tier, activeMode, DB_CHAT.draftText, activeMode === 'quiz');
   const inputId = surface === 'page' ? 'db-chat-input-page' : 'db-chat-input-drawer';
   const tierId = surface === 'page' ? 'db-chat-tier-page' : 'db-chat-tier-drawer';
 
-  return `<form class="db-chat-composer" data-act="chatSend" data-surface="${h(surface)}" novalidate>
-    <div class="db-chat-mode-row" role="group" aria-label="Chế độ trợ lý">
+  const modeRow = surface !== 'page'
+    ? `<div class="db-chat-mode-row" role="group" aria-label="Chế độ trợ lý">
       ${modeList.map((m) => `<button type="button" class="db-chat-mode-btn${activeMode === m.id ? ' is-active' : ''}" data-act="chatSetMode" data-mode="${h(m.id)}" aria-pressed="${activeMode === m.id ? 'true' : 'false'}">${h(m.label)}</button>`).join('')}
-    </div>
+    </div>`
+    : '';
+
+  return `<form class="db-chat-composer" data-act="chatSend" data-surface="${h(surface)}" novalidate>
+    ${modeRow}
     <div class="db-chat-input-wrap">
-      <textarea id="${inputId}" name="message" rows="2" maxlength="4000" placeholder="${dbChatExamLocked()
-        ? 'Trợ lý AI tạm khóa trong lúc đang làm bài kiểm tra tính giờ.'
-        : dbChatStudentDisabled()
-        ? 'Giáo viên đã tạm tắt Trợ lý AI cho lớp này.'
+      <textarea id="${inputId}" name="message" rows="2" maxlength="4000" placeholder="${!aiState.allowed
+        ? h(aiState.reason)
         : 'Nhập câu hỏi hoặc yêu cầu (Enter để gửi, Shift+Enter xuống dòng)…'}" data-input="chatDraftInput" ${disabled ? 'disabled' : ''}>${h(DB_CHAT.draftText)}</textarea>
       <div class="db-chat-composer-foot">
         <div class="db-chat-tier-pick">
@@ -376,10 +390,13 @@ function dbChatComposerHtml(surface) {
 }
 
 function dbChatTopBtnHtml() {
-  const locked = dbChatExamLocked();
+  const aiState = typeof dbAiStudentState === 'function' ? dbAiStudentState() : { allowed: true, reason: '' };
+  const locked = !aiState.allowed;
+  const needsKey = locked && /API key/i.test(aiState.reason);
   const active = DB_CHAT.drawerOpen || DB.page === 'chat';
-  const label = locked ? 'Trợ lý AI (khóa trong giờ kiểm tra)' : 'Trợ lý AI';
-  return `<button type="button" id="db-chat-toggle" class="btn light mini db-chat-top-btn${active ? ' is-active' : ''}${locked ? ' is-locked' : ''}" data-act="toggleChatDrawer" aria-expanded="${DB_CHAT.drawerOpen ? 'true' : 'false'}" aria-label="${label}" title="${label}">
+  const label = locked ? 'Trợ lý AI (' + aiState.reason + ')' : 'Trợ lý AI';
+  const act = needsKey ? 'openAiKey' : 'toggleChatDrawer';
+  return `<button type="button" id="db-chat-toggle" class="btn light mini db-chat-top-btn${active ? ' is-active' : ''}${locked ? ' is-locked' : ''}" data-act="${act}" aria-expanded="${DB_CHAT.drawerOpen ? 'true' : 'false'}" aria-label="${h(label)}" title="${h(label)}">
     ${ic(locked ? 'lock' : 'chat', 16)}<span>Trợ lý AI</span>
   </button>`;
 }
@@ -412,7 +429,8 @@ function dbChatDrawerInnerHtml() {
 }
 
 function dbChatDrawerHtml() {
-  if (dbChatExamLocked() && DB_CHAT.drawerOpen) DB_CHAT.drawerOpen = false;
+  const aiState = typeof dbAiStudentState === 'function' ? dbAiStudentState() : { allowed: true };
+  if (!aiState.allowed && /làm bài/.test(aiState.reason) && DB_CHAT.drawerOpen) DB_CHAT.drawerOpen = false;
   const open = !!DB_CHAT.drawerOpen && DB.page !== 'chat';
   return `<div id="db-chat-drawer-host" class="db-chat-drawer-host${open ? ' is-open' : ''}">${dbChatDrawerHostBodyHtml(open)}</div>`;
 }
@@ -426,10 +444,15 @@ function dbChatDrawerHostBodyHtml(open) {
 
 function dbChatThreadSidebarHtml() {
   const threads = DB_CHAT.threads || [];
-  return `<aside class="db-chat-sidebar${DB_CHAT.mobileThreadsOpen ? ' is-mobile-open' : ''}" aria-label="Lịch sử trò chuyện AI">
+  const collapsed = !!DB_CHAT.sidebarCollapsed;
+  const toggleLabel = collapsed ? 'Mở rộng thanh Trò chuyện' : 'Thu nhỏ thanh Trò chuyện';
+  return `<aside class="db-chat-sidebar${DB_CHAT.mobileThreadsOpen ? ' is-mobile-open' : ''}${collapsed ? ' is-collapsed' : ''}" aria-label="Lịch sử trò chuyện AI">
     <div class="db-chat-sidebar-head">
       <b>Cuộc trò chuyện</b>
-      <button type="button" class="btn mini" data-act="chatNewThread">${ic('plus', 14)}<span>Mới</span></button>
+      <div class="db-chat-sidebar-actions">
+        <button type="button" class="btn mini db-chat-new-btn" data-act="chatNewThread" aria-label="Cuộc trò chuyện mới" title="Cuộc trò chuyện mới">${ic('plus', 14)}<span>Mới</span></button>
+        <button type="button" class="btn light icon-only mini db-chat-sidebar-toggle" data-iconified="1" data-act="chatToggleSidebar" aria-label="${toggleLabel}" title="${toggleLabel}" aria-expanded="${!collapsed}">${ic(collapsed ? 'chevronRight' : 'chevronLeft', 15)}<span class="sr">${collapsed ? 'Mở rộng' : 'Thu nhỏ'}</span></button>
+      </div>
     </div>
     <div class="db-chat-thread-list">
       ${DB_CHAT.threadsLoading && !threads.length
@@ -462,7 +485,6 @@ function dbChatWorkspaceBodyHtml() {
             <p class="muted">${dbIsTeacher() ? 'Trợ lý Sư phạm · Dữ liệu lớp học được bảo vệ theo quyền giáo viên' : 'Gia sư AI · Hỗ trợ học tập theo tiến độ của em'}</p>
           </div>
         </div>
-        <button type="button" class="btn light mini" data-act="chatNewThread">${ic('plus', 15)}<span>Cuộc trò chuyện mới</span></button>
       </div>
       ${dbChatContextChipsHtml()}
       <div class="db-chat-stream" id="db-chat-page-stream">${dbChatMessagesHtml()}</div>
@@ -472,7 +494,7 @@ function dbChatWorkspaceBodyHtml() {
 }
 
 function dbChatWorkspaceHtml() {
-  return `<div id="db-chat-workspace" class="db-chat-workspace panel">${dbChatWorkspaceBodyHtml()}</div>`;
+  return `<div id="db-chat-workspace" class="db-chat-workspace panel${DB_CHAT.sidebarCollapsed ? ' is-sidebar-collapsed' : ''}">${dbChatWorkspaceBodyHtml()}</div>`;
 }
 
 DB_PAGES.chat = {
@@ -482,6 +504,7 @@ DB_PAGES.chat = {
     : 'Hỏi đáp bài học theo từng bước, ôn tập lỗ hổng và luyện câu hỏi trắc nghiệm cùng Gemini.'),
   async load() {
     DB_CHAT.drawerOpen = false;
+    if (typeof dbAiKeyLoad === 'function') await dbAiKeyLoad();
     await dbChatEnsureThreads(true);
     if (DB_CHAT.activeThreadId && !DB_CHAT.messagesByThread[DB_CHAT.activeThreadId]) {
       await dbChatLoadThreadMessages(DB_CHAT.activeThreadId);
@@ -541,6 +564,7 @@ function dbChatRepaint(opts = {}) {
 
   const ws = document.getElementById('db-chat-workspace');
   if (ws && DB.page === 'chat') {
+    ws.classList.toggle('is-sidebar-collapsed', !!DB_CHAT.sidebarCollapsed);
     ws.innerHTML = dbChatWorkspaceBodyHtml();
   }
   const host = document.getElementById('db-chat-drawer-host');
@@ -606,9 +630,11 @@ async function dbChatOpenWithContext(opts = {}) {
 }
 
 async function dbChatParseInvokeError(error) {
-  let detail = null;
-  let message = (error && error.message) || 'Không kết nối được tới Trợ lý Gemini.';
-  if (error && error.context && typeof error.context.clone === 'function') {
+  let detail = (error && error.details && typeof error.details === 'object') ? error.details : null;
+  let message = (detail && typeof detail.error === 'string' && detail.error)
+    || (error && error.message)
+    || 'Không kết nối được tới Trợ lý Gemini.';
+  if (!detail && error && error.context && typeof error.context.clone === 'function') {
     try {
       detail = await error.context.clone().json();
       if (detail && typeof detail.error === 'string') message = detail.error;
@@ -624,15 +650,12 @@ async function dbChatParseInvokeError(error) {
 async function dbChatExecuteSend(text, opts = {}) {
   const cleanText = String(text || '').trim();
   if (!cleanText || DB_CHAT.sending) return;
-  if (dbChatExamLocked()) {
-    toast('Trợ lý AI tạm khóa trong lúc em đang làm bài kiểm tra tính giờ.');
+  const aiState = typeof dbAiStudentState === 'function' ? dbAiStudentState() : { allowed: true, reason: '' };
+  if (!aiState.allowed) {
+    toast(aiState.reason || 'Trợ lý AI hiện không dùng được.');
     return;
   }
-  if (dbChatStudentDisabled()) {
-    toast('Giáo viên đã tạm tắt Trợ lý AI cho lớp học này.');
-    return;
-  }
-  if (!supabaseClient || !EducMindDB || typeof EducMindDB.sendAiChat !== 'function') {
+  if (!EducMindDB || typeof EducMindDB.sendAiChat !== 'function') {
     toast('Chưa kết nối được dịch vụ Trợ lý AI.');
     return;
   }
@@ -640,9 +663,13 @@ async function dbChatExecuteSend(text, opts = {}) {
   const mode = opts.mode || dbChatActiveMode();
   const tier = opts.tier || DB_CHAT.tier || 'auto';
   const wantQuiz = opts.wantQuiz === true || (mode === 'quiz' && tier !== 'fast');
+  /* Bài tập / bài kiểm tra đang mở: máy chủ kiểm tra công tắc AI riêng của bài đó. */
+  const workPage = DB.page === 'assignments' ? 'assignment' : (DB.page === 'assessments' || DB.page === 'exam' ? 'assessment' : '');
   const payload = {
     thread_id: DB_CHAT.activeThreadId || null,
     class_id: DB.classId || null,
+    work_kind: workPage || undefined,
+    work_id: workPage ? ((DB.arg && DB.arg.id) || undefined) : undefined,
     lesson_id: DB_CHAT.focusLessonId || null,
     objective_id: DB_CHAT.focusObjectiveId || null,
     page: DB.page || 'home',
@@ -790,9 +817,20 @@ DB_ACT.chatToggleMobileThreads = () => {
   dbChatRepaint({ scroll: false });
 };
 
+DB_ACT.chatToggleSidebar = () => {
+  DB_CHAT.sidebarCollapsed = !DB_CHAT.sidebarCollapsed;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(DB_CHAT_SIDEBAR_STORAGE_KEY, DB_CHAT.sidebarCollapsed ? '1' : '0');
+    }
+  } catch (_) {}
+  dbChatRepaint({ scroll: false });
+};
+
 DB_ACT.chatSetMode = (el) => {
   DB_CHAT.mode = el.dataset.mode || dbChatDefaultMode();
   dbChatRepaint({ scroll: false });
+  if (typeof dbSyncDockActive === 'function') dbSyncDockActive();
 };
 
 DB_ACT.chatSetTier = (el) => {

@@ -2,7 +2,7 @@
    Trạng thái chung của ứng dụng: thanh bên, phiên đăng nhập và bộ định danh phần tử.
    Lưu ý: Tệp này nạp trước mọi tệp khác có dùng trạng thái. appReady do js/76-main.js bật lên khi mọi tệp đã nạp xong. */
 /* ===== Trạng thái ===== */
-let logged=false,role='T',focusId=null,flashId=null,sidebarCollapsed=false,sidebarWidth=292;
+let logged=false,role='T',focusId=null,flashId=null,sidebarCollapsed=false,sidebarWidth=196;
 const app=document.getElementById('app');
 /* Phiên đăng nhập và trạng thái màn hình đăng nhập. */
 let sess=null,authMode='login',authErr='',authMsg='',authEmail='';

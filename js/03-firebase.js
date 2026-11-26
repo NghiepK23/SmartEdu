@@ -8,6 +8,26 @@ const firebaseAuth = FirebaseRuntime ? FirebaseRuntime.auth : null;
 const firebaseDb = FirebaseRuntime ? FirebaseRuntime.db : null;
 const firebaseStorage = FirebaseRuntime ? FirebaseRuntime.storage : null;
 
+/* Ngưỡng cấu hình của khóa học (luyện tập thích ứng + chỉ số lớp học) và miền giá trị hợp lệ. */
+const COURSE_CONFIG_NUMERIC = [
+  'practice_weight', 'practice_unlock_min_official', 'practice_session_length',
+  'practice_daily_scored_sessions', 'practice_max_share',
+  'dash_reteach_share', 'dash_min_students', 'dash_advanced_threshold',
+  'dash_inactive_days', 'dash_question_min_answers',
+];
+const COURSE_CONFIG_RANGE = {
+  practice_weight: { min: 0, max: 0.95 },
+  practice_unlock_min_official: { min: 0, max: 20 },
+  practice_session_length: { min: 4, max: 40 },
+  practice_daily_scored_sessions: { min: 1, max: 10 },
+  practice_max_share: { min: 0, max: 0.95 },
+  dash_reteach_share: { min: 0, max: 1 },
+  dash_min_students: { min: 1, max: 200 },
+  dash_advanced_threshold: { min: 0, max: 1 },
+  dash_inactive_days: { min: 1, max: 365 },
+  dash_question_min_answers: { min: 1, max: 200 },
+};
+
 const OperationType = {
   CREATE: 'create',
   UPDATE: 'update',
@@ -81,6 +101,117 @@ async function educMindSha256Hex(text) {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+function educMindNormalizeSubject(subject) {
+  let s = String(subject || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!s) return '';
+  s = s.replace(/\b(?:lop|khoi)\s+(?:1[0-2]|[1-9])$/, '').replace(/\s+(?:1[0-2]|[1-9])$/, '').trim();
+  const aliases = {
+    'tin': 'tin hoc',
+    'tin hoc': 'tin hoc',
+    'toan': 'toan',
+    'toan hoc': 'toan',
+    'van': 'ngu van',
+    'van hoc': 'ngu van',
+    'ngu van': 'ngu van',
+    'ly': 'vat ly',
+    'li': 'vat ly',
+    'vat li': 'vat ly',
+    'vat ly': 'vat ly',
+    'hoa': 'hoa hoc',
+    'hoa hoc': 'hoa hoc',
+    'su': 'lich su',
+    'lich su': 'lich su',
+    'dia': 'dia ly',
+    'dia li': 'dia ly',
+    'dia ly': 'dia ly',
+    'sinh': 'sinh hoc',
+    'sinh hoc': 'sinh hoc',
+    'anh': 'tieng anh',
+    'tieng anh': 'tieng anh',
+    'ngoai ngu': 'tieng anh',
+    'gdcd': 'giao duc cong dan',
+    'cong dan': 'giao duc cong dan',
+    'gdqp': 'giao duc quoc phong',
+    'quoc phong': 'giao duc quoc phong',
+    'khtn': 'khoa hoc tu nhien',
+    'lsdl': 'lich su va dia li',
+  };
+  return aliases[s] || s;
+}
+
+function educMindInferClassGrade(grade, className, subject) {
+  if (grade != null && grade !== '') {
+    const n = Number(grade);
+    if (Number.isInteger(n) && n >= 1 && n <= 12) return n;
+  }
+  const cleanName = String(className || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .toLowerCase()
+    .trim();
+  const nameMatch = cleanName.match(/^(?:(?:lop|khoi)\s+)?(1[0-2]|[1-9])(?=$|[^0-9])/);
+  if (nameMatch) return Number(nameMatch[1]);
+  const cleanSubject = String(subject || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .toLowerCase()
+    .trim();
+  const subjMatch = cleanSubject.match(/(?:^|\s)(1[0-2]|[1-9])$/);
+  if (subjMatch) return Number(subjMatch[1]);
+  return null;
+}
+
+function educMindValidateStudentJoin({ activeClasses, coursesByClass, target, allowMissingTargetMeta = false }) {
+  const active = (activeClasses || []).filter((c) => c && !c.deleted_at && c.id !== target.classId);
+  if (!active.length) return { ok: true };
+
+  const sameTeacher = active.find((c) => c.owner_teacher_id && c.owner_teacher_id === target.teacherId);
+  if (sameTeacher) {
+    throw new Error(`Em đã tham gia lớp "${sameTeacher.name}" của giáo viên này nên không thể tham gia hoặc chuyển sang lớp khác của cùng giáo viên.`);
+  }
+
+  const targetSubjectKey = educMindNormalizeSubject(target.subject);
+  if (targetSubjectKey) {
+    const sameSubjectClass = active.find((c) => {
+      const course = (coursesByClass && coursesByClass[c.id]) || null;
+      return educMindNormalizeSubject(course && course.title) === targetSubjectKey;
+    });
+    if (sameSubjectClass) {
+      const existingTitle = ((coursesByClass && coursesByClass[sameSubjectClass.id]) || {}).title || target.subject;
+      throw new Error(`Em đã tham gia lớp môn "${existingTitle}" (${sameSubjectClass.name}) nên không thể chuyển hoặc tham gia thêm lớp khác cùng môn học này.`);
+    }
+  } else if (!allowMissingTargetMeta) {
+    throw new Error('Không xác định được môn học của lớp cần tham gia.');
+  }
+
+  const studentGrades = [...new Set(
+    active
+      .map((c) => educMindInferClassGrade(c.grade, c.name, ((coursesByClass && coursesByClass[c.id]) || {}).title))
+      .filter((g) => g != null),
+  )];
+  if (studentGrades.length > 0) {
+    const studentGrade = studentGrades[0];
+    const targetGrade = educMindInferClassGrade(target.grade, target.className, target.subject);
+    if (targetGrade == null) {
+      if (!allowMissingTargetMeta) {
+        throw new Error(`Không xác định được khối lớp của lớp này để đối chiếu với Khối ${studentGrade} của em.`);
+      }
+    } else if (targetGrade !== studentGrade) {
+      throw new Error(`Em đang học Khối ${studentGrade} nên không thể tham gia hoặc chuyển sang lớp thuộc Khối ${targetGrade}.`);
+    }
+  }
+  return { ok: true };
+}
+
 const EducMindDB = (() => {
   const nowIso = () => new Date().toISOString();
   const me = () => (typeof sess !== 'undefined' && sess && sess.userId) || (firebaseAuth && firebaseAuth.currentUser ? firebaseAuth.currentUser.uid : '');
@@ -111,18 +242,67 @@ const EducMindDB = (() => {
     return await user.getIdToken(forceRefresh);
   }
 
-  async function apiRequest(method, url, body) {
-    const token = await getFreshIdToken(false);
-    const res = await fetch(url, {
-      method,
-      headers: {
-        Authorization: 'Bearer ' + token,
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    });
-    let payload = null;
-    try { payload = await res.json(); } catch (_) { payload = null; }
+  /* Gọi API máy chủ kèm ID token.
+     Token được gửi ở header Authorization, header riêng X-EducMind-Token và (chỉ với request có
+     phần thân) trường auth_token trong thân JSON. Lý do: một số proxy/khung nhúng chuyển tiếp thân
+     request nhưng bỏ header Authorization. GET/HEAD không bao giờ có phần thân (trình duyệt chặn:
+     "Request with GET/HEAD method cannot have body").
+     Không dùng cookie nên không có nguy cơ CSRF; máy chủ vẫn kiểm tra Origin/Referer cho request
+     có token trong thân (xem callerToken trong server.js). */
+  async function apiRequest(method, url, body, retried) {
+    const verb = String(method || 'GET').toUpperCase();
+    const allowsBody = verb !== 'GET' && verb !== 'HEAD';
+    const hasBody = allowsBody && body !== undefined && body !== null;
+    let token;
+    try {
+      token = await getFreshIdToken(!!retried);
+    } catch (tokenErr) {
+      token = '';
+      if (!retried) token = await getFreshIdToken(true).catch(() => '');
+      if (!token) {
+        const err = new Error('Phiên đăng nhập đã hết hạn. Hãy tải lại trang và đăng nhập lại.');
+        err.status = 401;
+        err.details = { code: 'AUTH_REQUIRED', error: err.message, cause: tokenErr && tokenErr.message };
+        throw err;
+      }
+    }
+    if (!token) {
+      const err = new Error('Phiên đăng nhập đã hết hạn. Hãy tải lại trang và đăng nhập lại.');
+      err.status = 401;
+      err.details = { code: 'AUTH_REQUIRED', error: err.message };
+      throw err;
+    }
+
+    const send = async (tk) => {
+      const headers = { Authorization: 'Bearer ' + tk, 'X-EducMind-Token': 'Bearer ' + tk };
+      if (hasBody) headers['Content-Type'] = 'application/json';
+      const res = await fetch(url, {
+        method: verb,
+        headers,
+        ...(hasBody ? { body: JSON.stringify({ ...body, auth_token: tk }) } : {}),
+      });
+      let payload = null;
+      let rawText = '';
+      if (typeof res.text === 'function') {
+        try {
+          rawText = await res.text();
+          payload = rawText ? JSON.parse(rawText) : null;
+        } catch (_) {
+          payload = null;
+        }
+      } else if (typeof res.json === 'function') {
+        try { payload = await res.json(); } catch (_) { payload = null; }
+      }
+      return { res, payload, rawText };
+    };
+
+    let { res, payload, rawText } = await send(token);
+    /* 401 vì máy chủ không nhận được thông tin đăng nhập: làm mới token rồi thử lại đúng một lần. */
+    if (res.status === 401 && !retried && payload && payload.code === 'AUTH_REQUIRED') {
+      retried = true;
+      const fresh = await getFreshIdToken(true);
+      ({ res, payload, rawText } = await send(fresh));
+    }
     if (!res.ok) {
       const msg = (payload && (payload.error || payload.message)) || ('HTTP ' + res.status);
       const err = new Error(msg);
@@ -130,7 +310,35 @@ const EducMindDB = (() => {
       err.details = payload;
       throw err;
     }
+    if (!payload || typeof payload !== 'object') {
+      const isHtml = /<!doctype|<html|warmup|forbidden/i.test(rawText || '');
+      const msg = isHtml
+        ? 'Máy chủ phản hồi trang HTML thay vì JSON (lỗi kết nối hoặc cấu hình máy chủ bị proxy chặn). Hãy kiểm tra cấu hình Gemini API key hoặc thử lại sau.'
+        : 'Máy chủ trả về phản hồi không hợp lệ (không phải JSON). Vui lòng thử lại.';
+      const err = new Error(msg);
+      err.status = res.status || 502;
+      err.details = { code: isHtml ? 'PROXY_HTML_RESPONSE' : 'INVALID_JSON_RESPONSE' };
+      throw err;
+    }
     return payload;
+  }
+
+  /* Gọi API máy chủ có kèm ID token, không ném lỗi: dùng cho các form nhỏ
+     (Quản lý API key Gemini) để tự hiển thị thông báo lỗi tại chỗ. */
+  async function apiFetch(method, url, body) {
+    try {
+      const payload = await apiRequest(method, url, body);
+      return { data: payload, error: null };
+    } catch (err) {
+      return {
+        data: null,
+        error: {
+          message: err instanceof Error ? err.message : 'Không kết nối được máy chủ.',
+          code: (err && err.details && err.details.code) || '',
+          status: (err && err.status) || 0,
+        },
+      };
+    }
   }
 
   async function safeWrap(fn, opType = OperationType.GET, path = '') {
@@ -330,7 +538,15 @@ const EducMindDB = (() => {
     const obsAt = nowIso();
     const isTeacher = me() === teacherId;
 
-    const existingEvidence = (await queryByField('learning_evidence', isTeacher ? 'teacher_id' : 'student_id', me()))
+    const actorField = isTeacher ? 'teacher_id' : 'student_id';
+    const actorId = me();
+    const [existingEvidenceRaw, existingMasteryList, existingGapList, existingRecList] = await Promise.all([
+      queryByField('learning_evidence', actorField, actorId),
+      queryByField('mastery', actorField, actorId),
+      queryByField('knowledge_gaps', actorField, actorId),
+      queryByField('recommendations', actorField, actorId),
+    ]);
+    const existingEvidence = existingEvidenceRaw
       .filter((e) => e.student_id === studentId && e.class_id === classId);
 
     for (const oid of uniqObjs) {
@@ -364,7 +580,7 @@ const EducMindDB = (() => {
       const mean = count ? refreshed.reduce((s, e) => s + Number(e.score || 0), 0) / count : scoreVal;
 
       const masteryId = `${studentId}_${oid}`.slice(0, 128);
-      const existingMastery = await getById('mastery', masteryId).catch(() => null);
+      const existingMastery = existingMasteryList.find((m) => m.id === masteryId) || null;
       if (existingMastery) {
         await updateDoc(doc(firebaseDb, 'mastery', masteryId), {
           mastery_score: mean,
@@ -388,7 +604,7 @@ const EducMindDB = (() => {
       }
 
       const gapId = `${studentId}_${oid}`.slice(0, 128);
-      const existingGap = await getById('knowledge_gaps', gapId).catch(() => null);
+      const existingGap = existingGapList.find((g) => g.id === gapId) || null;
       if (count >= 2 && mean < 0.5) {
         const reason = `Mức nắm vững đạt ${Math.round(mean * 100)}% sau ${count} kết quả.`;
         if (!existingGap) {
@@ -426,7 +642,7 @@ const EducMindDB = (() => {
 
       if (mean < 0.65) {
         const recId = `rec_${studentId}_${oid}`.slice(0, 128);
-        const existingRec = await getById('recommendations', recId).catch(() => null);
+        const existingRec = existingRecList.find((r) => r.id === recId) || null;
         if (!existingRec) {
           await setDoc(doc(firebaseDb, 'recommendations', recId), {
             id: recId,
@@ -612,11 +828,14 @@ const EducMindDB = (() => {
       const inviteId = genId();
       const code = genJoinCode();
       const tsNow = nowIso();
+      const cleanName = String(name).trim();
+      const cleanGrade = grade ? Number(grade) : null;
+      const cleanSubject = String(subject || 'Tin học').trim();
 
       await setDoc(doc(firebaseDb, 'classes', classId), {
         id: classId,
-        name: String(name).trim(),
-        grade: grade ? Number(grade) : null,
+        name: cleanName,
+        grade: cleanGrade,
         school_year: year ? String(year).trim() : null,
         owner_teacher_id: uid,
         created_at: tsNow,
@@ -631,10 +850,9 @@ const EducMindDB = (() => {
         id: classId,
         class_id: classId,
         teacher_id: uid,
-        title: String(subject || 'Tin học').trim(),
+        title: cleanSubject,
         description: '',
         sequential_unlock: false,
-        student_ai_enabled: true,
         created_at: tsNow,
         deleted_at: null,
         createdAt: ts2,
@@ -656,6 +874,9 @@ const EducMindDB = (() => {
         invite_id: inviteId,
         class_id: classId,
         teacher_id: uid,
+        class_name: cleanName,
+        class_grade: cleanGrade,
+        subject: cleanSubject,
         revoked_at: null,
         expires_at: null,
         createdAt: ts2,
@@ -686,29 +907,58 @@ const EducMindDB = (() => {
       const { doc, writeBatch, serverTimestamp } = api();
       const batch = writeBatch(firebaseDb);
       const ts = serverTimestamp();
+      const cleanName = String(row.name).trim();
+      const cleanGrade = row.grade ? Number(row.grade) : null;
+      const cleanSubject = row.subject ? String(row.subject).trim() : null;
       batch.update(doc(firebaseDb, 'classes', id), {
-        name: String(row.name).trim(),
-        grade: row.grade ? Number(row.grade) : null,
+        name: cleanName,
+        grade: cleanGrade,
         school_year: row.school_year ? String(row.school_year).trim() : null,
         updatedAt: ts,
       });
-      if (row.subject) {
+      if (cleanSubject) {
         batch.update(doc(firebaseDb, 'courses', id), {
-          title: String(row.subject).trim(),
+          title: cleanSubject,
           updatedAt: ts,
         });
+      }
+      const activeInvites = (await queryByField('class_invites', 'teacher_id', me()))
+        .filter((i) => i.class_id === id && !i.revoked_at);
+      for (const inv of activeInvites) {
+        const invitePatch = {
+          class_name: cleanName,
+          class_grade: cleanGrade,
+          updatedAt: ts,
+        };
+        if (cleanSubject) invitePatch.subject = cleanSubject;
+        batch.update(doc(firebaseDb, 'class_invite_codes', inv.code), invitePatch);
       }
       await batch.commit();
       return await getById('classes', id);
     }, OperationType.UPDATE, `classes/${id}`),
 
     updateClass: (id, row) => safeWrap(async () => {
-      const { doc, updateDoc, serverTimestamp } = api();
+      const { doc, updateDoc, writeBatch, serverTimestamp } = api();
       const patch = { updatedAt: serverTimestamp() };
       if ('name' in row) patch.name = row.name;
       if ('grade' in row) patch.grade = row.grade;
       if ('school_year' in row) patch.school_year = row.school_year;
       await updateDoc(doc(firebaseDb, 'classes', id), patch);
+      if ('name' in row || 'grade' in row) {
+        const activeInvites = (await queryByField('class_invites', 'teacher_id', me()))
+          .filter((i) => i.class_id === id && !i.revoked_at);
+        if (activeInvites.length) {
+          const batch = writeBatch(firebaseDb);
+          const ts = serverTimestamp();
+          const invitePatch = { updatedAt: ts };
+          if ('name' in row) invitePatch.class_name = row.name ? String(row.name).trim() : null;
+          if ('grade' in row) invitePatch.class_grade = row.grade ? Number(row.grade) : null;
+          for (const inv of activeInvites) {
+            batch.update(doc(firebaseDb, 'class_invite_codes', inv.code), invitePatch);
+          }
+          await batch.commit().catch(() => {});
+        }
+      }
       return await getById('classes', id);
     }, OperationType.UPDATE, `classes/${id}`),
 
@@ -735,14 +985,39 @@ const EducMindDB = (() => {
       }
       const { class_id: classId, teacher_id: teacherId } = invite;
       const memberId = `${classId}_${uid}`;
-      const existingMember = await getById('class_members', memberId).catch(() => null);
-      if (existingMember) return classId;
+      const myMemberships = await queryByField('class_members', 'student_id', uid);
+      if (myMemberships.some((m) => m.id === memberId)) return classId;
+
+      const activeClasses = myMemberships.length
+        ? (await getByIds('classes', myMemberships.map((m) => m.class_id))).filter((c) => !c.deleted_at)
+        : [];
+      const activeCourses = activeClasses.length
+        ? await getByIds('courses', activeClasses.map((c) => c.id))
+        : [];
+      const coursesByClass = Object.fromEntries(activeCourses.map((c) => [c.class_id, c]));
+
+      const inviteGrade = educMindInferClassGrade(invite.class_grade, invite.class_name, invite.subject);
+      const hasFullInviteMeta = !!(invite.subject && inviteGrade != null);
+      if (activeClasses.length) {
+        educMindValidateStudentJoin({
+          activeClasses,
+          coursesByClass,
+          target: {
+            classId,
+            teacherId,
+            className: invite.class_name || '',
+            grade: invite.class_grade ?? null,
+            subject: invite.subject || '',
+          },
+          allowMissingTargetMeta: !hasFullInviteMeta,
+        });
+      }
 
       const tsId = `${teacherId}_${uid}`;
       const stId = `${uid}_${teacherId}`;
       const [hasTs, hasSt] = await Promise.all([
         getById('teacher_students', tsId).catch(() => null),
-        getById('student_teachers', stId).catch(() => null),
+        queryByField('student_teachers', 'student_id', uid).then((xs) => xs.find((x) => x.id === stId) || null),
       ]);
 
       const { doc, writeBatch, serverTimestamp } = api();
@@ -764,6 +1039,38 @@ const EducMindDB = (() => {
         updatedAt: ts,
       });
       await batch.commit();
+
+      if (activeClasses.length && !hasFullInviteMeta) {
+        try {
+          const [targetClass, targetCourse] = await Promise.all([
+            getById('classes', classId).catch(() => null),
+            getById('courses', classId).catch(() => null),
+          ]);
+          if (!targetClass || targetClass.deleted_at) {
+            throw new Error('Lớp học này không còn hoạt động.');
+          }
+          educMindValidateStudentJoin({
+            activeClasses,
+            coursesByClass,
+            target: {
+              classId,
+              teacherId,
+              className: targetClass.name || invite.class_name || '',
+              grade: targetClass.grade ?? invite.class_grade ?? null,
+              subject: (targetCourse && targetCourse.title) || invite.subject || '',
+            },
+            allowMissingTargetMeta: false,
+          });
+        } catch (validationErr) {
+          const rollback = writeBatch(firebaseDb);
+          rollback.delete(doc(firebaseDb, 'class_members', memberId));
+          if (!hasTs) rollback.delete(doc(firebaseDb, 'teacher_students', tsId));
+          if (!hasSt) rollback.delete(doc(firebaseDb, 'student_teachers', stId));
+          await rollback.commit().catch(() => {});
+          throw validationErr;
+        }
+      }
+
       return classId;
     }, OperationType.CREATE, 'class_members'),
 
@@ -790,13 +1097,18 @@ const EducMindDB = (() => {
       const studentId = idx.user_id;
       const teacherId = me();
       const memberId = `${classId}_${studentId}`;
-      const existingMember = await getById('class_members', memberId).catch(() => null);
-      if (existingMember) return 'ALREADY_MEMBER';
+      const teacherMembers = await queryByField('class_members', 'teacher_id', teacherId);
+      if (teacherMembers.some((m) => m.id === memberId)) return 'ALREADY_MEMBER';
+      const studentOtherMembers = teacherMembers.filter((m) => m.student_id === studentId && m.class_id !== classId);
+      if (studentOtherMembers.length) {
+        const otherActive = (await getByIds('classes', studentOtherMembers.map((m) => m.class_id))).filter((c) => !c.deleted_at);
+        if (otherActive.length) return 'ALREADY_IN_OTHER_CLASS';
+      }
 
       const tsId = `${teacherId}_${studentId}`;
       const stId = `${studentId}_${teacherId}`;
       const [hasTs, hasSt] = await Promise.all([
-        getById('teacher_students', tsId).catch(() => null),
+        queryByField('teacher_students', 'teacher_id', teacherId).then((xs) => xs.find((x) => x.id === tsId) || null),
         getById('student_teachers', stId).catch(() => null),
       ]);
 
@@ -840,8 +1152,11 @@ const EducMindDB = (() => {
 
     regenClassCode: (classId) => safeWrap(async () => {
       const teacherId = me();
-      const oldInvites = (await queryByField('class_invites', 'teacher_id', teacherId))
-        .filter((i) => i.class_id === classId && !i.revoked_at);
+      const [oldInvites, clsDoc, courseDoc] = await Promise.all([
+        queryByField('class_invites', 'teacher_id', teacherId).then((xs) => xs.filter((i) => i.class_id === classId && !i.revoked_at)),
+        getById('classes', classId).catch(() => null),
+        getById('courses', classId).catch(() => null),
+      ]);
       const { doc, writeBatch, serverTimestamp } = api();
       const batch = writeBatch(firebaseDb);
       const tsNow = nowIso();
@@ -869,6 +1184,9 @@ const EducMindDB = (() => {
         invite_id: newInviteId,
         class_id: classId,
         teacher_id: teacherId,
+        class_name: clsDoc && clsDoc.name ? String(clsDoc.name).trim() : null,
+        class_grade: clsDoc && clsDoc.grade != null ? Number(clsDoc.grade) : null,
+        subject: courseDoc && courseDoc.title ? String(courseDoc.title).trim() : null,
         revoked_at: null,
         expires_at: null,
         createdAt: ts,
@@ -909,7 +1227,6 @@ const EducMindDB = (() => {
         title: String(row.title || 'Khóa học').trim(),
         description: row.description || '',
         sequential_unlock: !!row.sequential_unlock,
-        student_ai_enabled: row.student_ai_enabled !== false,
         created_at: nowIso(),
         deleted_at: null,
         createdAt: ts,
@@ -919,12 +1236,33 @@ const EducMindDB = (() => {
     }, OperationType.CREATE, 'courses'),
 
     updateCourse: (id, row) => safeWrap(async () => {
-      const { doc, updateDoc, serverTimestamp } = api();
+      const { doc, updateDoc, writeBatch, serverTimestamp } = api();
       const patch = { updatedAt: serverTimestamp() };
-      for (const k of ['title', 'description', 'sequential_unlock', 'student_ai_enabled', 'deleted_at']) {
+      for (const k of ['title', 'description', 'sequential_unlock', 'deleted_at']) {
         if (k in row) patch[k] = row[k];
       }
+      /* Ngưỡng cấu hình: trước đây bị bỏ qua nên nút "Lưu" ở phần cài đặt không ghi được gì. */
+      for (const k of COURSE_CONFIG_NUMERIC) {
+        if (!(k in row)) continue;
+        const v = Number(row[k]);
+        if (!Number.isFinite(v)) continue;
+        const r = COURSE_CONFIG_RANGE[k];
+        patch[k] = Math.min(r.max, Math.max(r.min, v));
+      }
       await updateDoc(doc(firebaseDb, 'courses', id), patch);
+      if ('title' in row && row.title) {
+        const activeInvites = (await queryByField('class_invites', 'teacher_id', me()))
+          .filter((i) => i.class_id === id && !i.revoked_at);
+        if (activeInvites.length) {
+          const batch = writeBatch(firebaseDb);
+          const ts = serverTimestamp();
+          const cleanSubject = String(row.title).trim();
+          for (const inv of activeInvites) {
+            batch.update(doc(firebaseDb, 'class_invite_codes', inv.code), { subject: cleanSubject, updatedAt: ts });
+          }
+          await batch.commit().catch(() => {});
+        }
+      }
       return await getById('courses', id);
     }, OperationType.UPDATE, `courses/${id}`),
 
@@ -1145,6 +1483,8 @@ const EducMindDB = (() => {
         allow_late: !!row.allow_late,
         late_close_at: row.late_close_at || null,
         max_score: Number(row.max_score || 10),
+        /* Công tắc cho học sinh dùng Trợ lý AI khi làm bài này (mặc định bật). */
+        student_ai_enabled: row.student_ai_enabled !== false,
         status: row.status || 'DRAFT',
         objective_ids: [],
         question_ids: [],
@@ -1162,7 +1502,7 @@ const EducMindDB = (() => {
       const { doc, updateDoc, serverTimestamp } = api();
       const before = await getById('assignments', id);
       const patch = { updatedAt: serverTimestamp() };
-      for (const k of ['topic_id', 'lesson_id', 'title', 'description', 'due_at', 'allow_late', 'late_close_at', 'max_score', 'status', 'deleted_at']) {
+      for (const k of ['topic_id', 'lesson_id', 'title', 'description', 'due_at', 'allow_late', 'late_close_at', 'max_score', 'student_ai_enabled', 'status', 'deleted_at']) {
         if (k in row) patch[k] = row[k];
       }
       await updateDoc(doc(firebaseDb, 'assignments', id), patch);
@@ -1253,7 +1593,7 @@ const EducMindDB = (() => {
       }
       const uid = me();
       const subId = `${a.id}_${uid}`;
-      const existing = await getById('assignment_submissions', subId).catch(() => null);
+      const existing = (await queryByField('assignment_submissions', 'student_id', uid)).find((s) => s.id === subId) || null;
       const hasQs = Array.isArray(a.question_ids) && a.question_ids.length > 0;
       const { doc, setDoc, updateDoc, serverTimestamp } = api();
       const ts = serverTimestamp();
@@ -1983,6 +2323,8 @@ const EducMindDB = (() => {
         max_attempts: Number(row.max_attempts || 1),
         open_at: row.open_at || null,
         close_at: row.close_at || null,
+        /* Công tắc cho học sinh dùng Trợ lý AI khi làm bài kiểm tra này (mặc định bật). */
+        student_ai_enabled: row.student_ai_enabled !== false,
         status: row.status || 'DRAFT',
         question_ids: [],
         created_at: nowIso(),
@@ -1999,7 +2341,7 @@ const EducMindDB = (() => {
       const { doc, updateDoc, serverTimestamp } = api();
       const before = await getById('assessments', id);
       const patch = { updatedAt: serverTimestamp() };
-      for (const k of ['topic_id', 'lesson_id', 'title', 'duration_minutes', 'max_attempts', 'open_at', 'close_at', 'status', 'deleted_at']) {
+      for (const k of ['topic_id', 'lesson_id', 'title', 'duration_minutes', 'max_attempts', 'open_at', 'close_at', 'student_ai_enabled', 'status', 'deleted_at']) {
         if (k in row) patch[k] = row[k];
       }
       await updateDoc(doc(firebaseDb, 'assessments', id), patch);
@@ -2202,7 +2544,7 @@ const EducMindDB = (() => {
         }
       }
       const id = `${attemptId}_${questionId}`;
-      const existing = await getById('submission_answers', id).catch(() => null);
+      const existing = (await queryByField('submission_answers', 'student_id', me())).find((a) => a.id === id) || null;
       const { doc, setDoc, updateDoc, serverTimestamp } = api();
       const val = answer === undefined ? null : answer;
       if (existing) {
@@ -2487,6 +2829,15 @@ const EducMindDB = (() => {
         .slice(0, lim || 200);
     }, OperationType.LIST, 'content_revisions'),
 
+    /* ----- API key Gemini của từng người (máy chủ mã hoá rồi lưu Firestore) ----- */
+    /* POST (không phải GET) để token dự phòng đi kèm được trong thân request:
+       GET/HEAD bị trình duyệt cấm có phần thân. */
+    aiKeyStatus: (classId) => apiFetch('POST', '/api/ai/key/status', { classId: classId || '' }),
+    aiKeySave: (apiKey) => apiFetch('POST', '/api/ai/key', { apiKey }),
+    aiKeyDelete: () => apiFetch('DELETE', '/api/ai/key'),
+    /* Tham số tuỳ chọn: key đang gõ (để kiểm tra trước khi lưu). */
+    aiKeyTest: (apiKey) => apiFetch('POST', '/api/ai/key/test', typeof apiKey === 'string' && apiKey ? { apiKey } : {}),
+
     /* ----- AI tạo câu hỏi nháp (qua Express /api/ai/generate) ----- */
     listAiRequests: () => safeWrap(async () => {
       return (await queryByField('ai_generation_requests', 'teacher_id', me()))
@@ -2532,46 +2883,92 @@ const EducMindDB = (() => {
     aiGenerate: (requestId, retry = false) => safeWrap(async () => {
       const req = await getById('ai_generation_requests', requestId);
       if (!req) throw new Error('Không tìm thấy yêu cầu AI.');
-      const result = await apiRequest('POST', '/api/ai/generate', {
-        lesson_id: req.lesson_id,
-        quantity: req.quantity,
-        parameters: req.parameters || {},
-        retry: !!retry,
-      });
-      const items = Array.isArray(result && result.items) ? result.items : [];
-      const { doc, writeBatch, serverTimestamp } = api();
-      const batch = writeBatch(firebaseDb);
-      const ts = serverTimestamp();
-      for (const item of items) {
-        const oid = genId();
-        batch.set(doc(firebaseDb, 'ai_generation_outputs', oid), {
-          id: oid,
-          teacher_id: me(),
+      const { doc, updateDoc, writeBatch, serverTimestamp } = api();
+      try {
+        const lesson = await getById('lessons', req.lesson_id).catch(() => null);
+        const course = lesson && lesson.course_id ? await getById('courses', lesson.course_id).catch(() => null) : null;
+        const cls = course && course.class_id ? await getById('classes', course.class_id).catch(() => null) : null;
+        const selectedObjIds = Array.isArray(req.parameters?.objectives) ? req.parameters.objectives.filter(Boolean) : [];
+        let objectives = selectedObjIds.length
+          ? await getByIds('learning_objectives', selectedObjIds)
+          : (await queryByField('learning_objectives', 'teacher_id', me())).filter((o) => o.lesson_id === req.lesson_id);
+        objectives = objectives.slice(0, 50);
+
+        const lessonIds = [...new Set(objectives.map((o) => o.lesson_id).filter(Boolean))];
+        const lessonsList = lessonIds.length ? await getByIds('lessons', lessonIds) : (lesson ? [lesson] : []);
+        const lessonMap = Object.fromEntries(lessonsList.map((l) => [l.id, l]));
+        const topicIds = [...new Set(lessonsList.map((l) => l.topic_id).filter(Boolean))];
+        const topicsList = topicIds.length ? await getByIds('course_topics', topicIds) : [];
+        const topicMap = Object.fromEntries(topicsList.map((t) => [t.id, t]));
+
+        const context = {
+          class_name: (cls && cls.name) || (course && course.title) || 'Lớp học',
+          learning_objectives: objectives.map((o) => {
+            const l = lessonMap[o.lesson_id] || lesson || {};
+            const t = l.topic_id ? topicMap[l.topic_id] : null;
+            return {
+              id: o.id,
+              code: o.code || '',
+              description: o.description || '',
+              lesson_title: l.title || '',
+              lesson_description: l.description || '',
+              topic_title: (t && t.title) || '',
+            };
+          }),
+          uploaded_lesson_plan: typeof req.parameters?.source_document_text === 'string'
+            ? req.parameters.source_document_text
+            : '',
+        };
+
+        const result = await apiRequest('POST', '/api/ai/generate', {
           request_id: requestId,
-          content: String(item.content || '').slice(0, 5000),
-          kind: item.kind || 'SINGLE_CHOICE',
-          objective_id: item.objective_id || null,
-          difficulty: item.difficulty || 'MEDIUM',
-          bloom_level: item.bloom_level || null,
-          options: item.options ?? null,
-          correct_answer: item.correct_answer ?? null,
-          review_status: 'PENDING_REVIEW',
-          review_note: null,
-          approved_question_id: null,
-          reviewed_by: null,
-          reviewed_at: null,
-          createdAt: ts,
+          lesson_id: req.lesson_id,
+          quantity: req.quantity,
+          parameters: req.parameters || {},
+          retry: !!retry,
+          context,
+        });
+        const items = Array.isArray(result && result.items) ? result.items : [];
+        const batch = writeBatch(firebaseDb);
+        const ts = serverTimestamp();
+        for (const item of items) {
+          const oid = genId();
+          batch.set(doc(firebaseDb, 'ai_generation_outputs', oid), {
+            id: oid,
+            teacher_id: me(),
+            request_id: requestId,
+            content: String(item.content || '').slice(0, 5000),
+            kind: item.kind || 'SINGLE_CHOICE',
+            objective_id: item.objective_id || null,
+            difficulty: item.difficulty || 'MEDIUM',
+            bloom_level: item.bloom_level || null,
+            options: item.options ?? null,
+            correct_answer: item.correct_answer ?? null,
+            review_status: 'PENDING_REVIEW',
+            review_note: null,
+            approved_question_id: null,
+            reviewed_by: null,
+            reviewed_at: null,
+            createdAt: ts,
+            updatedAt: ts,
+          });
+        }
+        batch.update(doc(firebaseDb, 'ai_generation_requests', requestId), {
+          status: 'COMPLETED',
+          error_message: null,
+          completed_at: nowIso(),
           updatedAt: ts,
         });
+        await batch.commit();
+        return { accepted: true, count: items.length };
+      } catch (err) {
+        await updateDoc(doc(firebaseDb, 'ai_generation_requests', requestId), {
+          status: 'FAILED',
+          error_message: String((err && err.message) || err || 'Lỗi tạo câu hỏi AI.').slice(0, 1000),
+          updatedAt: serverTimestamp(),
+        }).catch(() => {});
+        throw err;
       }
-      batch.update(doc(firebaseDb, 'ai_generation_requests', requestId), {
-        status: 'COMPLETED',
-        error_message: null,
-        completed_at: nowIso(),
-        updatedAt: ts,
-      });
-      await batch.commit();
-      return { accepted: true, count: items.length };
     }, OperationType.WRITE, 'ai_generation_requests'),
 
     listAiOutputs: (requestIds) => safeWrap(async () => {
@@ -2664,6 +3061,271 @@ const EducMindDB = (() => {
 
     approveAiOutputForAssignment: (id, content, options, correct, difficulty, bloom, grade, assignmentId) =>
       EducMindDB.approveAiOutput(id, content, options, correct, difficulty, bloom, grade, assignmentId),
+
+    /* ===== Phase 1: Resource-Objective Linking ===== */
+    listResourceObjectiveLinks: (courseId) => safeWrap(async () => {
+      if (isTeacherRole()) {
+        return (await queryByField('resource_objective_links', 'teacher_id', me())).filter((x) => x.course_id === courseId);
+      }
+      const ids = await getClassIndexIds(courseId, 'resource_objective_link_ids').catch(() => []);
+      return ids.length ? await getByIds('resource_objective_links', ids) : [];
+    }, OperationType.LIST, 'resource_objective_links'),
+
+    createResourceObjectiveLink: (row) => safeWrap(async () => {
+      const meta = await resolveCourseMeta(row.course_id);
+      const { doc, setDoc, serverTimestamp, arrayUnion } = api();
+      const id = `${row.resource_id}_${row.objective_id}`;
+      const ts = serverTimestamp();
+      const item = {
+        id,
+        class_id: meta.class_id,
+        teacher_id: meta.teacher_id,
+        course_id: row.course_id,
+        resource_id: row.resource_id,
+        objective_id: row.objective_id,
+        purpose: row.purpose || 'LEARN',
+        createdAt: ts,
+        updatedAt: ts,
+      };
+      await setDoc(doc(firebaseDb, 'resource_objective_links', id), item);
+      await updateClassIndex(meta.class_id, 'resource_objective_link_ids', [id]).catch(() => {});
+      return item;
+    }, OperationType.CREATE, 'resource_objective_links'),
+
+    deleteResourceObjectiveLink: (linkId) => safeWrap(async () => {
+      const { doc, deleteDoc } = api();
+      const link = await getById('resource_objective_links', linkId).catch(() => null);
+      await deleteDoc(doc(firebaseDb, 'resource_objective_links', linkId));
+      if (link) await updateClassIndex(link.class_id, 'resource_objective_link_ids', [], [linkId]).catch(() => {});
+      return { id: linkId };
+    }, OperationType.DELETE, 'resource_objective_links'),
+
+    getObjectiveCoverage: (courseId) => safeWrap(async () => {
+      const [resources, objectives, questions, links, members] = await Promise.all([
+        dbCall(EducMindDB.listResources(courseId)).catch(() => []),
+        (async () => {
+          const c = await dbLoadContent().catch(() => ({ objectives: [] }));
+          return c.objectives || [];
+        })(),
+        dbCall(EducMindDB.listQuestions(courseId)).catch(() => []),
+        dbCall(EducMindDB.listResourceObjectiveLinks(courseId)).catch(() => []),
+        dbIsTeacher() ? dbCallIn(EducMindDB.listMembers, [DB.classId]).catch(() => []) : [],
+      ]);
+      const qByObj = {};
+      for (const q of questions) {
+        for (const oid of (q.objective_ids || [])) {
+          qByObj[oid] = (qByObj[oid] || 0) + 1;
+        }
+      }
+      const linkByObj = {};
+      for (const l of links) {
+        if (!linkByObj[l.objective_id]) linkByObj[l.objective_id] = { LEARN: 0, PRACTICE: 0, EXTEND: 0 };
+        linkByObj[l.objective_id][l.purpose] = (linkByObj[l.objective_id][l.purpose] || 0) + 1;
+      }
+      return { resources, objectives, questions, links, linkByObj, qByObj, membersCount: members.length };
+    }, OperationType.GET, 'resource_objective_links'),
+
+    getStudentObjectiveSupport: (objectiveId, kind) => safeWrap(async () => {
+      const allLinks = await dbCall(EducMindDB.listResourceObjectiveLinks(DB.course ? DB.course.id : '')).catch(() => []);
+      const filtered = allLinks.filter((l) => l.objective_id === objectiveId && (!kind || l.purpose === kind));
+      const resourceIds = [...new Set(filtered.map((l) => l.resource_id))];
+      const resources = resourceIds.length ? await getByIds('resources', resourceIds) : [];
+      return resources.filter((r) => !r.deleted_at);
+    }, OperationType.GET, 'resource_objective_links'),
+
+    /* ===== Phase 2: Adaptive Practice ===== */
+    PRACTICE_DEFAULTS: {
+      practice_weight: 0.3,
+      practice_unlock_min_official: 1,
+      practice_session_length: 8,
+      practice_daily_scored_sessions: 3,
+      practice_max_share: 0.5,
+      dash_reteach_share: 0.4,
+      dash_min_students: 5,
+      dash_advanced_threshold: 0.8,
+      dash_inactive_days: 14,
+      dash_question_min_answers: 10,
+    },
+
+    listPracticeSessions: (objectiveId) => safeWrap(async () => {
+      const field = isTeacherRole() ? 'teacher_id' : 'student_id';
+      const list = await queryByField('practice_sessions', field, me());
+      return list.filter((s) => !objectiveId || s.objective_id === objectiveId)
+        .sort((a, b) => String(b.started_at || '').localeCompare(String(a.started_at || '')));
+    }, OperationType.LIST, 'practice_sessions'),
+
+    listPracticeAnswers: (sessionIds) => safeWrap(async () => {
+      const set = new Set(sessionIds || []);
+      if (!set.size) return [];
+      const field = isTeacherRole() ? 'teacher_id' : 'student_id';
+      return (await queryByField('practice_answers', field, me())).filter((a) => set.has(a.session_id));
+    }, OperationType.LIST, 'practice_answers'),
+
+    listMasterySnapshots: (objectiveIds) => safeWrap(async () => {
+      const set = new Set(objectiveIds || []);
+      const field = isTeacherRole() ? 'teacher_id' : 'student_id';
+      const list = await queryByField('mastery_snapshots', field, me());
+      return list.filter((s) => !set.size || set.has(s.objective_id))
+        .sort((a, b) => String(a.recorded_at || '').localeCompare(String(b.recorded_at || '')));
+    }, OperationType.LIST, 'mastery_snapshots'),
+
+    getCoursePracticeConfig: (courseId) => {
+      const course = (typeof DB !== 'undefined' && DB.course && DB.course.id === courseId) ? DB.course : null;
+      const d = EducMindDB.PRACTICE_DEFAULTS || { practice_weight: 0.3, practice_unlock_min_official: 1, practice_session_length: 8, practice_daily_scored_sessions: 3, practice_max_share: 0.5 };
+      if (!course) return d;
+      return {
+        practice_weight: course.practice_weight ?? d.practice_weight,
+        practice_unlock_min_official: course.practice_unlock_min_official ?? d.practice_unlock_min_official,
+        practice_session_length: course.practice_session_length ?? d.practice_session_length,
+        practice_daily_scored_sessions: course.practice_daily_scored_sessions ?? d.practice_daily_scored_sessions,
+        practice_max_share: course.practice_max_share ?? d.practice_max_share,
+        dash_reteach_share: course.dash_reteach_share ?? 0.4,
+        dash_min_students: course.dash_min_students ?? 5,
+        dash_advanced_threshold: course.dash_advanced_threshold ?? 0.8,
+        dash_inactive_days: course.dash_inactive_days ?? 14,
+        dash_question_min_answers: course.dash_question_min_answers ?? 10,
+      };
+    },
+
+    practiceStart: (objectiveId, courseId, classId) => safeWrap(async () => {
+      const cfg = EducMindDB.getCoursePracticeConfig(courseId);
+      const official = await dbCall(EducMindDB.listEvidence([objectiveId])).catch(() => []);
+      if (official.length < (cfg.practice_unlock_min_official || 1)) {
+        const err = new Error(`Cần ít nhất ${cfg.practice_unlock_min_official} kết quả chính thức trước khi luyện tập.`);
+        err.code = 'PRACTICE_LOCKED';
+        throw err;
+      }
+      const todaySessions = (await queryByField('practice_sessions', 'student_id', me()))
+        .filter((s) => s.objective_id === objectiveId && s.started_at && new Date(s.started_at).toDateString() === new Date().toDateString() && s.status === 'COMPLETED');
+      if (todaySessions.length >= Number(cfg.practice_daily_scored_sessions || 3)) {
+        // Still allow practice but mark as non-scored; inform UI via flag
+      }
+      const res = await apiRequest('POST', '/api/practice/start', { objective_id: objectiveId, course_id: courseId, class_id: classId, session_length: cfg.practice_session_length });
+      return res.session || res;
+    }, OperationType.CREATE, 'practice_sessions'),
+
+    practiceNextQuestion: (sessionId) => safeWrap(async () => {
+      return await apiRequest('POST', '/api/practice/next-question', { session_id: sessionId });
+    }, OperationType.GET, 'practice_answers'),
+
+    practiceSubmitAnswer: (sessionId, question, answer) => safeWrap(async () => {
+      return await apiRequest('POST', '/api/practice/submit-answer', { session_id: sessionId, question, answer });
+    }, OperationType.WRITE, 'practice_answers'),
+
+    practiceFinish: (sessionId, objectiveId) => safeWrap(async () => {
+      const courseId = (typeof DB !== 'undefined' && DB.course) ? DB.course.id : '';
+      const cfg = EducMindDB.getCoursePracticeConfig(courseId);
+      const officialScores = (await dbCall(EducMindDB.listEvidence([objectiveId])).catch(() => [])).map((e) => Number(e.score || 0));
+      const res = await apiRequest('POST', '/api/practice/finish', { session_id: sessionId, official_scores: officialScores, course_config: cfg });
+      if (res.evidence_recorded) {
+        // Also record snapshot locally
+        try {
+          const { doc, setDoc, serverTimestamp } = api();
+          const snapId = genId();
+          const ts = serverTimestamp();
+          await setDoc(doc(firebaseDb, 'mastery_snapshots', snapId), {
+            id: snapId,
+            class_id: DB.classId || '',
+            teacher_id: DB.course ? DB.course.teacher_id : me(),
+            student_id: me(),
+            objective_id: objectiveId,
+            mastery_score: Number(res.mastery_score || 0),
+            evidence_count: officialScores.length + 1,
+            recorded_at: nowIso(),
+            createdAt: ts,
+            updatedAt: ts,
+          });
+        } catch (_) {}
+      }
+      return res;
+    }, OperationType.WRITE, 'practice_sessions'),
+
+    /* ===== Phase 3: Class Overview & Assignment Targeting ===== */
+    listAssignmentTargets: (assignmentIds) => safeWrap(async () => {
+      const set = new Set(assignmentIds || []);
+      if (!set.size) return [];
+      const field = isTeacherRole() ? 'teacher_id' : 'student_id';
+      return (await queryByField('assignment_targets', field, me())).filter((t) => set.has(t.assignment_id));
+    }, OperationType.LIST, 'assignment_targets'),
+
+    createAssignmentTarget: (row) => safeWrap(async () => {
+      const asg = await getById('assignments', row.assignment_id);
+      if (!asg) throw new Error('Assignment not found');
+      const { doc, setDoc, serverTimestamp, arrayUnion } = api();
+      const id = `${row.assignment_id}_${row.student_id}`;
+      const ts = serverTimestamp();
+      const item = {
+        id,
+        class_id: asg.class_id,
+        teacher_id: asg.teacher_id,
+        assignment_id: row.assignment_id,
+        student_id: row.student_id,
+        target_group: row.target_group || null,
+        createdAt: ts,
+        updatedAt: ts,
+      };
+      await setDoc(doc(firebaseDb, 'assignment_targets', id), item);
+      await setDoc(doc(firebaseDb, 'assignments', asg.id), { target_mode: 'TARGETED', target_group: row.target_group || null, target_student_ids: arrayUnion(row.student_id) }, { merge: true }).catch(async () => {
+        const { updateDoc } = api();
+        await updateDoc(doc(firebaseDb, 'assignments', asg.id), { target_mode: 'TARGETED', target_group: row.target_group || null, updatedAt: ts });
+      });
+      return item;
+    }, OperationType.CREATE, 'assignment_targets'),
+
+    createAssignmentTargets: (rows) => safeWrap(async () => {
+      if (!rows || !rows.length) return [];
+      const asgId = rows[0].assignment_id;
+      const asg = await getById('assignments', asgId);
+      if (!asg) throw new Error('Assignment not found');
+      const { doc, writeBatch, serverTimestamp, arrayUnion } = api();
+      const batch = writeBatch(firebaseDb);
+      const ts = serverTimestamp();
+      const ids = [];
+      for (const r of rows) {
+        const id = `${r.assignment_id}_${r.student_id}`;
+        ids.push(r.student_id);
+        batch.set(doc(firebaseDb, 'assignment_targets', id), {
+          id,
+          class_id: asg.class_id,
+          teacher_id: asg.teacher_id,
+          assignment_id: r.assignment_id,
+          student_id: r.student_id,
+          target_group: r.target_group || null,
+          createdAt: ts,
+          updatedAt: ts,
+        });
+      }
+      batch.update(doc(firebaseDb, 'assignments', asgId), { target_mode: 'TARGETED', target_group: rows[0].target_group || null, target_student_ids: arrayUnion(...ids), updatedAt: ts });
+      await batch.commit();
+      return rows;
+    }, OperationType.CREATE, 'assignment_targets'),
+
+    deleteAssignmentTargets: (assignmentId, studentIds) => safeWrap(async () => {
+      const { doc, writeBatch, serverTimestamp, arrayRemove } = api();
+      const batch = writeBatch(firebaseDb);
+      for (const sid of (studentIds || [])) batch.delete(doc(firebaseDb, 'assignment_targets', `${assignmentId}_${sid}`));
+      if (studentIds && studentIds.length) batch.update(doc(firebaseDb, 'assignments', assignmentId), { target_student_ids: arrayRemove(...studentIds), updatedAt: serverTimestamp() });
+      await batch.commit();
+      return studentIds;
+    }, OperationType.DELETE, 'assignment_targets'),
+
+    getClassOverview: (courseId) => safeWrap(async () => {
+      if (!dbIsTeacher()) throw new Error('Chỉ giáo viên mới xem được trang chất lượng lớp học.');
+      const cfg = EducMindDB.getCoursePracticeConfig(courseId);
+      const content = await dbLoadContent();
+      const objIds = content.objectives.map((o) => o.id);
+      const [mastery, gaps, recommendations, members, profiles, evidence, questions, practiceSessions] = await Promise.all([
+        dbCallIn(EducMindDB.listMastery, objIds).catch(() => []),
+        dbCallIn(EducMindDB.listGaps, objIds).catch(() => []),
+        dbCall(EducMindDB.listRecommendations()).catch(() => []),
+        dbCallIn(EducMindDB.listMembers, [DB.classId]).catch(() => []),
+        dbCallIn(EducMindDB.listProfiles, (await dbCallIn(EducMindDB.listMembers, [DB.classId]).catch(() => [])).map((m) => m.student_id)).catch(() => []),
+        dbCallIn(EducMindDB.listEvidence, objIds).catch(() => []),
+        dbCall(EducMindDB.listQuestions(courseId)).catch(() => []),
+        dbCall(EducMindDB.listPracticeSessions()).catch(() => []),
+      ]);
+      return { content, mastery, gaps, recommendations, members, profilesById: dbById(profiles), evidence, questions, practiceSessions, cfg };
+    }, OperationType.GET, 'assignments'),
 
     /* ----- Trò chơi ôn tập ----- */
     gameQuestions: (courseId) => safeWrap(async () => {
@@ -2760,15 +3422,166 @@ const EducMindDB = (() => {
 
     sendAiChat: (payload) => safeWrap(async () => {
       const uid = me();
-      const result = await apiRequest('POST', '/api/ai/chat', payload);
+      const userRole = isTeacherRole() ? 'TEACHER' : 'STUDENT';
+      const isTeacher = userRole === 'TEACHER';
+
+      let history = [];
+      if (payload.thread_id) {
+        history = (await queryByField('ai_chat_messages', 'user_id', uid).catch(() => []))
+          .filter((m) => m.thread_id === payload.thread_id)
+          .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')))
+          .slice(-16)
+          .map((m) => ({ sender: m.sender, content: m.content }));
+      }
+
+      const includeContext = payload.include_context !== false;
+      const contextSummary = {
+        role: userRole,
+        page: payload.page || 'chat',
+        ...(includeContext ? {} : { context_paused: true }),
+      };
+      const contextData = { active_page: payload.page || 'chat' };
+
+      if (payload.class_id) {
+        const courseCheck = await getById('courses', payload.class_id).catch(() => null);
+        if (includeContext) {
+          const cls = await getById('classes', payload.class_id).catch(() => null);
+          if (cls && !cls.deleted_at) {
+            contextSummary.class_name = cls.name;
+            contextData.classroom = { name: cls.name, grade: cls.grade, school_year: cls.school_year };
+            const course = courseCheck && !courseCheck.deleted_at ? courseCheck : null;
+            if (course) {
+              contextSummary.course_title = course.title;
+              contextData.course = { title: course.title, description: String(course.description || '').slice(0, 600) };
+
+              const [rawTopics, rawLessons, rawObjectives] = await Promise.all([
+                isTeacher
+                  ? queryByField('course_topics', 'teacher_id', uid).then((xs) => xs.filter((x) => x.course_id === course.id)).catch(() => [])
+                  : getByIds('course_topics', await getClassIndexIds(cls.id, 'topic_ids').catch(() => [])).catch(() => []),
+                isTeacher
+                  ? queryByField('lessons', 'teacher_id', uid).then((xs) => xs.filter((x) => x.course_id === course.id)).catch(() => [])
+                  : getByIds('lessons', await getClassIndexIds(cls.id, 'lesson_ids').catch(() => [])).catch(() => []),
+                isTeacher
+                  ? queryByField('learning_objectives', 'teacher_id', uid).catch(() => [])
+                  : getByIds('learning_objectives', await getClassIndexIds(cls.id, 'objective_ids').catch(() => [])).catch(() => []),
+              ]);
+
+              const topics = rawTopics.filter((t) => !t.deleted_at).sort((a, b) => Number(a.display_order || 0) - Number(b.display_order || 0)).slice(0, 20);
+              const lessons = rawLessons.filter((l) => !l.deleted_at && (isTeacher || l.status === 'PUBLISHED')).sort((a, b) => Number(a.display_order || 0) - Number(b.display_order || 0)).slice(0, 35);
+              const lessonIds = new Set(lessons.map((l) => l.id));
+              const objectives = rawObjectives.filter((o) => lessonIds.has(o.lesson_id)).sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''))).slice(0, 80);
+              const topicMap = Object.fromEntries(topics.map((t) => [t.id, t.title]));
+              const objById = Object.fromEntries(objectives.map((o) => [o.id, o]));
+              const objIds = new Set(objectives.map((o) => o.id));
+
+              contextData.curriculum = lessons.slice(0, 20).map((l) => ({
+                id: l.id,
+                topic: topicMap[l.topic_id] || '',
+                title: l.title,
+                summary: String(l.description || '').slice(0, 260),
+                objectives: objectives.filter((o) => o.lesson_id === l.id).slice(0, 8).map((o) => ({ code: o.code, description: String(o.description || '').slice(0, 200) })),
+              }));
+
+              if (payload.lesson_id) {
+                const focusedLesson = lessons.find((l) => l.id === payload.lesson_id);
+                if (focusedLesson) {
+                  contextSummary.lesson_title = focusedLesson.title;
+                  contextData.focused_lesson = {
+                    id: focusedLesson.id,
+                    title: focusedLesson.title,
+                    description: String(focusedLesson.description || '').slice(0, 2000),
+                    objectives: objectives.filter((o) => o.lesson_id === focusedLesson.id).map((o) => ({ id: o.id, code: o.code, description: o.description })),
+                  };
+                }
+              }
+
+              if (payload.objective_id && objById[payload.objective_id]) {
+                const focusedObj = objById[payload.objective_id];
+                contextSummary.objective_code = focusedObj.code;
+                contextData.focused_objective = { code: focusedObj.code, description: focusedObj.description };
+              }
+
+              if (objIds.size) {
+                if (isTeacher) {
+                  const [members, allGaps, allMastery] = await Promise.all([
+                    queryByField('class_members', 'teacher_id', uid).then((xs) => xs.filter((m) => m.class_id === cls.id)).catch(() => []),
+                    queryByField('knowledge_gaps', 'teacher_id', uid).then((xs) => xs.filter((g) => objIds.has(g.objective_id) && g.status === 'OPEN')).catch(() => []),
+                    queryByField('mastery', 'teacher_id', uid).then((xs) => xs.filter((m) => objIds.has(m.objective_id))).catch(() => []),
+                  ]);
+                  const gapCounts = {};
+                  for (const g of allGaps.slice(0, 200)) {
+                    const o = objById[g.objective_id];
+                    if (!o) continue;
+                    if (!gapCounts[o.id]) gapCounts[o.id] = { code: o.code, description: String(o.description || '').slice(0, 160), open_count: 0 };
+                    gapCounts[o.id].open_count += 1;
+                  }
+                  const masteryAgg = {};
+                  for (const m of allMastery.slice(0, 500)) {
+                    if (!masteryAgg[m.objective_id]) masteryAgg[m.objective_id] = { sum: 0, n: 0 };
+                    masteryAgg[m.objective_id].sum += Number(m.mastery_score || 0);
+                    masteryAgg[m.objective_id].n += 1;
+                  }
+                  contextData.class_analytics = {
+                    enrolled_students: members.length,
+                    open_gap_count: allGaps.length,
+                    top_open_gaps: Object.values(gapCounts).sort((a, b) => b.open_count - a.open_count).slice(0, 8),
+                    objective_mastery_averages: Object.entries(masteryAgg).slice(0, 12).map(([oid, agg]) => ({
+                      code: (objById[oid] && objById[oid].code) || oid,
+                      avg_percent: Math.round((agg.sum / Math.max(1, agg.n)) * 100),
+                      evidence_students: agg.n,
+                    })),
+                  };
+                  contextSummary.open_gaps = allGaps.length;
+                } else {
+                  const [myMastery, myGaps, myRecs] = await Promise.all([
+                    queryByField('mastery', 'student_id', uid).then((xs) => xs.filter((m) => objIds.has(m.objective_id))).catch(() => []),
+                    queryByField('knowledge_gaps', 'student_id', uid).then((xs) => xs.filter((g) => objIds.has(g.objective_id) && g.status === 'OPEN')).catch(() => []),
+                    queryByField('recommendations', 'student_id', uid).then((xs) => xs.filter((r) => r.status === 'ACTIVE' || r.status === 'ACCEPTED').slice(0, 10)).catch(() => []),
+                  ]);
+                  contextData.student_learning_state = {
+                    mastery: myMastery.slice(0, 20).map((m) => {
+                      const o = objById[m.objective_id];
+                      return { code: (o && o.code) || '', description: String((o && o.description) || '').slice(0, 140), percent: Math.round(Number(m.mastery_score || 0) * 100), evidence_count: m.evidence_count };
+                    }),
+                    open_gaps: myGaps.map((g) => {
+                      const o = objById[g.objective_id];
+                      return { code: (o && o.code) || '', description: String((o && o.description) || '').slice(0, 160), reason: g.reason || '' };
+                    }),
+                    active_recommendations: myRecs.map((r) => {
+                      const o = r.objective_id ? objById[r.objective_id] : null;
+                      return { kind: r.kind, objective: o ? `${o.code}: ${String(o.description || '').slice(0, 120)}` : '', reason: r.reason || '' };
+                    }),
+                  };
+                  contextSummary.open_gaps = myGaps.length;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      const result = await apiRequest('POST', '/api/ai/chat', {
+        ...payload,
+        role: userRole,
+        /* Bài tập / bài kiểm tra đang mở: máy chủ kiểm tra công tắc AI của riêng bài đó. */
+        work_kind: payload.work_kind === 'assessment' || payload.work_kind === 'assignment' ? payload.work_kind : undefined,
+        work_id: typeof payload.work_id === 'string' ? payload.work_id.slice(0, 200) : undefined,
+        history,
+        contextData,
+        contextSummary,
+      });
+      if (!result || typeof result !== 'object') {
+        throw new Error('Trợ lý AI không nhận được phản hồi hợp lệ từ máy chủ. Vui lòng thử lại.');
+      }
       const { doc, writeBatch, serverTimestamp } = api();
       const tsNow = nowIso();
       const tsNow2 = new Date(Date.now() + 1).toISOString();
       const ts = serverTimestamp();
 
       let threadId = payload.thread_id || '';
-      const userRole = isTeacherRole() ? 'TEACHER' : 'STUDENT';
-      const existingThread = threadId ? await getById('ai_chat_threads', threadId).catch(() => null) : null;
+      const existingThread = threadId
+        ? ((await queryByField('ai_chat_threads', 'user_id', uid)).find((t) => t.id === threadId) || null)
+        : null;
       const batch = writeBatch(firebaseDb);
 
       if (!existingThread) {

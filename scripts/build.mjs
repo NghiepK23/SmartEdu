@@ -79,16 +79,35 @@ export function runBuild() {
   const coreName = `core.${shortHash(coreBundle)}.js`;
   const appName = `app.${shortHash(appBundle)}.js`;
 
+  const fbConfigPath = path.join(ROOT, 'firebase-applet-config.json');
+  const fbVendorPath = path.join(ROOT, 'js', 'vendor', 'firebase-sdk.min.js');
+  if (fs.existsSync(fbConfigPath)) {
+    const cfg = JSON.parse(fs.readFileSync(fbConfigPath, 'utf8'));
+    const curSdk = fs.existsSync(fbVendorPath) ? fs.readFileSync(fbVendorPath, 'utf8') : '';
+    const inSync = curSdk.includes(`projectId:${JSON.stringify(cfg.projectId || '')}`)
+      && curSdk.includes(`apiKey:${JSON.stringify(cfg.apiKey || '')}`)
+      && curSdk.includes(`authDomain:${JSON.stringify(cfg.authDomain || '')}`)
+      && curSdk.includes(`firestoreDatabaseId:${JSON.stringify(cfg.firestoreDatabaseId || '')}`);
+    if (!inSync) {
+      execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'bundle-firebase.mjs')], { stdio: 'inherit' });
+    }
+  }
+
+  const fbBundle = fs.readFileSync(fbVendorPath);
+  const fbName = `firebase-sdk.${shortHash(fbBundle)}.js`;
+
   fs.rmSync(DIST, { recursive: true, force: true });
   fs.mkdirSync(path.join(DIST, 'assets'), { recursive: true });
 
   copyDir(path.join(ROOT, 'assets'), path.join(DIST, 'assets'));
   copyDir(path.join(ROOT, 'js', 'vendor'), path.join(DIST, 'js', 'vendor'));
 
+  const fbOut = path.join(DIST, 'assets', fbName);
   const cssOut = path.join(DIST, 'assets', cssName);
   const coreOut = path.join(DIST, 'assets', coreName);
   const appOut = path.join(DIST, 'assets', appName);
 
+  fs.writeFileSync(fbOut, fbBundle);
   fs.writeFileSync(cssOut, cssBundle, 'utf8');
   fs.writeFileSync(coreOut, coreBundle, 'utf8');
   fs.writeFileSync(appOut, appBundle, 'utf8');
@@ -104,12 +123,12 @@ export function runBuild() {
   });
   if (!cssReplaced) throw new Error('Không thể thay khối CSS trong index.html.');
 
-  const scriptSectionRe = /<script\s+src="js\/vendor\/supabase-js\.min\.js"><\/script>[\s\S]*?<\/body>/;
+  const scriptSectionRe = /<script\s+src="js\/vendor\/firebase-sdk\.min\.js"><\/script>[\s\S]*?<\/body>/;
   if (!scriptSectionRe.test(builtHtml)) throw new Error('Không thể thay khối JS trong index.html.');
   builtHtml = builtHtml.replace(
     scriptSectionRe,
     [
-      `<script src="js/vendor/supabase-js.min.js"></script>`,
+      `<script src="assets/${fbName}"></script>`,
       `<script src="assets/${coreName}"></script>`,
       `<script src="js/00-environment.local.js"></script>`,
       `<script src="assets/${appName}"></script>`,
@@ -122,6 +141,7 @@ export function runBuild() {
   return {
     cssCount: cssRefs.length,
     jsCount: beforeEnvJs.length + afterEnvJs.length,
+    firebaseFile: `assets/${fbName}`,
     cssFile: `assets/${cssName}`,
     coreFile: `assets/${coreName}`,
     appFile: `assets/${appName}`,

@@ -8,7 +8,7 @@ function applyLoginBackground(){
   const src=safeImageSrc(loginBgValue());
   if(!src){el.style.backgroundImage='none';return}
   const escaped=src.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/[\n\r]/g,'');
-  el.style.backgroundImage='linear-gradient(135deg,rgba(11,22,40,.10),rgba(11,22,40,.02)),url("'+escaped+'")';
+  el.style.backgroundImage='linear-gradient(135deg,rgba(13,34,33,.14),rgba(13,34,33,.03)),url("'+escaped+'")';
   el.style.backgroundPosition='center,center';el.style.backgroundSize='cover,cover';el.style.backgroundRepeat='no-repeat,no-repeat';
 }
 function loginBgStatus(message){const el=document.getElementById('login-bg-status');if(el)el.textContent=message}
@@ -38,13 +38,32 @@ function applyLoginBgUrl(){
   probe.onerror=()=>loginBgStatus('Không tải được ảnh từ liên kết này (có thể đây là trang web, không phải ảnh, hoặc bản xem trước đang chặn mạng). Hãy dùng địa chỉ ảnh trực tiếp hoặc tải ảnh về rồi chọn “Tải ảnh lên”.');
   probe.src=url;
 }
+function compressBgImageToDataUrl(img,maxW,maxH,quality){
+  const scale=Math.min(1,maxW/img.naturalWidth,maxH/img.naturalHeight);
+  const w=Math.max(1,Math.round(img.naturalWidth*scale)),h=Math.max(1,Math.round(img.naturalHeight*scale));
+  const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+  const cx=canvas.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,w,h);cx.drawImage(img,0,0,w,h);
+  return canvas.toDataURL('image/jpeg',quality);
+}
+function isSupportedBgFile(file){
+  if(!file)return false;
+  if(/^image\/(png|jpe?g|webp|gif)$/i.test(file.type||''))return true;
+  return !file.type&&/\.(png|jpe?g|webp|gif)$/i.test(file.name||'');
+}
+function saveCompressedBg(img,storeFn,statusFn){
+  const presets=[[1920,1200,.84],[1440,900,.72],[1024,640,.60]];
+  for(const [mw,mh,q] of presets){
+    let dataUrl='';
+    try{dataUrl=compressBgImageToDataUrl(img,mw,mh,q)}catch(e){statusFn('Không thể xử lý ảnh này. Hãy thử PNG, JPG hoặc WEBP khác.');return}
+    if(storeFn(dataUrl))return;
+  }
+}
 function uploadLoginBg(file){
-  if(!file)return;if(!/^image\/(png|jpeg|webp|gif)$/i.test(file.type)){loginBgStatus('Hãy chọn ảnh PNG, JPG, WEBP hoặc GIF.');return}
+  if(!file)return;if(!isSupportedBgFile(file)){loginBgStatus('Hãy chọn ảnh PNG, JPG, WEBP hoặc GIF.');return}
   if(file.size>15*1024*1024){loginBgStatus('Ảnh tải lên cần nhỏ hơn 15 MB.');return}
   const reader=new FileReader();reader.onerror=()=>loginBgStatus('Không đọc được tệp ảnh.');
   reader.onload=()=>{const img=new Image();img.onerror=()=>loginBgStatus('Tệp này không phải ảnh hợp lệ.');img.onload=()=>{
-    try{const maxW=1920,maxH=1200,scale=Math.min(1,maxW/img.naturalWidth,maxH/img.naturalHeight),w=Math.max(1,Math.round(img.naturalWidth*scale)),h=Math.max(1,Math.round(img.naturalHeight*scale)),canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const cx=canvas.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,w,h);cx.drawImage(img,0,0,w,h);storeLoginBackground(canvas.toDataURL('image/jpeg',.84))}
-    catch(e){loginBgStatus('Không thể xử lý ảnh này. Hãy thử PNG, JPG hoặc WEBP khác.')}
+    saveCompressedBg(img,storeLoginBackground,loginBgStatus);
   };img.src=String(reader.result||'')};reader.readAsDataURL(file)
 }
 function clearLoginBackground(){try{localStorage.removeItem(LOGIN_BG_KEY)}catch(e){}applyLoginBackground();loginBgStatus('Đã xóa ảnh nền và trở về màu nền mặc định.')}
@@ -59,23 +78,36 @@ function toggleLoginCardTheme(){
   try{localStorage.setItem(LOGIN_CARD_THEME_KEY,dark?'dark':'light')}catch(e){}
   if(btn){btn.setAttribute('aria-pressed',String(dark));btn.setAttribute('aria-label',(dark?'Bật chế độ sáng':'Bật chế độ tối')+' riêng cho thẻ đăng nhập');btn.title=(dark?'Bật chế độ sáng':'Bật chế độ tối')+' cho thẻ đăng nhập';btn.innerHTML=loginCardThemeIcon(dark)}
 }
+function loginGoogleSvg(){
+  return `<svg class='login-google-ic' width='18' height='18' viewBox='0 0 24 24' aria-hidden='true'><path fill='#4285F4' d='M23.5 12.27c0-.79-.07-1.54-.2-2.27H12v4.51h6.47a5.54 5.54 0 0 1-2.4 3.63v3.01h3.88c2.27-2.09 3.55-5.17 3.55-8.88Z'/><path fill='#34A853' d='M12 24c3.24 0 5.96-1.07 7.95-2.9l-3.88-3.01c-1.07.72-2.45 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.26v3.11A12 12 0 0 0 12 24Z'/><path fill='#FBBC05' d='M5.27 14.28A7.2 7.2 0 0 1 4.9 12c0-.79.14-1.56.37-2.28V6.61H1.26A12 12 0 0 0 0 12c0 1.94.46 3.77 1.26 5.39l4.01-3.11Z'/><path fill='#EA4335' d='M12 4.76c1.76 0 3.34.61 4.59 1.8l3.44-3.44C17.95 1.19 15.24 0 12 0A12 12 0 0 0 1.26 6.61l4.01 3.11C6.22 6.87 8.87 4.76 12 4.76Z'/></svg>`;
+}
 function authHtml(){
-  document.title='Đăng nhập | EducMind';
   const logo=brandLogoHtml();
-  const err=authErr?`<div class='notice' role='alert' style='background:var(--err-bg);color:var(--err-ink)'>${ic('alert',16)}<div>${esc(authErr)}</div></div>`:'',msg=authMsg?`<div class='notice' role='status'>${ic('info',16)}<div>${esc(authMsg)}</div></div>`:'';
-  const back=`<button class='btn light' type='button' style='width:100%;justify-content:center;margin-top:8px' data-app-act='authGoLogin'>Quay lại đăng nhập</button>`;
+  const err=authErr?`<div class='notice login-notice' role='alert' style='background:var(--err-bg);color:var(--err-ink)'>${ic('alert',16)}<div>${esc(authErr)}</div></div>`:'',msg=authMsg?`<div class='notice login-notice' role='status'>${ic('info',16)}<div>${esc(authMsg)}</div></div>`:'';
+  const showVerifyActions=typeof authNeedsVerify!=='undefined'&&authNeedsVerify&&typeof firebaseAuth!=='undefined'&&firebaseAuth&&firebaseAuth.currentUser;
+  const verifyBar=showVerifyActions?`<div class='login-verify-actions'><button type='button' class='btn light mini' data-app-act='authCheckVerify' ${backendBusy?'disabled':''}>Tôi đã xác minh</button><button type='button' class='btn light mini' data-app-act='authResendVerify' ${backendBusy?'disabled':''}>Gửi lại email</button></div>`:'';
+  const remembered=typeof readRememberedLoginEmail==='function'?readRememberedLoginEmail():'';
+  const emailVal=authEmail||remembered;
+  const back=`<button class='btn light' type='button' style='width:100%;justify-content:center;margin-top:8px' data-app-act='authCancelOnboarding' ${backendBusy?'disabled':''}>Dùng tài khoản khác</button>`;
   let b;
-  if(authMode==='forgot')b=`<h1 id='pageTitle' tabindex='-1'>Quên mật khẩu</h1><p class='sub'>Nhập email để nhận mã đặt lại mật khẩu.</p>${err}<form data-app-act='authDoForgot'><div class='field'><label for='em'>Email</label><input id='em' type='email' value="${esc(authEmail)}" autocomplete='username' required></div><button class='btn' id='loginBtn' type='submit' ${backendBusy?'disabled':''}>${backendBusy?'Đang gửi…':'Gửi mã đặt lại'}</button></form>${back}`;
-  else if(authMode==='verify-signup'||authMode==='verify-recovery'){
-    const purpose=authMode==='verify-signup'?'signup':'recovery',heading=purpose==='signup'?'Xác nhận email':'Xác nhận đặt lại mật khẩu';
-    b=`<h1 id='pageTitle' tabindex='-1'>${heading}</h1><p class='sub'>Nhập mã 6–10 chữ số trong thư gửi tới <b>${esc(authEmail)}</b>. Kiểm tra cả thư rác nếu chưa thấy.</p>${msg}${err}<form data-app-act='authVerifyCode' data-purpose='${purpose}'><div class='field'><label for='auth-code'>Mã xác nhận</label><input id='auth-code' type='text' inputmode='numeric' autocomplete='one-time-code' pattern='[0-9]{6,10}' maxlength='10' required></div><button class='btn' id='loginBtn' type='submit' ${backendBusy?'disabled':''}>${backendBusy?'Đang xác nhận…':'Xác nhận mã'}</button></form><button class='btn light' type='button' data-app-act='authResendCode' data-purpose='${purpose}' ${backendBusy?'disabled':''}>Gửi lại mã</button>${back}`;
+  if(authMode==='onboarding'){
+    document.title='Hoàn tất hồ sơ | EducMind';
+    b=`<h1 id='pageTitle' tabindex='-1'>Hoàn tất hồ sơ</h1><p class='sub'>Tài khoản: <b>${esc(authEmail)}</b></p>${msg}${err}<form data-app-act='authCompleteOnboarding' novalidate><fieldset class='su-role'><legend>Tôi là</legend><label><input type='radio' name='su-role' value='STUDENT' data-app-change='authSignupRoleChanged' ${authSignupRole!=='TEACHER'?'checked':''}><span>Học sinh</span></label><label><input type='radio' name='su-role' value='TEACHER' data-app-change='authSignupRoleChanged' ${authSignupRole==='TEACHER'?'checked':''}><span>Giáo viên</span></label></fieldset><div class='field'><label for='su-name'>Họ và tên</label><input id='su-name' autocomplete='name' maxlength='120' value="${esc(authSignupName)}" required></div><div id='su-teacher-fields' class='su-teacher-fields' ${authSignupRole==='TEACHER'?'':'hidden'}><div class='field'><label for='su-class'>Lớp</label><input id='su-class' maxlength='100' value="${esc(authSignupClassName)}" placeholder='Ví dụ: 10A1' autocomplete='off'></div><div class='field'><label for='su-subject'>Môn học</label><input id='su-subject' maxlength='120' value="${esc(authSignupSubject)}" placeholder='Ví dụ: Toán, Tin học...' autocomplete='off'></div></div><button class='btn primary login-cta' id='loginBtn' type='submit' ${backendBusy?'disabled':''}>${backendBusy?'Đang lưu hồ sơ…':'Hoàn tất thiết lập'}</button></form>${back}`;
+  } else if(authMode==='signup'){
+    document.title='Đăng ký | EducMind';
+    b=`<h1 id='pageTitle' class='login-title' tabindex='-1'>Tạo tài khoản</h1><p class='sub login-sub'>Đăng ký tài khoản EducMind mới</p>${msg}${err}<form class='login-form' data-app-act='authEmailSignup' novalidate><div class='login-pill-field'><span class='login-pill-ic' aria-hidden='true'>${ic('mail',18)}</span><input id='su-email' name='email' type='email' placeholder='Nhập email của bạn' autocomplete='email' value="${esc(authEmail)}" required></div><div class='login-pill-field'><span class='login-pill-ic' aria-hidden='true'>${ic('lock',18)}</span><input id='su-pass' name='password' type='password' placeholder='Tạo mật khẩu (tối thiểu 8 ký tự)' autocomplete='new-password' required><button type='button' class='login-eye-btn' data-app-act='authTogglePassword' data-target='su-pass' aria-label='Hiện mật khẩu' aria-pressed='false'>${ic('eyeOff',18)}</button></div><div class='login-pill-field'><span class='login-pill-ic' aria-hidden='true'>${ic('lock',18)}</span><input id='su-pass2' name='password_confirm' type='password' placeholder='Nhập lại mật khẩu' autocomplete='new-password' required><button type='button' class='login-eye-btn' data-app-act='authTogglePassword' data-target='su-pass2' aria-label='Hiện mật khẩu' aria-pressed='false'>${ic('eyeOff',18)}</button></div><button class='btn primary login-cta' id='loginBtn' type='submit' ${backendBusy?'disabled':''}><span>${backendBusy?'Đang đăng ký…':'Đăng ký'}</span>${ic('arrow',18)}</button></form><div class='login-or'><span>hoặc</span></div><button class='btn light login-google-btn' type='button' data-app-act='authGoogleLogin' ${backendBusy?'disabled':''}>${loginGoogleSvg()}<span>Tiếp tục với Google</span></button><div class='login-foot'>Đã có tài khoản? <button type='button' class='login-foot-link' data-app-act='authGoLogin'>Đăng nhập</button></div>`;
+  } else if(authMode==='reset'){
+    document.title='Quên mật khẩu | EducMind';
+    b=`<h1 id='pageTitle' class='login-title' tabindex='-1'>Quên mật khẩu</h1><p class='sub login-sub'>Nhập email để nhận liên kết đặt lại mật khẩu</p>${msg}${err}<form class='login-form' data-app-act='authEmailReset' novalidate><div class='login-pill-field'><span class='login-pill-ic' aria-hidden='true'>${ic('mail',18)}</span><input id='reset-email' name='email' type='email' placeholder='Nhập email của bạn' autocomplete='email' value="${esc(emailVal)}" required></div><button class='btn primary login-cta' id='loginBtn' type='submit' ${backendBusy?'disabled':''}><span>${backendBusy?'Đang gửi liên kết…':'Gửi liên kết đặt lại'}</span>${ic('arrow',18)}</button></form><div class='login-foot'>Đã nhớ mật khẩu? <button type='button' class='login-foot-link' data-app-act='authGoLogin'>Đăng nhập</button></div>`;
+  } else {
+    document.title='Đăng nhập | EducMind';
+    b=`<h1 id='pageTitle' class='login-title' tabindex='-1'>Chào mừng trở lại</h1><p class='sub login-sub'>Đăng nhập vào tài khoản của bạn</p>${msg}${err}${verifyBar}<form class='login-form' data-app-act='authEmailLogin' novalidate><div class='login-pill-field'><span class='login-pill-ic' aria-hidden='true'>${ic('mail',18)}</span><input id='login-email' name='email' type='email' placeholder='Nhập email của bạn' autocomplete='email' value="${esc(emailVal)}" required></div><div class='login-pill-field'><span class='login-pill-ic' aria-hidden='true'>${ic('lock',18)}</span><input id='login-pass' name='password' type='password' placeholder='Nhập mật khẩu' autocomplete='current-password' required><button type='button' class='login-eye-btn' data-app-act='authTogglePassword' data-target='login-pass' aria-label='Hiện mật khẩu' aria-pressed='false'>${ic('eyeOff',18)}</button></div><div class='login-meta-row'><label class='login-remember'><input id='login-remember' type='checkbox' ${remembered?'checked':''}><span>Ghi nhớ đăng nhập</span></label><button type='button' class='login-text-link' data-app-act='authGoReset'>Quên mật khẩu?</button></div><button class='btn primary login-cta' id='loginBtn' type='submit' ${backendBusy?'disabled':''}><span>${backendBusy?'Đang đăng nhập…':'Đăng nhập'}</span>${ic('arrow',18)}</button></form><div class='login-or'><span>hoặc</span></div><button class='btn light login-google-btn' type='button' data-app-act='authGoogleLogin' ${backendBusy?'disabled':''}>${loginGoogleSvg()}<span>Tiếp tục với Google</span></button><div class='login-foot'>Chưa có tài khoản? <button type='button' class='login-foot-link' data-app-act='authGoSignup'>Đăng ký</button></div>`;
   }
-  else if(authMode==='signup')b=`<h1 id='pageTitle' tabindex='-1'>Tạo tài khoản</h1>${err}${msg}<form data-app-act='authBackendSignup' novalidate><fieldset class='su-role'><legend>Tôi là</legend><label><input type='radio' name='su-role' value='STUDENT' data-app-change='authSignupRoleChanged' ${authSignupRole!=='TEACHER'?'checked':''}><span>Học sinh</span></label><label><input type='radio' name='su-role' value='TEACHER' data-app-change='authSignupRoleChanged' ${authSignupRole==='TEACHER'?'checked':''}><span>Giáo viên</span></label></fieldset><div class='field'><label for='su-name'>Họ và tên</label><input id='su-name' autocomplete='name' value="${esc(authSignupName)}" required></div><div class='field'><label for='em'>Email</label><input id='em' type='email' value="${esc(authEmail)}" autocomplete='email' required></div><div id='su-teacher-fields' class='su-teacher-fields' ${authSignupRole==='TEACHER'?'':'hidden'}><div class='field'><label for='su-class'>Lớp</label><input id='su-class' maxlength='100' value="${esc(authSignupClassName)}" placeholder='Ví dụ: 10A1' autocomplete='off'></div><div class='field'><label for='su-subject'>Môn học</label><input id='su-subject' maxlength='120' value="${esc(authSignupSubject)}" placeholder='Ví dụ: Toán, Ngữ văn,...' autocomplete='off'></div></div><div class='field'><label for='pw'>Mật khẩu</label><input id='pw' type='password' autocomplete='new-password' aria-describedby='pw-hint' required><div class='muted' id='pw-hint' style='font-size:.78rem'>Tối thiểu ${PW_MIN} ký tự.</div></div><div class='field'><label for='pw2'>Nhập lại mật khẩu</label><input id='pw2' type='password' autocomplete='new-password' required></div><button class='btn' type='submit' ${backendBusy?'disabled':''}>${backendBusy?'Đang tạo…':'Tạo tài khoản'}</button></form>${back}`;
-  else if(authMode==='reset')b=`<h1 id='pageTitle' tabindex='-1'>Đặt mật khẩu mới</h1><p class='sub'>Mật khẩu tối thiểu ${PW_MIN} ký tự. Mã hoặc liên kết xác minh chỉ dùng được một lần.</p>${err}<form data-app-act='authDoReset'><div class='field'><label for='np'>Mật khẩu mới</label><input id='np' type='password' autocomplete='new-password'></div><div class='field'><label for='np2'>Nhập lại mật khẩu mới</label><input id='np2' type='password' autocomplete='new-password'></div><button class='btn' id='loginBtn' type='submit'>Lưu mật khẩu</button></form>${back}`;
-  else{
-    b=`<h1 id='pageTitle' tabindex='-1'>Đăng nhập</h1><p class='sub'>Đăng nhập bằng email và mật khẩu bạn đã đăng ký.</p>${msg}${err}<form data-app-act='authDoLogin'><div class='field'><label for='em'>Email</label><input id='em' type='email' value="${esc(authEmail)}" autocomplete='username' required></div><div class='field'><label for='pw'>Mật khẩu</label><input id='pw' type='password' autocomplete='current-password' required></div><button class='btn' id='loginBtn' type='submit' ${backendBusy?'disabled':''}>${backendBusy?'Đang đăng nhập…':'Đăng nhập'}</button></form><button class='btn light' type='button' style='width:100%;justify-content:center;margin-top:8px' data-app-act='authGoSignup'>Tạo tài khoản</button><button class='btn light' type='button' style='width:100%;justify-content:center;margin-top:8px' data-app-act='authGoForgot'>Quên mật khẩu?</button>`;
-  }
-  app.innerHTML=`<main class='login-wrap'><div class='login ${loginCardDarkEnabled()?'login-dark':''}'>${logo}${loginCardThemeButton()}${b}</div>${loginBackgroundControls()}</main>`;
+  app.innerHTML=`<main class='login-wrap'><div class='login ${loginCardDarkEnabled()?'login-dark':''}'>
+    <div class='login-header-badge'>${logo}</div>
+    ${loginCardThemeButton()}
+    ${b}
+  </div>${loginBackgroundControls()}</main>`;
   applyLoginBackground();
   return true;
 }
@@ -89,7 +121,7 @@ function toggleLayer4BgPanel(){
   layer4BgOpen=!layer4BgOpen;panel.hidden=!layer4BgOpen;if(btn)btn.setAttribute('aria-expanded',String(layer4BgOpen));
 }
 function storeLayer4Background(value){
-  try{localStorage.setItem(layer4BackgroundKey(),value);applyLayer4Background();layer4BgStatus('Ảnh nền màn hình chính đã được cập nhật và lưu cho tài khoản này.');return true}
+  try{localStorage.setItem(layer4BackgroundKey(),value);applyLayer4Background();layer4BgStatus('Ảnh nền màn hình chính đã được cập nhật và lưu cho tài khoản này.');if(typeof toast==='function')toast('Đã cập nhật hình nền màn hình chính.');return true}
   catch(e){layer4BgStatus('Không lưu được ảnh nền. Hãy dùng ảnh nhỏ hơn hoặc giải phóng dung lượng trình duyệt.');return false}
 }
 function applyLayer4BgUrl(){
@@ -102,12 +134,11 @@ function applyLayer4BgUrl(){
   probe.src=url;
 }
 function uploadLayer4Bg(file){
-  if(!file)return;if(!/^image\/(png|jpeg|webp|gif)$/i.test(file.type)){layer4BgStatus('Hãy chọn ảnh PNG, JPG, WEBP hoặc GIF.');return}
+  if(!file)return;if(!isSupportedBgFile(file)){layer4BgStatus('Hãy chọn ảnh PNG, JPG, WEBP hoặc GIF.');return}
   if(file.size>15*1024*1024){layer4BgStatus('Ảnh tải lên cần nhỏ hơn 15 MB.');return}
   const reader=new FileReader();reader.onerror=()=>layer4BgStatus('Không đọc được tệp ảnh.');
   reader.onload=()=>{const img=new Image();img.onerror=()=>layer4BgStatus('Tệp này không phải ảnh hợp lệ.');img.onload=()=>{
-    try{const maxW=1920,maxH=1200,scale=Math.min(1,maxW/img.naturalWidth,maxH/img.naturalHeight),w=Math.max(1,Math.round(img.naturalWidth*scale)),h=Math.max(1,Math.round(img.naturalHeight*scale)),canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const cx=canvas.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,w,h);cx.drawImage(img,0,0,w,h);storeLayer4Background(canvas.toDataURL('image/jpeg',.84))}
-    catch(e){layer4BgStatus('Không thể xử lý ảnh này. Hãy thử PNG, JPG hoặc WEBP khác.')}
+    saveCompressedBg(img,storeLayer4Background,layer4BgStatus);
   };img.src=String(reader.result||'')};reader.readAsDataURL(file)
 }
 function layer4BackgroundControls(){return `<div class='app-bg-controls'><button type='button' class='app-bg-trigger' id='app-bg-trigger' aria-expanded='${layer4BgOpen}' aria-controls='app-bg-panel' data-app-act='toggleLayer4BgPanel'><span aria-hidden='true'>▧</span> Đổi ảnh nền</button><section class='app-bg-panel' id='app-bg-panel' aria-labelledby='app-bg-title' ${layer4BgOpen?'':'hidden'}><h2 id='app-bg-title'>Ảnh nền màn hình chính</h2><p>Nền được lưu riêng cho tài khoản này trên thiết bị. Dán URL ảnh trực tiếp hoặc tải ảnh lên.</p><label for='app-bg-url'>Liên kết ảnh</label><input id='app-bg-url' type='url' placeholder='https://images.unsplash.com/photo-…' inputmode='url'><div class='app-bg-links'>Tìm ảnh tại <a href='https://unsplash.com/' target='_blank' rel='noopener noreferrer'>Unsplash</a><a href='https://www.pexels.com/' target='_blank' rel='noopener noreferrer'>Pexels</a></div><div class='app-bg-actions'><button type='button' class='btn' data-app-act='applyLayer4BgUrl'>Dùng liên kết</button><button type='button' class='btn light' data-app-act='clearLayer4Background'>Xóa nền</button></div><label for='app-bg-file'>Hoặc tải ảnh lên</label><input id='app-bg-file' type='file' accept='image/png,image/jpeg,image/webp,image/gif' data-app-change='layer4BgFileChanged'><div class='app-bg-status' id='app-bg-status' role='status'></div></section></div>`}

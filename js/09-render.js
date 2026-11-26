@@ -1,23 +1,12 @@
 /* EducMind · js/09-render.js
    Hàm render(): chọn màn hình theo trạng thái đăng nhập và đặt lại vị trí nút thu gọn thanh bên. */
 /* ===== Hiển thị ===== */
-/* Tay nắm thu gọn bám đúng mép phải của thẻ điều hướng, luôn ở giữa chiều cao cửa sổ */
-function placeSideToggle(){
-  const t=document.querySelector('.side-toggle'),n=document.querySelector('.side');
-  if(!t||!n){return}
-  const r=n.getBoundingClientRect();
-  if(window.innerWidth<=900){
-    t.style.removeProperty('--tog-x');
-    const y=Math.round(r.top+(r.height-(t.offsetHeight||40))/2)+'px';
-    if(t.style.getPropertyValue('--tog-y')!==y)t.style.setProperty('--tog-y',y);
-    return;
-  }
-  t.style.removeProperty('--tog-y');
-  const half=t.offsetWidth/2||15,x=Math.round(r.right-half)+'px';
-  if(t.style.getPropertyValue('--tog-x')!==x)t.style.setProperty('--tog-x',x);
-}
-addEventListener('resize',()=>requestAnimationFrame(placeSideToggle));
-addEventListener('scroll',()=>{if(window.innerWidth<=900)requestAnimationFrame(placeSideToggle)},{passive:true});
+/* Tay nắm thu gọn: vị trí do CSS quyết định (bám mép phải thanh bên, xem
+   css/06-floating-nav.css). Không đo bằng JS rồi ghi toạ độ nữa: mỗi lần vẽ lại,
+   phần tử mới luôn xuất hiện ở giá trị mặc định rồi mới nhảy về toạ độ đo được,
+   nên bấm bất kỳ mục nào ở thanh bên hay tab bar nổi đều thấy nút này "chạy" ngang.
+   Chỉ cần một hàm rỗng để các chỗ gọi cũ vẫn chạy an toàn. */
+function placeSideToggle(){}
 function render(){
   authGuard();
   try{
@@ -25,7 +14,7 @@ function render(){
     else if(!logged&&authHtml()){}
     else{
       document.title='Đăng nhập | EducMind';
-      app.innerHTML=`<main class="login-wrap"><div class="login">${brandLogoHtml()}<h1 id="pageTitle" tabindex="-1">Đăng nhập EducMind</h1><p class="sub">Hệ thống chỉ dùng tài khoản thật được đăng ký qua email. Nếu màn hình này xuất hiện, hãy tải lại trang.</p><button type="button" class="btn" data-app-act="reloadPage">Tải lại trang</button></div></main>`;
+      app.innerHTML=`<main class="login-wrap"><div class="login">${brandLogoHtml()}<h1 id="pageTitle" tabindex="-1">Đăng nhập EducMind</h1><p class="sub">Hệ thống sử dụng tài khoản Google đã xác minh. Nếu màn hình này xuất hiện, hãy tải lại trang.</p><button type="button" class="btn" data-app-act="reloadPage">Tải lại trang</button></div></main>`;
     }
     if(focusId){const el=document.getElementById(focusId);if(el)el.focus({preventScroll:true});focusId=null}
     if(flashId){const f=document.getElementById(flashId);if(f){f.classList.add('flash');f.scrollIntoView({block:'center'});setTimeout(()=>f.classList.remove('flash'),3500)}flashId=null}

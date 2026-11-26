@@ -89,8 +89,19 @@ function dbLessonResources(l, resources) {
     <span class="row db-file-actions">${previewBtn}${actionBtn}${dbIsTeacher() ? dbBtn('Xóa', 'deleteResource', { id: r.id, name: r.file_name }, 'light mini danger-soft') : ''}</span>
   </li>`;
   }).join('');
+  // Link purpose pills per resource
+  let coverageByRes = {};
+  try { coverageByRes = window.__dbCoverageByRes || {}; } catch (_) {}
+  const itemsWithTags = (resources || []).map((r) => {
+    const tags = (coverageByRes[r.id] || []).map((pur) => `<span class="pill ${pur === 'LEARN' ? 'good' : pur === 'PRACTICE' ? 'prog' : 'plain'} mini" title="${h(dbPurposeLabel(pur))}">${h(DB_PURPOSE_SHORT[pur] || DB_PURPOSE_LABEL[pur] || pur)}</span>`).join(' ') || '<span class="muted mini">Chưa gắn mục tiêu</span>';
+    return `<li class="db-file">
+    <span class="db-file-name">${ic(r.kind === 'LINK' && dbYoutubeId(dbSafeHttpUrl(r.url)) ? 'play' : 'overview', 14)}<span class="db-file-title">${h(r.file_name)}</span>${r.kind === 'LINK' ? `<span class="muted db-file-url">${h(String(dbSafeHttpUrl(r.url) || r.url || '').replace(/^https?:\/\//, '').slice(0, 60))}</span>` : ''}</span>
+    <span class="muted db-file-meta">${tags}</span>
+    <span class="row db-file-actions">${dbIsTeacher() ? dbBtn('Gắn mục tiêu', 'openResourceLinking', { id: r.id }, 'light mini') : ''}${r.kind === 'LINK' ? (dbSafeHttpUrl(r.url) ? dbBtn('Mở', 'openResourceLink', { url: dbSafeHttpUrl(r.url) }, 'light mini') : '') : dbBtn('Tải xuống', 'downloadResource', { path: r.storage_path, name: r.file_name }, 'light mini')}${dbIsTeacher() ? dbBtn('Xóa', 'deleteResource', { id: r.id, name: r.file_name }, 'light mini danger-soft') : ''}</span>
+  </li>`;
+  }).join('');
   return `<div class="db-files"><span class="db-label">Tài liệu${dbIsTeacher() ? '' : ' của bài học'}</span>
-    ${items ? `<ul class="db-filelist">${items}</ul>` : '<p class="muted">Chưa có tài liệu nào.</p>'}
+    ${itemsWithTags ? `<ul class="db-filelist">${itemsWithTags}</ul>` : '<p class="muted">Chưa có tài liệu nào.</p>'}
     ${dbIsTeacher() ? `<form data-act="uploadResource" data-lesson="${h(l.id)}" class="db-form-row db-add-row" novalidate>
       <input type="file" id="db-rf-${h(l.id)}" name="file" class="db-input-file" aria-label="Chọn tệp tài liệu cho bài học ${h(l.title)}">
       <button type="submit" class="btn light">Tải tài liệu lên</button><span class="muted">Mọi định dạng (doc, xlsx, pptx, tệp code, video, âm thanh…), tối đa 50 MB.</span>${dbFormError()}
@@ -237,6 +248,44 @@ DB_ACT.addResourceLink = (form) => dbRun(form, async (v) => {
     mime_type: yt ? 'text/x-youtube' : 'text/x-link', uploaded_by: sess.userId,
   }));
 }, 'Đã thêm liên kết.');
+
+/* ===== Gắn tài nguyên với mục tiêu (Phase 1) ===== */
+DB_ACT.openResourceLinking = async (el) => {
+  const rid = el.dataset.id;
+  const courseId = DB.course ? DB.course.id : '';
+  const content = await dbLoadContent();
+  const links = await dbCall(EducMindDB.listResourceObjectiveLinks(courseId)).catch(() => []);
+  const cur = links.filter((x) => x.resource_id === rid);
+  const curSet = new Set(cur.map((x) => x.objective_id + '|' + x.purpose));
+  const purposes = (typeof DB_PURPOSE_ORDER !== 'undefined' ? DB_PURPOSE_ORDER : ['LEARN', 'PRACTICE', 'EXTEND']);
+  const body = content.objectives.map((o) => {
+    return '<fieldset class="db-link-field"><legend>' + h(o.code) + ' · ' + h(o.description) + '</legend>' +
+      purposes.map((p) => '<label class="db-check"><input type="checkbox" data-link data-obj="' + h(o.id) + '" data-purpose="' + p + '"' + (curSet.has(o.id + '|' + p) ? ' checked' : '') + '> ' + h(dbPurposeLabel(p)) + '</label>').join(' ') + '</fieldset>';
+  }).join('') || '<p class="muted">Chưa có mục tiêu.</p>';
+  dbOpenDialog({
+    title: 'Gắn tài nguyên với mục tiêu', wide: true, okLabel: 'Lưu',
+    body: '<div class="db-link-dialog">' + body + '</div>',
+    onOk: async () => {
+      const checks = [...document.querySelectorAll('[data-link]')];
+      const wanted = new Set(checks.filter((c) => c.checked).map((c) => c.dataset.obj + '|' + c.dataset.purpose));
+      const current = new Set(cur.map((x) => x.objective_id + '|' + x.purpose));
+      const toAdd = [...wanted].filter((x) => !current.has(x));
+      const toRemove = [...current].filter((x) => !wanted.has(x));
+      for (const key of toAdd) {
+        const [oid, pur] = key.split('|');
+        await dbCall(EducMindDB.createResourceObjectiveLink({ course_id: courseId, resource_id: rid, objective_id: oid, purpose: pur }));
+      }
+      for (const key of toRemove) {
+        const [oid] = key.split('|');
+        const lid = cur.find((x) => x.objective_id === oid && x.purpose === key.split('|')[1]);
+        // id is resource_objective: resource_id_objective_id ; but need exact link id
+        const linkId = lid ? lid.id : (rid + '_' + oid);
+        try { await dbCall(EducMindDB.deleteResourceObjectiveLink(linkId)); } catch (_) {}
+      }
+      toast('Đã lưu gắn mục tiêu.');
+    },
+  });
+};
 
 /* ===== Thùng rác ===== */
 function dbTrashRestore(it) {

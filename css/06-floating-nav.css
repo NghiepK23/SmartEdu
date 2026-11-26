@@ -11,12 +11,12 @@
   .layout>.main{min-height:calc(100vh - 106px)}
   .layout.teacher-layout:not(.sidebar-collapsed),
   .layout:not(.teacher-layout):not(.sidebar-collapsed){
-    grid-template-columns:292px minmax(0,1fr)!important;
+    grid-template-columns:196px minmax(0,1fr)!important;
     gap:0!important;
   }
   .layout.teacher-layout.sidebar-collapsed,
   .layout:not(.teacher-layout).sidebar-collapsed{
-    grid-template-columns:92px minmax(0,1fr)!important;
+    grid-template-columns:86px minmax(0,1fr)!important;
     gap:0!important;
   }
 
@@ -28,8 +28,8 @@
     right:auto!important;
     bottom:16px!important;
     transform:none!important;
-    width:274px!important;
-    max-width:274px!important;
+    width:196px!important;
+    max-width:196px!important;
     height:auto!important;
     min-height:0!important;
     max-height:calc(100vh - 94px)!important;
@@ -37,8 +37,8 @@
     z-index:2147483646!important;
     align-self:auto;
     margin:0!important;
-    padding:12px 11px 10px!important;
-    border-radius:28px!important;
+    padding:10px 8px 9px!important;
+    border-radius:24px!important;
     display:flex!important;
     flex-direction:column!important;
     overflow-y:auto!important;
@@ -46,6 +46,9 @@
     overscroll-behavior:contain;
     scrollbar-width:thin;
     scrollbar-color:rgba(100,116,139,.45) transparent;
+    /* Chừa sẵn chỗ cho thanh cuộn: khi danh sách ngắn/dài đổi (bấm sang mục khác),
+       bề rộng thanh bên không co giãn nên tay nắm đứng yên. */
+    scrollbar-gutter:stable;
   }
   .layout.sidebar-collapsed>.side{
     left:max(18px, calc(50vw - 702px))!important;
@@ -54,19 +57,27 @@
     padding:14px 10px 12px!important;
     border-radius:26px!important;
   }
+  /* Thu gọn: tay nắm bám mép phải của thanh hẹp (74px), vẫn ở đúng giữa theo chiều dọc */
+  .layout.sidebar-collapsed>.side-toggle{
+    left:calc(max(18px, 50vw - 702px) + 74px - 16px);
+  }
   .layout>.side .items{display:grid;gap:3px}
   .layout>.side .items .nav span.nav-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 
   /* Phần nội dung luôn nằm ở cột 2 */
-  .layout>.main{grid-column:2 / -1;min-height:calc(100vh - 106px);padding:22px clamp(20px,2.5vw,30px) 32px}
+  .layout>.main{grid-column:2 / -1;min-height:calc(100vh - 106px);padding:22px clamp(20px,2.5vw,30px) 96px}
 }
 
 /* ===== Tay nắm thu gọn/mở rộng: nút tròn ở mép trên-phải sidebar ===== */
 @media(min-width:901px){
+  /* Vị trí tay nắm suy ra TRỰC TIẾP từ công thức của .side, không đo bằng JS.
+     Trước đây JS đo rồi ghi vào --tog-x sau mỗi lần vẽ lại: phần tử mới luôn khởi
+     tạo ở giá trị mặc định 276px rồi mới "nhảy" về vị trí thật, nên mỗi lần bấm
+     một mục ở thanh bên hoặc một nút trên tab bar nổi là tay nắm lại trượt ngang. */
   .layout>.side-toggle{
     position:fixed;
     top:94px;
-    left:var(--tog-x,276px);
+    left:calc(max(18px, 50vw - 702px) + 196px - 16px);
     transform:none;
     z-index:2147483647;
     display:grid;
@@ -84,7 +95,7 @@
     line-height:1;
     box-shadow:0 2px 10px -2px rgba(15,35,70,.18);
     cursor:pointer;
-    transition:transform .18s var(--ease),box-shadow .18s var(--ease),background .18s var(--ease),left .22s var(--ease);
+    transition:transform .18s var(--ease),box-shadow .18s var(--ease),background .18s var(--ease);
   }
   .layout>.side-toggle:hover{
     box-shadow:0 6px 16px -3px rgba(15,35,70,.24);
@@ -158,10 +169,10 @@ select,textarea,.selectbox{
   .layout>.side::-webkit-scrollbar{width:8px}
   .layout>.side::-webkit-scrollbar-track{background:transparent;border-radius:8px;margin:24px 4px}
   .layout>.side::-webkit-scrollbar-thumb{background:rgba(100,116,139,.45);border:2px solid transparent;background-clip:padding-box;border-radius:8px}
-  .layout>.side::-webkit-scrollbar-thumb:hover{background:rgba(37,99,235,.70);background-clip:padding-box}
+  .layout>.side::-webkit-scrollbar-thumb:hover{background:rgba(72,184,174,.65);background-clip:padding-box}
 }
 @supports (-moz-appearance:none){
-  @media(min-width:901px){.layout>.side{scrollbar-width:thin;scrollbar-color:rgba(100,116,139,.55) transparent}}
+  @media(min-width:901px){.layout>.side{scrollbar-width:thin;scrollbar-color:rgba(242,250,248,.35) transparent}}
 }
 
 /* Breadcrumb thư mục gọn nhẹ */
@@ -177,4 +188,624 @@ select,textarea,.selectbox{
 #app .layout::before{
   content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
   background-image:var(--layer4-bg-image,none);background-size:cover;background-position:center;background-repeat:no-repeat
+}
+
+/* ===== Tìm kiếm toàn cục ở thanh trên cùng ===== */
+.db-global-search-wrap{
+  position:relative;
+  flex:1 1 280px;
+  max-width:420px;
+  min-width:160px;
+  display:flex;
+  align-items:center;
+}
+.db-global-search-wrap>.ic{
+  position:absolute;
+  left:13px;
+  pointer-events:none;
+  color:var(--muted);
+  width:15px;
+  height:15px;
+}
+#db-global-search{
+  width:100%;
+  height:36px;
+  min-height:36px;
+  padding:6px 14px 6px 36px!important;
+  border-radius:999px!important;
+  border:1px solid var(--lg-edge,var(--line))!important;
+  background:var(--lg-inset,var(--fill))!important;
+  box-shadow:var(--lg-inset-rim)!important;
+  color:var(--ink)!important;
+  font-size:.82rem;
+}
+#db-global-search:focus{
+  background:var(--surface)!important;
+  border-color:color-mix(in srgb,var(--brand) 55%,transparent)!important;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 16%,transparent)!important;
+}
+.db-global-results{
+  position:absolute;
+  top:calc(100% + 8px);
+  left:0;
+  right:0;
+  z-index:2147483647;
+  display:grid;
+  gap:4px;
+  padding:8px;
+  max-height:min(60vh,380px);
+  overflow-y:auto;
+  border-radius:20px;
+  border:1px solid var(--lg-edge,var(--line));
+  background:var(--lg-sheet-a,var(--surface));
+  -webkit-backdrop-filter:var(--lg-blur-sheet,blur(24px));
+  backdrop-filter:var(--lg-blur-sheet,blur(24px));
+  box-shadow:var(--shadow-lg);
+}
+.db-global-results[hidden]{display:none!important}
+.db-global-item{
+  display:grid;
+  grid-template-columns:30px minmax(0,1fr) 16px;
+  align-items:center;
+  gap:10px;
+  width:100%;
+  padding:8px 10px;
+  border:0;
+  border-radius:12px!important;
+  background:transparent;
+  color:var(--ink);
+  text-align:left;
+}
+.db-global-item:hover,.db-global-item:focus-visible{
+  background:var(--brand-soft);
+  color:var(--ink);
+}
+.db-global-ic{
+  display:grid;
+  place-items:center;
+  width:30px;
+  height:30px;
+  border-radius:9px;
+  background:var(--brand-soft);
+  color:var(--brand-ink);
+}
+.db-global-item>span:nth-child(2){
+  min-width:0;
+  display:grid;
+  gap:1px;
+}
+.db-global-item b{
+  font-size:.83rem;
+  font-weight:650;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.db-global-item small{
+  font-size:.72rem;
+  color:var(--muted);
+}
+.db-global-go{color:var(--muted)}
+.db-global-empty{
+  padding:14px 10px;
+  text-align:center;
+  color:var(--muted);
+  font-size:.81rem;
+}
+
+/* ===== Thanh tab nổi phía dưới + nút dấu cộng tạo nhanh ===== */
+.db-dock-wrap{
+  position:fixed!important;
+  bottom:max(10px,env(safe-area-inset-bottom))!important;
+  left:50%!important;
+  right:auto!important;
+  transform:translateX(-50%)!important;
+  z-index:2147483645!important;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  width:fit-content;
+  max-width:calc(100vw - 32px);
+  margin:0!important;
+  border-radius:999px;
+  pointer-events:none;
+  transition:bottom .18s var(--ease);
+}
+.db-dock-wrap>*{pointer-events:auto}
+.db-bottom-dock{
+  display:flex;
+  align-items:center;
+  gap:3px;
+  padding:3px 5px;
+  border-radius:999px!important;
+  background:linear-gradient(168deg,#1f6f6b 0%,#165451 100%);
+  border:1px solid rgba(255,255,255,.20);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.26),0 10px 24px -8px rgba(15,52,50,.38),0 3px 10px rgba(15,35,34,.12);
+  -webkit-backdrop-filter:blur(22px) saturate(140%);
+  backdrop-filter:blur(22px) saturate(140%);
+  overflow-x:auto;
+  scrollbar-width:none;
+  max-width:calc(100vw - 32px);
+}
+.db-bottom-dock::-webkit-scrollbar{display:none}
+:root[data-theme="dark"] .db-bottom-dock{
+  background:linear-gradient(168deg,#1a4140 0%,#122e2e 100%);
+  border-color:rgba(123,224,215,.22);
+  box-shadow:inset 0 1px 0 rgba(123,224,215,.20),0 14px 28px -8px rgba(2,10,10,.68);
+}
+.db-dock-item{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  height:28px;
+  min-height:28px;
+  padding:0 10px;
+  border:0;
+  border-radius:999px!important;
+  background:transparent;
+  color:rgba(242,250,248,.88);
+  font:600 .72rem/1 var(--font-body);
+  white-space:nowrap;
+  flex:none;
+  transition:background-color .18s var(--ease),color .18s var(--ease),transform .18s var(--ease);
+}
+.db-dock-item:hover{
+  background:rgba(255,255,255,.14);
+  color:#ffffff;
+}
+.db-dock-item.is-active{
+  background:#ffffff!important;
+  color:#154946!important;
+  font-weight:700;
+  box-shadow:0 2px 8px -2px rgba(10,36,35,.22);
+}
+:root[data-theme="dark"] .db-dock-item.is-active{
+  background:#48b8ae!important;
+  color:#081c1b!important;
+}
+.db-dock-item .ic{
+  width:13px;
+  height:13px;
+  flex:none;
+}
+.db-dock-badge{
+  display:inline-grid;
+  place-items:center;
+  min-width:15px;
+  height:15px;
+  padding:0 3px;
+  border-radius:999px;
+  background:#d6554e;
+  color:#ffffff;
+  font-size:.60rem;
+  font-weight:800;
+  line-height:1;
+}
+.db-dock-plus-wrap{
+  position:relative;
+  flex:none;
+}
+.db-dock-plus{
+  display:grid;
+  place-items:center;
+  width:36px;
+  min-width:36px;
+  height:36px;
+  min-height:36px;
+  padding:0!important;
+  border:1px solid var(--lg-edge,var(--line));
+  border-radius:999px!important;
+  background:linear-gradient(180deg,var(--lg-control-a,#ffffff),var(--lg-control-b,#eef4f2));
+  color:var(--brand-ink,var(--ink));
+  box-shadow:var(--lg-control-rim),0 10px 24px -8px rgba(19,34,38,.20);
+}
+.db-dock-plus .ic{
+  width:16px;
+  height:16px;
+}
+.db-dock-plus:hover{
+  background:var(--surface);
+  color:var(--brand);
+}
+.db-dock-plus[aria-expanded="true"]{
+  background:var(--cta-bg);
+  color:var(--cta-ink);
+  transform:rotate(45deg);
+}
+.db-quick-menu{
+  position:absolute;
+  right:0;
+  bottom:calc(100% + 10px);
+  width:min(290px,calc(100vw - 32px));
+  padding:8px;
+  border-radius:20px;
+  border:1px solid var(--lg-edge,var(--line));
+  background:var(--lg-sheet-a,var(--surface));
+  -webkit-backdrop-filter:var(--lg-blur-sheet,blur(24px));
+  backdrop-filter:var(--lg-blur-sheet,blur(24px));
+  box-shadow:var(--shadow-lg);
+  display:grid;
+  gap:3px;
+}
+.db-quick-menu[hidden]{display:none!important}
+.db-quick-head{
+  padding:6px 10px 4px;
+  color:var(--muted);
+  font-size:.68rem;
+  font-weight:750;
+  letter-spacing:.07em;
+  text-transform:uppercase;
+}
+.db-quick-item{
+  display:grid;
+  grid-template-columns:32px minmax(0,1fr);
+  align-items:center;
+  gap:10px;
+  width:100%;
+  padding:8px 10px;
+  border:0;
+  border-radius:12px!important;
+  background:transparent;
+  color:var(--ink);
+  text-align:left;
+}
+.db-quick-item:hover,.db-quick-item:focus-visible{
+  background:var(--brand-soft);
+}
+.db-quick-ic{
+  display:grid;
+  place-items:center;
+  width:32px;
+  height:32px;
+  border-radius:10px;
+  background:var(--brand-soft);
+  color:var(--brand-ink);
+}
+.db-quick-item>span:last-child{
+  display:grid;
+  gap:1px;
+  min-width:0;
+}
+.db-quick-item b{font-size:.82rem;font-weight:650}
+.db-quick-item small{font-size:.71rem;color:var(--muted)}
+.layout.has-dialog ~ .db-dock-wrap,
+body:has(#main .db-assignment-game-form) .db-dock-wrap,
+body:has(#main #rd-top) .db-dock-wrap,
+body:has(.layout.has-dialog) .db-dock-wrap{
+  display:none!important;
+}
+
+/* ===== Hộp thả Cài đặt (Bánh răng) ===== */
+.db-settings-wrap{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+}
+.db-settings-trigger{
+  border-radius:999px!important;
+}
+.db-settings-trigger[aria-expanded="true"]{
+  background:var(--brand-soft)!important;
+  color:var(--brand-ink)!important;
+}
+.db-settings-menu{
+  position:absolute;
+  right:0;
+  top:calc(100% + 10px);
+  width:min(320px,calc(100vw - 24px));
+  padding:10px;
+  border-radius:20px;
+  border:1px solid var(--lg-edge,var(--line));
+  background:var(--lg-sheet-a,var(--surface));
+  -webkit-backdrop-filter:var(--lg-blur-sheet,blur(24px));
+  backdrop-filter:var(--lg-blur-sheet,blur(24px));
+  box-shadow:var(--shadow-lg);
+  z-index:45;
+  display:grid;
+  gap:5px;
+}
+.db-settings-menu[hidden]{display:none!important}
+.db-settings-head{
+  padding:6px 10px 8px;
+  border-bottom:1px solid var(--line);
+}
+.db-settings-head b{
+  display:block;
+  font-size:.85rem;
+  font-weight:700;
+  color:var(--ink);
+}
+.db-settings-head small{
+  display:block;
+  font-size:.72rem;
+  color:var(--muted);
+  margin-top:2px;
+}
+.db-settings-list{
+  display:grid;
+  gap:4px;
+  margin-top:4px;
+}
+.db-settings-item{
+  display:grid;
+  grid-template-columns:32px minmax(0,1fr) auto;
+  align-items:center;
+  gap:10px;
+  width:100%;
+  padding:8px 10px;
+  border:0;
+  border-radius:12px!important;
+  background:transparent;
+  color:var(--ink);
+  text-align:left;
+  cursor:pointer;
+  transition:background-color .15s ease;
+}
+.db-settings-item:hover,.db-settings-item:focus-visible{
+  background:var(--brand-soft);
+}
+.db-settings-item-static:hover{
+  background:transparent;
+  cursor:default;
+}
+.db-settings-ic{
+  display:grid;
+  place-items:center;
+  width:32px;
+  height:32px;
+  border-radius:10px;
+  background:var(--brand-soft);
+  color:var(--brand-ink);
+}
+.db-settings-copy{
+  display:grid;
+  gap:1px;
+  min-width:0;
+}
+.db-settings-copy b{
+  font-size:.82rem;
+  font-weight:650;
+  color:var(--ink);
+}
+.db-settings-copy small{
+  font-size:.72rem;
+  color:var(--muted);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.db-settings-chevron{
+  color:var(--muted);
+  display:inline-flex;
+}
+.db-settings-item .theme-btn{
+  width:auto!important;
+  min-width:unset!important;
+  height:30px!important;
+  min-height:30px!important;
+  padding:0 10px!important;
+  font-size:.74rem!important;
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  border-radius:999px!important;
+}
+@media(max-width:760px){
+  .db-dock-wrap{bottom:max(8px,env(safe-area-inset-bottom))!important;margin:0;max-width:calc(100vw - 16px);gap:5px}
+  .db-bottom-dock{max-width:calc(100vw - 16px);padding:3px 4px}
+  .db-dock-item{padding:0 8px;height:26px;min-height:26px;font-size:.68rem}
+  .db-dock-item>span:not(.db-dock-badge){display:none}
+  .db-dock-item.is-active>span:not(.db-dock-badge){display:inline}
+  .db-dock-plus{width:32px;min-width:32px;height:32px;min-height:32px}
+}
+@media(max-width:620px){
+  .db-global-search-wrap{flex:1 1 110px;min-width:100px;max-width:none}
+  #db-global-search{height:34px;min-height:34px;font-size:.76rem;padding-left:30px!important}
+  .db-global-search-wrap>.ic{left:10px;width:13px;height:13px}
+}
+@media print{
+  .db-dock-wrap,.db-global-search-wrap{display:none!important}
+}
+
+/* Sidebar footer settings button styling */
+.side-footer{
+  margin-top:auto;
+  padding-top:10px;
+  border-top:1px solid rgba(255,255,255,.12);
+}
+.side-footer .db-settings-wrap{
+  display:block;
+  width:100%;
+}
+.side-footer .db-settings-trigger{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:8px!important;
+  width:100%!important;
+  height:36px!important;
+  min-height:36px!important;
+  padding:0 8px!important;
+  border-radius:11px!important;
+  background:rgba(255,255,255,.10)!important;
+  border:1px solid rgba(255,255,255,.14)!important;
+  color:#ffffff!important;
+  font:600 .875rem/1 var(--font-body)!important;
+  box-shadow:none!important;
+}
+.side-footer .db-settings-trigger:hover{
+  background:rgba(255,255,255,.18)!important;
+}
+.side-footer .db-settings-trigger[aria-expanded="true"]{
+  background:#ffffff!important;
+  color:#154946!important;
+}
+:root[data-theme="dark"] .side-footer .db-settings-trigger[aria-expanded="true"]{
+  background:#48b8ae!important;
+  color:#081c1b!important;
+}
+.side-footer .db-settings-trigger .nav-ic-tile{
+  width:24px!important;
+  height:24px!important;
+  border-radius:7px!important;
+  background:rgba(255,255,255,.14)!important;
+  color:#ffffff!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  flex:none!important;
+}
+.side-footer .db-settings-trigger[aria-expanded="true"] .nav-ic-tile{
+  background:rgba(21,73,70,.12)!important;
+  color:#154946!important;
+}
+.db-settings-global-wrap{
+  position:fixed!important;
+  left:0;top:0;width:0;height:0;z-index:2147483647;
+  pointer-events:none;
+}
+.db-settings-global-wrap>*{
+  pointer-events:auto;
+}
+.db-settings-menu{
+  position:fixed!important;
+  left:max(222px, calc(50vw - 498px))!important;
+  bottom:24px!important;
+  top:auto!important;
+  right:auto!important;
+  width:300px!important;
+  z-index:2147483647!important;
+}
+/* When sidebar is collapsed */
+.layout.sidebar-collapsed .side-footer .db-settings-trigger{
+  justify-content:center!important;
+  padding:0!important;
+  width:42px!important;
+  height:42px!important;
+  border-radius:12px!important;
+}
+.layout.sidebar-collapsed .side-footer .db-settings-trigger .nav-label{
+  display:none!important;
+}
+.layout.sidebar-collapsed ~ .db-settings-global-wrap .db-settings-menu,
+body:has(.sidebar-collapsed) .db-settings-menu{
+  left:max(94px, calc(50vw - 626px))!important;
+}
+
+/* ===== iOS 26/27 Adaptive Tab Bar — Liquid morph & contextual ===== */
+.db-dock-wrap{
+  transition:width .52s cubic-bezier(.34,1.38,.64,1),transform .42s var(--ease),bottom .22s var(--ease);
+  will-change:width,transform;
+}
+.db-bottom-dock{
+  transition:width .52s cubic-bezier(.34,1.38,.64,1),gap .38s var(--ease),padding .38s var(--ease),background-color .3s var(--ease);
+  will-change:width,gap;
+}
+.db-dock-item{
+  transition:transform .45s cubic-bezier(.34,1.38,.64,1),background-color .22s var(--ease),color .22s var(--ease),width .45s var(--ease),opacity .25s var(--ease);
+  transform-origin:center;
+}
+.db-dock-item.is-active{transform:scale(1.04)}
+.db-bottom-dock:has(.db-dock-item:nth-child(n+5)){gap:2px}
+/* Khi dock thích ứng theo ngữ cảnh, thu gọn nhãn trên mobile, giữ icon */
+@media(min-width:761px){
+  .db-bottom-dock[data-context="content"] .db-dock-item{padding:0 12px}
+}
+/* Ẩn nút trùng lặp trên khung chính khi dock thích ứng đã đảm nhiệm — cho giao diện sạch như iOS 26 */
+body:has(.db-bottom-dock) .topic-folder .topic-icon-btn{display:none !important}
+body:has(.db-bottom-dock) .topic-folder .topic-actions .pill.plain{opacity:.85}
+body:has(.db-bottom-dock) .db-folder-heading .btn,
+body:has(.db-bottom-dock) .lesson-workspace-head .btn.light{display:none !important}
+body:has(.db-bottom-dock) .work-card .work-actions .btn.light.mini{opacity:.9}
+@media(max-width:900px){
+  body:has(.db-bottom-dock) .panel .row .btn.light{opacity:.92}
+}
+/* Ưu tiên tab bar nổi: ẩn nút trùng lặp trên khung chính — chỉ giữ 1 vị trí duy nhất */
+body:has(.db-bottom-dock) #main [data-act="clearHistoryFilters"],
+body:has(.db-bottom-dock) #main [data-act="clearTrashFilters"],
+body:has(.db-bottom-dock) #main [data-act="clearHistory"]{display:none !important}
+body:has(.db-bottom-dock) #main .db-pf-bar [data-pf-clearwrap],
+body:has(.db-bottom-dock) #main [data-act="pfClear"]{display:none !important}
+body:has(.db-bottom-dock) #main .db-filter .btn.light.mini{display:none !important}
+body:has(.db-bottom-dock) #main .db-pf-bar .btn.light.mini{display:none !important}
+/* Giữ lại tìm kiếm & dropdown, chỉ ẩn nút hành động đã có trên dock */
+body:has(.db-bottom-dock) #main .db-pf-actions .btn.light.mini{display:none !important}
+/* ===== Dedup theo ngữ cảnh: mỗi chức năng chỉ còn một điểm vào (dock là chính) =====
+   Quy tắc: ẩn tab-bar/bước/nút điều hướng đã có mục tương ứng trên dock;
+   giữ nguyên ô tìm kiếm, dropdown lọc, biểu mẫu và các hành động không có trên dock. */
+/* Nút "Về danh sách" / "Sửa thông tin" ở đầu trang chi tiết đã có trên dock */
+body:has(.db-dock-wrap[data-context="assignments"]) #main .db-assignment-detail > .row [data-act="go"][data-page="assignments"],
+body:has(.db-dock-wrap[data-context="assignments"]) #main .db-assignment-detail > .row [data-act="go"][data-edit],
+body:has(.db-dock-wrap[data-context="assignments"]) #main .db-assignment-preview > .row [data-act="go"][data-page="assignments"],
+body:has(.db-dock-wrap[data-context="assignments"]) #main .db-assignment-detail-head > .row [data-act="go"][data-page="assignments"],
+body:has(.db-dock-wrap[data-context="assignments"]) #main .db-assignment-playing-head [data-act="go"][data-page="assignments"],
+body:has(.db-dock-wrap[data-context="assessments"]) #main .db-assessment-detail > .row [data-act="go"][data-page="assessments"],
+body:has(.db-dock-wrap[data-context="assessments"]) #main .db-assessment-detail > .row [data-act="go"][data-edit],
+body:has(.db-dock-wrap[data-context="assessments"]) #main .db-assessment-preview > .row [data-act="go"][data-page="assessments"],
+body:has(.db-dock-wrap[data-context="assessments"]) #main .db-student-assessment-detail > .row [data-act="go"][data-page="assessments"]{display:none !important}
+/* Dock đã có mục "Danh sách": bỏ nút quay lại trùng lặp ở mọi trang chi tiết */
+body:has(.db-dock-wrap[data-context="assignments"]) #main .panel > .row [data-act="go"][data-page="assignments"]:not([data-id]),
+body:has(.db-dock-wrap[data-context="assessments"]) #main .panel > .row [data-act="go"][data-page="assessments"]:not([data-id]){display:none !important}
+/* Bước 1-2-3 của trình soạn bài tập/bài kiểm tra đã có trên dock (giữ nút wizard Tiếp tục/Quay lại) */
+body:has(.db-dock-wrap[data-context="assignments"]) #main .db-workflow-steps .btn[data-act="go"],
+body:has(.db-dock-wrap[data-context="assessments"]) #main .db-workflow-steps .btn[data-act="go"]{display:none !important}
+/* Bài kiểm tra: thanh tab Câu hỏi/Xem trước/Lượt làm trùng mục trên dock */
+body:has(.db-dock-wrap[data-context="assessments"]) #main .seg[aria-label="Phần của bài kiểm tra"]{display:none !important}
+/* Bài kiểm tra: nút "Xem trước đề" cuối trình soạn đã có mục trên dock */
+body:has(.db-dock-wrap[data-context="assessments"]) #main .db-assessment-author > .db-form-actions{display:none !important}
+/* Thư mục học tập: tab Mục tiêu/Tài liệu của bài học đã nằm trên dock */
+body:has(.db-dock-wrap[data-context="content"]) .lesson-workspace-head .folder-tabs{display:none !important}
+/* Chủ đề: "Sửa chủ đề" trùng mục trên dock (giữ Xuất bản và Xóa vì dock chưa có) */
+body:has(.db-dock-wrap[data-context="content"]) #main .folder-wrap .panel > .row [data-act="editTopic"]{display:none !important}
+/* Bảng công việc trang chủ: chỉ ẩn những tab trạng thái dock đã có, giữ tab còn lại + ô tìm kiếm */
+body:has(.db-dock-wrap[data-context="home"]) #main .td-seg-bar .td-seg-tab[data-tab="ALL"],
+body:has(.db-dock-wrap[data-context="home"]) #main .td-seg-bar .td-seg-tab[data-tab="PENDING"],
+body:has(.db-dock-wrap[data-context="home"]) #main .td-seg-bar .td-seg-tab[data-tab="TODO"]{display:none !important}
+/* Lịch: "Bỏ lọc ngày" đã có trên dock khi đang chọn ngày (giữ "Tháng hiện tại") */
+body:has(.db-dock-wrap[data-context="schedule"]) #main [data-act="schedAll"]{display:none !important}
+/* Ngân hàng câu hỏi: thẻ "Soạn câu hỏi thủ công" đã có mục trên dock nên ẩn cả thẻ */
+body:has(.db-dock-wrap[data-context="questions"]) #main .db-create-source-card:has([data-act="go"][data-page="questions"][data-edit="new"]){display:none !important}
+body:has(.db-dock-wrap[data-context="questions"]) #main .db-create-source{grid-template-columns:minmax(0,1fr)}
+/* AI: "Duyệt tất cả" có trên dock; "Từ chối tất cả" chưa có nên vẫn giữ */
+body:has(.db-dock-wrap[data-context="ai"]) #main [data-act="aiApproveAll"]{display:none !important}
+/* Thùng rác: "Khôi phục tất cả" có trên dock; "Xóa sạch thùng rác" chưa có nên vẫn giữ */
+body:has(.db-dock-wrap[data-context="trash"]) #main [data-act="restoreAllTrash"]{display:none !important}
+/* Trò chơi: nút âm thanh ở sảnh đã có trên dock */
+body:has(.db-dock-wrap[data-context="games"]) #main .db-game-lobby-sound{display:none !important}
+/* Trợ lý AI: nút "Mới" ở sidebar trùng mục "Hội thoại mới" trên dock */
+body:has(.db-dock-wrap[data-context="chat"]) .db-chat-sidebar-actions [data-act="chatNewThread"]{display:none !important}
+/* Hiệu ứng nổi nhẹ khi đổi ngữ cảnh */
+@keyframes dockMorph{from{transform:translateX(-50%) scale(.96);opacity:.85}to{transform:translateX(-50%) scale(1);opacity:1}}
+.db-dock-wrap.is-morphing{animation:dockMorph .42s cubic-bezier(.34,1.38,.64,1)}
+/* Trạng thái rỗng: ẩn hẳn dock để không che nội dung */
+.db-bottom-dock:empty{display:none !important}
+.db-dock-wrap:has(.db-bottom-dock:empty){display:none !important}
+
+/* Viên thuốc trượt theo mục đang chọn (kiểu iOS): chỉ báo vị trí, không thay nút */
+.db-bottom-dock{position:relative;--dock-x:0px;--dock-w:0px}
+.db-bottom-dock::before{
+  content:"";
+  position:absolute;
+  top:3px;
+  left:0;
+  width:var(--dock-w);
+  height:calc(100% - 6px);
+  border-radius:999px;
+  background:#ffffff;
+  box-shadow:0 2px 8px -2px rgba(10,36,35,.22);
+  transform:translateX(var(--dock-x));
+  transition:transform .44s cubic-bezier(.34,1.32,.64,1),width .44s cubic-bezier(.34,1.32,.64,1),opacity .2s var(--ease);
+  opacity:0;
+  pointer-events:none;
+}
+.db-bottom-dock:has(.db-dock-item.is-active)::before{opacity:1}
+.db-bottom-dock .db-dock-item{position:relative;z-index:1;background:transparent!important;box-shadow:none!important}
+.db-bottom-dock .db-dock-item.is-active{color:#154946!important}
+:root[data-theme="dark"] .db-bottom-dock::before{background:#48b8ae;box-shadow:0 2px 10px -2px rgba(0,0,0,.5)}
+:root[data-theme="dark"] .db-bottom-dock .db-dock-item.is-active{color:#081c1b!important}
+@media(prefers-reduced-motion:reduce){
+  .db-bottom-dock::before,.db-dock-item,.db-bottom-dock,.db-dock-wrap.is-morphing{transition:none!important;animation:none!important}
 }

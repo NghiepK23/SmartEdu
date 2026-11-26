@@ -3,7 +3,6 @@
 /* ===== Chế độ sáng / tối do người dùng chọn (ghi nhớ trong localStorage) ===== */
 let THEME=(function(){
   try{const v=localStorage.getItem('educmind.theme');if(v==='light'||v==='dark')return v}catch(e){}
-  try{return (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light'}catch(e){}
   return 'light';
 })();
 function applyTheme(){
@@ -11,7 +10,7 @@ function applyTheme(){
   r.setAttribute('data-theme',THEME);
   r.style.colorScheme=THEME;
   const m=document.querySelector('meta[name="theme-color"]:not([media])');
-  if(m)m.setAttribute('content',THEME==='dark'?'#0b1120':'#f1f6fd');
+  if(m)m.setAttribute('content',THEME==='dark'?'#0d1316':'#eef2f1');
 }
 function setTheme(t){THEME=(t==='dark')?'dark':'light';applyTheme();
   try{localStorage.setItem('educmind.theme',THEME)}catch(e){}

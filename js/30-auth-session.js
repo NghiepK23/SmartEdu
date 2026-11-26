@@ -9,11 +9,13 @@ function authGuard(){
     const wasBackend=!!sess.backend;
     logged=false;sess=null;role='T';authMode='login';authMsg='';
     authErr='Phiên làm việc đã hết hạn do không hoạt động. Thao tác chưa lưu không được ghi nhận. Hãy đăng nhập lại.';
-    /* Phiên Supabase: xóa dữ liệu khỏi bộ nhớ và đăng xuất khỏi Supabase, để tải lại trang không tự đăng nhập lại. */
+    /* Phiên Firebase: xóa dữ liệu khỏi bộ nhớ và đăng xuất khỏi Firebase Auth, để tải lại trang không tự đăng nhập lại. */
     if(wasBackend){
       if(typeof dbReset==='function')dbReset();
       if(typeof dbClearRouteHash==='function')dbClearRouteHash();
-      if(supabaseClient)supabaseClient.auth.signOut().catch(console.error);
+      if(typeof FirebaseRuntime!=='undefined'&&FirebaseRuntime&&firebaseAuth){
+        FirebaseRuntime.authApi.signOut(firebaseAuth).catch(console.error);
+      }
     }
   }
   else sess.t=Date.now();

@@ -98,19 +98,46 @@ DB_PAGES.report = {
   view(d) {
     if (!DB.classId) return `<section class="panel">${dbEmpty('Hãy chọn một lớp để xem báo cáo.')}</section>`;
     const me = DB.me ? DB.me.id : '';
-    const students = dbIsTeacher() ? d.members.map((m) => ({ id: m.student_id, name: (d.profiles[m.student_id] || {}).full_name || '—' })) : [{ id: me, name: dbRepName(d, me) }];
-    const stuId = dbIsTeacher() ? DB_REPORT_STU : me;
+    const teacher = dbIsTeacher();
+    const students = teacher
+      ? d.members.map((m) => ({ id: m.student_id, name: (d.profiles[m.student_id] || {}).full_name || '—' }))
+      : [{ id: me, name: dbRepName(d, me) }];
+    const stuId = teacher ? DB_REPORT_STU : me;
     const rep = dbReportData(d, stuId || null);
-    return `<section class="panel" aria-labelledby="db-h-rep">
-      <div class="row between db-report-header"><div><p class="lead">Môn học: ${h(DB.course && DB.course.title || 'Chưa thiết lập')} · ${stuId ? h((students.find((s) => s.id === stuId) || {}).name || '') : 'Tổng hợp cả lớp'} ${dbIsTeacher() ? students.length + ' học sinh' : ''}</p></div>
-        <div class="row">${dbBtn('Xuất Excel', 'reportExcel', {}, 'light')}${dbBtn('Xuất Word', 'reportWord', {}, 'light')}</div></div>
+    const courseTitle = (DB.course && DB.course.title) || 'Chưa thiết lập';
+    const className = (dbClass() || {}).name || '';
+    const who = stuId ? (students.find((s) => s.id === stuId) || {}).name || dbRepName(d, stuId) : 'Tổng hợp cả lớp';
+    const kicker = teacher ? (stuId ? 'CHI TIẾT HỌC SINH' : 'TỔNG HỢP CẢ LỚP') : 'TIẾN ĐỘ HỌC TẬP CỦA EM';
+    const heroTitle = stuId ? who : (className ? 'Lớp ' + className : 'Tổng hợp cả lớp');
+    const chips = dbRepChips([
+      { icon: 'students', text: teacher ? students.length + ' học sinh' : 'Báo cáo của em' },
+      { icon: 'assignments', text: d.assignments.length + ' bài tập' },
+      { icon: 'exam', text: d.assessments.length + ' bài kiểm tra' },
+      { icon: 'target', text: d.objectives.length + ' mục tiêu' },
+    ]);
+    return `<section class="panel db-rep" aria-labelledby="db-h-rep">
+      <header class="db-rep-hero">
+        <div class="db-rep-hero-copy">
+          <span class="db-rep-kicker">${h(kicker)}</span>
+          <h2 id="db-h-rep">${h(heroTitle)}</h2>
+          <p class="db-rep-hero-sub">Môn ${h(courseTitle)}${className ? ' · Lớp ' + h(className) : ''}</p>
+          <div class="db-rep-chips">${chips}</div>
+        </div>
+        <div class="db-rep-hero-actions">
+          ${teacher && students.length ? `<label class="db-rep-picker" for="db-rep-stu"><span>Xem theo</span><select id="db-rep-stu" data-change="reportStu">${`<option value="">Tổng hợp cả lớp</option>`}${students.map((s) => `<option value="${h(s.id)}" ${s.id === stuId ? 'selected' : ''}>${h(s.name)}</option>`).join('')}</select></label>` : ''}
+          ${stuId && teacher ? dbBtn('Xem cả lớp', 'reportClass', {}, 'light mini') : ''}
+          ${dbBtn(ic('download', 15) + ' Xuất Excel', 'reportExcel', {}, 'light mini')}
+          ${dbBtn(ic('file-text', 15) + ' Xuất Word', 'reportWord', {}, 'light mini')}
+        </div>
+      </header>
       ${dbRepOrgForm()}
-      ${dbIsTeacher() && students.length ? `<div class="row db-filter"><label for="db-rep-stu">Xem theo</label><select id="db-rep-stu" data-change="reportStu"><option value="">Tổng hợp cả lớp</option>${students.map((s) => `<option value="${h(s.id)}" ${s.id === stuId ? 'selected' : ''}>${h(s.name)}</option>`).join('')}</select></div>` : ''}
-      ${stuId ? dbReportDetail(rep) : dbReportSummary(d, students)}
+      ${stuId ? dbReportDetail(rep, d) : dbReportSummary(d, students)}
+      ${dbRepNotesBlock()}
     </section>`;
   },
 };
 DB_ACT.reportStu = (el) => { DB_REPORT_STU = el.value; render(); };
+DB_ACT.reportClass = () => { DB_REPORT_STU = ''; render(); };
 
 /* ---- tính số liệu báo cáo ---- */
 function dbReportData(d, stuId) {
@@ -162,46 +189,177 @@ const dbRepPc = (v01) => (v01 == null ? '' : { v: v01, fmt: 'pct' });
 const dbRepPct = (v) => (v == null ? '—' : dbPct(v / 100));
 const dbRepBandCell = (b) => (b ? { v: b.label, tone: b.tone || undefined, align: 'center' } : '');
 
-/* Tổng hợp cả lớp: mỗi học sinh một dòng. */
+/* ---- Thành phần giao diện dùng lại trong trang ---- */
+/* Dải nhãn nhỏ dưới tiêu đề (số học sinh, số bài tập, …). */
+function dbRepChips(items) {
+  return (items || []).filter((x) => x && x.text)
+    .map((x) => `<span class="db-rep-chip">${x.icon ? ic(x.icon, 14) : ''}${h(x.text)}</span>`).join('');
+}
+/* Ô chỉ số lớn: giá trị + nhãn + ghi chú, có thanh tiến trình tuỳ chọn. */
+function dbRepStat(o) {
+  return `<div class="db-rep-stat${o.tone ? ' is-' + o.tone : ''}">
+    <span class="db-rep-stat-ic" aria-hidden="true">${ic(o.icon || 'overview', 18)}</span>
+    <div class="db-rep-stat-body">
+      <span class="db-rep-stat-label">${h(o.label)}</span>
+      <strong class="db-rep-stat-value">${o.value === '' || o.value == null ? '—' : h(String(o.value))}</strong>
+      ${o.hint ? `<span class="db-rep-stat-hint">${h(o.hint)}</span>` : ''}
+      ${o.bar == null ? '' : `<span class="db-rep-stat-bar" role="img" aria-label="${h(o.label)} ${Math.round(o.bar)}%"><i style="width:${Math.max(0, Math.min(100, o.bar)).toFixed(1)}%"></i></span>`}
+    </div>
+  </div>`;
+}
+/* Khối nội dung có tiêu đề riêng, dùng thay cho .panel con lồng nhau. */
+function dbRepBlock(title, body, opts) {
+  const o = opts || {};
+  return `<section class="db-rep-block${o.cls ? ' ' + o.cls : ''}">
+    <header class="db-rep-block-head">
+      <div><h3>${h(title)}</h3>${o.sub ? `<p class="db-rep-block-sub">${h(o.sub)}</p>` : ''}</div>
+      ${o.action || ''}
+    </header>
+    ${body}
+  </section>`;
+}
+/* Thanh tiến trình nhỏ dùng trong bảng. */
+function dbRepBar(v01, tone) {
+  if (v01 == null) return '<span class="db-rep-dash">—</span>';
+  const p = Math.max(0, Math.min(100, v01 * 100));
+  return `<span class="db-rep-inline-bar${tone ? ' is-' + tone : ''}"><i style="width:${p.toFixed(1)}%"></i></span>`;
+}
+/* Xếp loại kết quả chung dưới dạng nhãn màu. */
+function dbRepBandPill(band) {
+  if (!band) return '<span class="db-rep-dash">—</span>';
+  const tone = band.tone === 'good' ? 'good' : band.tone === 'bad' ? 'bad' : 'prog';
+  return `<span class="pill ${tone}">${h(band.label)}</span>`;
+}
+/* Số liệu tổng hợp của cả lớp, tính một lần rồi dùng cho nhiều khối. */
+function dbRepClassModel(d, students) {
+  const per = students.map((s) => ({ id: s.id, name: s.name, n: dbRepNums(d, s.id) }));
+  const withData = per.filter((p) => p.n.overall != null);
+  const avg = (f) => { const a = per.map((p) => f(p.n)).filter((x) => x != null); return a.length ? dbMean(a) : null; };
+  const totalAsg = per.length * d.assignments.length;
+  const submitted = per.reduce((s2, p) => s2 + p.n.submitted, 0);
+  const openGaps = per.reduce((s2, p) => s2 + p.n.openGaps, 0);
+  const mastered = per.reduce((s2, p) => s2 + p.n.mastered, 0);
+  const objTotal = d.objectives.length * per.length;
+  return {
+    per, withData,
+    overall: avg((n) => n.overall), asgAvg: avg((n) => n.asgAvg), exAvg: avg((n) => n.exAvg),
+    masteryAvg: avg((n) => n.masteryAvg),
+    submitRate: totalAsg ? submitted / totalAsg : null, submitted, totalAsg,
+    openGaps, mastered, objTotal,
+    watch: per.filter((p) => p.n.reasons.length),
+  };
+}
+
+/* Tổng hợp cả lớp: các ô chỉ số, phân bố xếp loại và bảng từng học sinh. */
 function dbReportSummary(d, students) {
-  const rows = students.map((s) => {
-    const n = dbRepNums(d, s.id);
-    return `<tr><th scope="row">${h(s.name)}</th>
-      <td>${n.submitted}/${n.totalAsg}</td>
-      <td>${dbRepPct(n.asgAvg)}</td>
-      <td>${dbRepPct(n.exAvg)}</td>
-      <td>${n.r.mast.length ? dbPct(n.masteryAvg) : '—'}</td>
-      <td>${n.mastered}/${n.objTotal}</td>
-      <td>${n.openGaps}</td>
-      <td>${n.evs30}</td>
-      <td class="db-cell-actions">${dbBtn('Chi tiết', 'reportPick', { id: s.id }, 'light mini')}</td></tr>`;
-  });
-  return `<div class="db-scroll">${dbTable(['Học sinh', 'Đã nộp bài tập', 'Điểm bài tập TB', 'Điểm kiểm tra TB', 'Nắm vững TB', 'Mục tiêu đạt ≥ 0,8', 'Lỗ hổng mở', 'Sự kiện 30 ngày', '<span class="sr">Xem</span>'], rows, 'Tổng hợp cả lớp')}</div>
-  <p class="muted db-hint">“Mục tiêu đạt ≥ 0,8” là số mục tiêu có mức nắm vững từ 0,8 trở lên trên tổng số mục tiêu của lớp. Điểm TB là phần trăm điểm tối đa.</p>`;
+  const m = dbRepClassModel(d, students);
+  const dist = DB_REPORT_CFG.bands.map((b) => ({ band: b, count: m.withData.filter((p) => p.n.band === b).length }));
+  const total = m.withData.length || 0;
+  const bandsHtml = dist.map((x) => {
+    const share = total ? x.count / total : 0;
+    const tone = x.band.tone === 'good' ? 'good' : x.band.tone === 'bad' ? 'bad' : 'prog';
+    return `<li class="db-rep-band is-${tone}">
+      <span class="db-rep-band-label">${h(x.band.label)}<small>${h(x.band.range)}</small></span>
+      <span class="db-rep-band-track"><i style="width:${(share * 100).toFixed(1)}%"></i></span>
+      <b>${x.count}</b>
+    </li>`;
+  }).join('');
+
+  const rows = m.per.map((p) => `<tr>
+      <th scope="row"><span class="db-rep-name">${h(p.name)}</span></th>
+      <td>${p.n.totalAsg ? `<span class="db-rep-cell-strong">${p.n.submitted}/${p.n.totalAsg}</span>${dbRepBar(p.n.submitRate, p.n.submitRate >= 0.7 ? 'good' : 'need')}` : '<span class="db-rep-dash">—</span>'}</td>
+      <td class="db-rep-num">${dbRepPct(p.n.asgAvg)}</td>
+      <td class="db-rep-num">${dbRepPct(p.n.exAvg)}</td>
+      <td class="db-rep-num">${p.n.r.mast.length ? dbPct(p.n.masteryAvg) : '—'}</td>
+      <td>${dbRepBandPill(p.n.band)}</td>
+      <td class="db-rep-num">${p.n.mastered}/${p.n.objTotal}</td>
+      <td class="db-rep-num">${p.n.openGaps ? `<span class="pill need">${p.n.openGaps}</span>` : '0'}</td>
+      <td class="db-cell-actions">${dbBtn('Chi tiết', 'reportPick', { id: p.id }, 'light mini')}</td>
+    </tr>`);
+
+  const statsHtml = [
+    { icon: 'trend', label: 'Điểm chung TB', value: m.overall == null ? '—' : (Math.round(m.overall) / 10).toFixed(1).replace('.', ',') + '/10', hint: m.withData.length + '/' + m.per.length + ' học sinh đã có điểm', bar: m.overall, tone: 'brand' },
+    { icon: 'assignments', label: 'Tỉ lệ nộp bài tập', value: m.submitRate == null ? '—' : Math.round(m.submitRate * 100) + '%', hint: m.submitted + '/' + m.totalAsg + ' lượt nộp', bar: m.submitRate == null ? null : m.submitRate * 100, tone: 'prog' },
+    { icon: 'mastery', label: 'Nắm vững TB', value: m.masteryAvg == null ? '—' : dbPct(m.masteryAvg), hint: m.mastered + '/' + m.objTotal + ' mục tiêu đạt từ 0,8', bar: m.masteryAvg == null ? null : m.masteryAvg * 100, tone: 'good' },
+    { icon: 'gaps', label: 'Lỗ hổng đang mở', value: m.openGaps, hint: m.watch.length + ' học sinh cần quan tâm', tone: 'need' },
+  ].map(dbRepStat).join('');
+
+  return `<div class="db-rep-stats">${statsHtml}</div>
+  <div class="db-rep-split">
+    ${dbRepBlock('Phân bố kết quả chung', total ? `<ul class="db-rep-bands">${bandsHtml}</ul>` : `<div class="db-rep-empty">${ic('info', 18)}<span>Chưa có điểm để xếp loại.</span></div>`,
+      { sub: 'Theo thang điểm 10, tính trên số học sinh đã có điểm', cls: 'db-rep-bands-block' })}
+    ${dbRepBlock('Học sinh cần quan tâm', m.watch.length
+      ? `<ul class="db-rep-watch">${m.watch.slice(0, 5).map((p) => `<li><span class="db-rep-watch-name">${h(p.name)}</span><small>${h(p.n.reasons.join(' · '))}</small>${dbBtn('Xem', 'reportPick', { id: p.id }, 'light mini')}</li>`).join('')}</ul>`
+      : `<div class="db-rep-empty">${ic('check', 18)}<span>Chưa có học sinh nào cần quan tâm theo ngưỡng cảnh báo.</span></div>`, { sub: 'Theo ngưỡng cảnh báo của báo cáo', cls: 'db-rep-watch-block' })}
+  </div>
+  ${dbRepBlock('Kết quả từng học sinh', `<div class="db-rep-table">${dbTable(['Học sinh', 'Đã nộp', 'Điểm bài tập TB', 'Điểm kiểm tra TB', 'Nắm vững TB', 'Xếp loại', 'Mục tiêu đạt', 'Lỗ hổng', '<span class="sr">Xem</span>'], rows, 'Tổng hợp cả lớp')}</div>`,
+    { sub: 'Điểm TB là phần trăm điểm tối đa; “Mục tiêu đạt” tính từ 0,8 trở lên', cls: 'db-rep-table-block' })}`;
 }
 DB_ACT.reportPick = (el) => { DB_REPORT_STU = el.dataset.id; render(); };
 
-/* Chi tiết một học sinh: các bảng con. */
-function dbReportDetail(r) {
-  const byObj = dbById(r.objectives), byLesson = dbById(r.lessons);
-  const asgRows = r.assignments.map((a) => { const sub = r.subs.find((x) => x.assignment_id === a.id); return `<tr><th scope="row">${h(a.title)}</th><td>${dbDate(a.due_at)}</td><td>${sub ? (sub.score == null ? 'Chưa chấm' : sub.score + '/' + a.max_score) : 'Chưa nộp'}</td></tr>`; });
-  const exRows = r.assessments.map((e) => { const att = r.atts.filter((t) => t.assessment_id === e.id); const best = Math.max(-1, ...att.map((t) => t.total_score == null ? -1 : Number(t.total_score))); const max = r.maxBy[e.id]; return `<tr><th scope="row">${h(e.title)}</th><td>${att.length}</td><td>${best >= 0 ? dbNum(best) + (max ? '/' + dbNum(max) : '') : '—'}</td></tr>`; });
+/* Chi tiết một học sinh: ô chỉ số, bảng bài tập / kiểm tra / chủ đề / lỗ hổng. */
+function dbReportDetail(r, d) {
+  const byObj = dbById(r.objectives), byLesson = dbById(r.lessons), byTopic = dbById(r.topics);
+  const stuId = r.stuId;
+  const n = stuId ? dbRepNums(d, stuId) : null;
+  const name = stuId ? dbRepName(d, stuId) : '';
+  const asgRatio = r.assignments.map((a) => { const sub = r.subs.find((x) => x.assignment_id === a.id); return sub && sub.score != null ? Number(sub.score) / Number(a.max_score || 10) : null; }).filter((x) => x != null);
+  const asgAvg = asgRatio.length ? dbMean(asgRatio) : null;
+  const statsHtml = [
+    { icon: 'grade', label: 'Điểm bài tập TB', value: asgAvg == null ? '—' : dbPct(asgAvg), hint: r.subs.length + ' bài đã nộp', bar: asgAvg == null ? null : asgAvg * 100, tone: 'brand' },
+    { icon: 'mastery', label: 'Mức nắm vững TB', value: r.mast.length ? dbPct(dbMean(r.mast.map((x) => Number(x.mastery_score)))) : '—', hint: r.mast.length + '/' + r.objectives.length + ' mục tiêu có số liệu', bar: r.mast.length ? dbMean(r.mast.map((x) => Number(x.mastery_score))) * 100 : null, tone: 'good' },
+    { icon: 'gaps', label: 'Lỗ hổng đang mở', value: r.gaps.filter((g) => g.status === 'OPEN').length, hint: 'cần ôn tập thêm', tone: 'need' },
+    { icon: 'clock', label: 'Sự kiện học tập', value: r.evs30.length, hint: 'trong 30 ngày qua', tone: 'prog' },
+  ].map(dbRepStat).join('');
+
+  const asgRows = r.assignments.map((a) => {
+    const sub = r.subs.find((x) => x.assignment_id === a.id);
+    const score = sub && sub.score != null ? Number(sub.score) : null;
+    const max = Number(a.max_score || 10);
+    const pctV = score == null ? null : score / max;
+    return `<tr><th scope="row">${h(a.title)}</th><td class="db-rep-date">${dbDate(a.due_at)}</td>
+      <td>${score == null ? `<span class="pill ${sub ? 'prog' : 'need'}">${sub ? 'Chưa chấm' : 'Chưa nộp'}</span>` : `<span class="db-rep-cell-strong">${dbNum(score)}/${dbNum(max)}</span>${dbRepBar(pctV, pctV >= 0.5 ? 'good' : 'need')}`}</td></tr>`;
+  });
+  const exRows = r.assessments.map((e) => {
+    const att = r.atts.filter((t) => t.assessment_id === e.id);
+    const best = Math.max(-1, ...att.map((t) => (t.total_score == null ? -1 : Number(t.total_score))));
+    const max = r.maxBy[e.id];
+    const pctV = best >= 0 && max ? best / max : null;
+    return `<tr><th scope="row">${h(e.title)}</th><td class="db-rep-num">${att.length}</td>
+      <td>${best >= 0 ? `<span class="db-rep-cell-strong">${dbNum(best)}${max ? '/' + dbNum(max) : ''}</span>${dbRepBar(pctV, pctV != null && pctV >= 0.5 ? 'good' : 'need')}` : '<span class="db-rep-dash">—</span>'}</td></tr>`;
+  });
   const topicRows = r.topics.map((tp) => {
     const objs = r.objectives.filter((o) => (byLesson[o.lesson_id] || {}).topic_id === tp.id);
-    const ms = objs.map((o) => (r.mast.find((m) => m.objective_id === o.id) || {}).mastery_score).filter((x) => x != null).map(Number);
-    return `<tr><th scope="row">${h(tp.title)}</th><td>${objs.length}</td><td>${ms.length ? dbPct(dbMean(ms)) : 'Chưa có'}</td><td>${objs.filter((o) => Number(((r.mast.find((m) => m.objective_id === o.id) || {}).mastery_score) || 0) >= DB_REPORT_CFG.masteryOk).length}</td></tr>`;
+    const ms = objs.map((o) => (r.mast.find((x) => x.objective_id === o.id) || {}).mastery_score).filter((x) => x != null).map(Number);
+    const avg = ms.length ? dbMean(ms) : null;
+    const ok = objs.filter((o) => Number(((r.mast.find((x) => x.objective_id === o.id) || {}).mastery_score) || 0) >= DB_REPORT_CFG.masteryOk).length;
+    return `<tr><th scope="row">${h(tp.title)}</th><td class="db-rep-num">${objs.length}</td>
+      <td>${avg == null ? '<span class="db-rep-dash">Chưa có</span>' : `<span class="db-rep-cell-strong">${dbPct(avg)}</span>${dbRepBar(avg, avg >= DB_REPORT_CFG.masteryOk ? 'good' : avg < 0.5 ? 'need' : 'prog')}`}</td>
+      <td class="db-rep-num">${ok}/${objs.length}</td></tr>`;
   });
-  const gapRows = r.gaps.filter((g) => g.status === 'OPEN').map((g) => `<tr><th scope="row">${h((byObj[g.objective_id] || {}).code || '')}</th><td>${h((byObj[g.objective_id] || {}).description || '')}</td><td>${g.reason ? h(g.reason) : 'Mức nắm vững dưới 0,8'}</td></tr>`);
-  return `<div class="grid db-metrics">
-      ${metric('grade', 'Điểm bài tập TB', dbPct(dbMean(r.assignments.map((a) => { const sub = r.subs.find((x) => x.assignment_id === a.id); return sub && sub.score != null ? Number(sub.score) / Number(a.max_score || 10) : null; }).filter((x) => x != null)) || 0), r.subs.length + ' bài đã nộp')}
-      ${metric('mastery', 'Mức nắm vững TB', dbPct(dbMean(r.mast.map((m) => Number(m.mastery_score)))), r.mast.length + ' mục tiêu có số liệu')}
-      ${metric('gaps', 'Lỗ hổng đang mở', r.gaps.filter((g) => g.status === 'OPEN').length, 'cần ôn tập')}
-      ${metric('clock', 'Sự kiện học tập', r.evs30.length, 'trong 30 ngày qua')}
-    </div>
-    <div class="cols"><section class="panel"><h3>Điểm bài tập</h3>${asgRows.length ? dbTable(['Bài tập', 'Hạn nộp', 'Điểm'], asgRows, 'Điểm bài tập') : dbEmpty('Chưa có bài tập.')}</section>
-    <section class="panel"><h3>Điểm bài kiểm tra</h3>${exRows.length ? dbTable(['Bài kiểm tra', 'Số lượt làm', 'Điểm cao nhất'], exRows, 'Điểm kiểm tra') : dbEmpty('Chưa có bài kiểm tra.')}</section></div>
-    <div class="cols"><section class="panel"><h3>Tiến độ theo chủ đề</h3>${topicRows.length ? dbTable(['Chủ đề', 'Số mục tiêu', 'Nắm vững TB', 'Mục tiêu đạt ≥ 0,8'], topicRows, 'Tiến độ theo chủ đề') : dbEmpty('Chưa có chủ đề.')}</section>
-    <section class="panel"><h3>Lỗ hổng đang mở</h3>${gapRows.length ? dbTable(['Mục tiêu', 'Nội dung', 'Nguyên nhân'], gapRows, 'Lỗ hổng') : dbEmpty('Không có lỗ hổng nào đang mở.')}</section></div>`;
+  const openGaps = r.gaps.filter((g) => g.status === 'OPEN');
+  const gapRows = openGaps.map((g) => `<tr><th scope="row"><span class="db-code db-rep-code">${h((byObj[g.objective_id] || {}).code || '—')}</span></th>
+      <td>${h((byObj[g.objective_id] || {}).description || '')}</td>
+      <td class="db-rep-gap-reason">${h(g.reason || 'Mức nắm vững dưới 0,8')}</td></tr>`);
+
+  const empty = (text) => `<div class="db-rep-empty">${ic('info', 18)}<span>${h(text)}</span></div>`;
+  return `<div class="db-rep-stats">${statsHtml}</div>
+  <div class="db-rep-split">
+    ${dbRepBlock('Điểm bài tập', asgRows.length ? dbTable(['Bài tập', 'Hạn nộp', 'Điểm'], asgRows, 'Điểm bài tập') : empty('Chưa có bài tập nào được giao.'), { sub: asgRows.length + ' bài tập', cls: 'db-rep-table-block' })}
+    ${dbRepBlock('Điểm bài kiểm tra', exRows.length ? dbTable(['Bài kiểm tra', 'Số lượt làm', 'Điểm cao nhất'], exRows, 'Điểm kiểm tra') : empty('Chưa có bài kiểm tra nào.'), { sub: exRows.length + ' bài kiểm tra', cls: 'db-rep-table-block' })}
+  </div>
+  <div class="db-rep-split">
+    ${dbRepBlock('Tiến độ theo chủ đề', topicRows.length ? dbTable(['Chủ đề', 'Số mục tiêu', 'Nắm vững TB', 'Mục tiêu đạt'], topicRows, 'Tiến độ theo chủ đề') : empty('Chưa có chủ đề nào.'), { sub: 'Mức nắm vững trung bình của từng chủ đề', cls: 'db-rep-table-block' })}
+    ${dbRepBlock('Lỗ hổng đang mở', gapRows.length ? dbTable(['Mục tiêu', 'Nội dung', 'Nguyên nhân'], gapRows, 'Lỗ hổng') : empty('Không có lỗ hổng nào đang mở.'), { sub: openGaps.length + ' mục tiêu cần củng cố', cls: 'db-rep-table-block' })}
+  </div>`;
+}
+
+/* Ghi chú cách tính, thu gọn để không chiếm chỗ trên màn hình. */
+function dbRepNotesBlock() {
+  return `<details class="db-rep-notes">
+    <summary>${ic('info', 16)} Cách tính các chỉ số trong báo cáo</summary>
+    <dl>${dbRepNotes().map(([k, v]) => `<div><dt>${h(k)}</dt><dd>${h(v)}</dd></div>`).join('')}</dl>
+  </details>`;
 }
 
 /* ================= MÔ HÌNH SỐ LIỆU CHO TỆP XUẤT ================= */

@@ -1,6 +1,6 @@
 /* EducMind · js/db/14-ai.js
    Trang “AI tạo câu hỏi nháp” (chỉ giáo viên):
-     - Gửi yêu cầu sinh câu hỏi theo mục tiêu bài học. Gemini chạy trong hàng đợi nền ở Supabase Edge Function.
+     - Gửi yêu cầu sinh câu hỏi theo mục tiêu bài học thông qua máy chủ Express (/api/ai/generate).
      - Bản nháp chưa ảnh hưởng điểm hay mức nắm vững; giáo viên duyệt / sửa-và-duyệt / từ chối
        trước khi câu hỏi thật sự vào ngân hàng (kèm mục tiêu đã chọn). */
 
@@ -54,7 +54,7 @@ function dbAiForm(d) {
   return `<section class="panel" aria-labelledby="db-h-aif">
     <h2 id="db-h-aif">Tạo câu hỏi bằng AI</h2>
     <p class="lead">Chọn mục tiêu bài học để Gemini tạo câu hỏi nháp. Câu hỏi được lưu ở dạng bản nháp chờ giáo viên duyệt.</p>
-    <p class="muted">Hãy lưu API key cá nhân tại Tài khoản → Quản lý API key Gemini. Ứng dụng không giới hạn số yêu cầu; hạn mức sử dụng do Gemini quyết định.</p>
+    <p class="muted">Dịch vụ AI chạy trực tiếp trên máy chủ của ứng dụng theo phiên đăng nhập giáo viên.</p>
     ${assignment ? `<div class="notice">${ic('info', 16)}<div>Các câu được duyệt từ yêu cầu này sẽ tự thêm vào bài tập nháp <b>${h(assignment.title)}</b>. Hãy duyệt câu hỏi trước khi xuất bản bài tập.</div></div>` : ''}
     <form data-act="aiGenerate" class="db-ai-form" novalidate data-assignment-id="${h(assignment ? assignment.id : '')}">
       ${dbField('Bài học', 'db-ai-lesson', `<select id="db-ai-lesson" name="lesson" data-change="aiLessonPick" required><option value="">Chọn bài học</option>${assignment || assessment ? '' : `<option value="${DB_AI_ALL_LESSONS}" ${showAllObjectives ? 'selected' : ''}>Tất cả</option>`}${lessons.map((l) => `<option value="${h(l.id)}" ${l.id === selectedLesson ? 'selected' : ''}>${h(l.title)}</option>`).join('')}</select>`)}
@@ -72,26 +72,14 @@ function dbAiForm(d) {
     </form>
   </section>`;
 }
-async function dbInvokeAiRequest(requestId) {
-  if (!supabaseClient) throw new Error('Chưa kết nối được Supabase.');
-  const { data, error } = await supabaseClient.functions.invoke('ai-generate', { body: { request_id: requestId } });
-  if (error) {
-    let message = error.message || 'Không gọi được Edge Function.';
-    if (error.context instanceof Response) {
-      try {
-        const detail = await error.context.clone().json();
-        if (detail && typeof detail.error === 'string') message = detail.error;
-      } catch (_) { /* Phản hồi không phải JSON; giữ thông báo của SDK. */ }
-    }
-    throw new Error(message);
-  }
-  if (!data || data.accepted !== true) throw new Error('Máy chủ chưa xác nhận đã tiếp nhận yêu cầu AI.');
+async function dbInvokeAiRequest(requestId, retry = false) {
+  const data = await dbCall(EducMindDB.aiGenerate(requestId, retry));
+  if (!data || data.accepted !== true) throw new Error('Máy chủ chưa xác nhận đã tạo câu hỏi AI.');
 }
 async function dbEnqueueAiRequest(lessonId, quantity, params, onCreated) {
-  if (!supabaseClient) throw new Error('Chưa kết nối được Supabase.');
   const req = await dbCall(EducMindDB.createAiRequest(lessonId, quantity, params || {}));
   if (onCreated) onCreated(req.id);
-  await dbInvokeAiRequest(req.id);
+  await dbInvokeAiRequest(req.id, false);
   return req;
 }
 /* Hiện danh sách mục tiêu của bài học đang chọn (không vẽ lại trang). */
@@ -203,13 +191,8 @@ DB_ACT.aiGenerate = (form) => dbRun(form, async (v) => {
 });
 
 DB_ACT.aiRetry = (el) => dbRun(el, async () => {
-  if (!supabaseClient) throw new Error('Chưa kết nối được Supabase.');
-  const { data, error } = await supabaseClient.functions.invoke('ai-generate', {
-    body: { request_id: el.dataset.id, retry: true },
-  });
-  if (error) throw new Error(error.message || 'Không thể thử lại tác vụ AI.');
-  if (!data || data.accepted !== true) throw new Error('Máy chủ chưa xác nhận yêu cầu thử lại.');
-  toast('Đã đưa các lô bị lỗi vào xử lý lại.');
+  await dbInvokeAiRequest(el.dataset.id, true);
+  toast('Đã thử lại yêu cầu tạo câu hỏi AI.');
 });
 
 DB_ACT.aiDeleteRequest = (el) => {
@@ -232,10 +215,10 @@ function dbAiStartPoll() {
     dbAiPollBusy = true;
     try {
       const active = DB.data.requests.filter((r) => r.status === 'PROCESSING');
-      if (Date.now() - dbAiLastResume > 60000 && supabaseClient) {
+      if (Date.now() - dbAiLastResume > 60000 && EducMindDB && typeof EducMindDB.aiGenerate === 'function') {
         dbAiLastResume = Date.now();
         await Promise.all(active.map(async (r) => {
-          const { error } = await supabaseClient.functions.invoke('ai-generate', { body: { request_id: r.id } });
+          const { error } = await EducMindDB.aiGenerate(r.id, true);
           if (error) console.warn('Could not resume AI request:', error.message);
         }));
       }

@@ -74,7 +74,6 @@
 .folder-tabs{display:flex;gap:0;padding:0;margin:0 0 14px;border-radius:0;background:var(--fill);box-shadow:inset 0 0 0 .5px var(--line)}
 .folder-tabs button{flex:1;border:0;border-radius:0;padding:8px 6px;background:transparent;color:var(--muted);font:600 .8rem/1.2 var(--font-body);white-space:nowrap;text-align:center;border-right:1px solid var(--line)}
 .folder-tabs button:last-child{border-right:none}
-.folder-tabs button[aria-current="page"]{background:var(--surface);color:var(--brand-ink);box-shadow:inset 2px 0 0 var(--brand)}
 .folder-tabs button[aria-current="page"]{background:var(--surface);color:var(--brand-ink);box-shadow:0 1px 4px rgba(0,0,0,.12)}
 /* Dải tab chia đều thành các phần bằng nhau, chữ căn giữa */
 .folder-tabs.split-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}

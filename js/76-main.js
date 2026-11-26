@@ -1,10 +1,10 @@
 /* EducMind · js/76-main.js
-   Khởi động ứng dụng: vẽ màn hình đầu tiên và khôi phục phiên Supabase.
+   Khởi động ứng dụng: vẽ màn hình đầu tiên và khôi phục phiên Firebase Auth.
    Lưu ý: Tệp cuối cùng của ứng dụng. Mọi hàm và dữ liệu phải được nạp trước tệp này. */
-/* Mọi tệp đã nạp xong: từ đây mới vẽ giao diện và khôi phục phiên đăng nhập Supabase (nếu có). */
+/* Mọi tệp đã nạp xong: từ đây mới vẽ giao diện và khôi phục phiên đăng nhập Firebase (nếu có). */
 appReady=true;
 render();
-restoreBackendSession().catch(e=>{console.error('Supabase session restore:',e);authErr='Không khôi phục được phiên Supabase.';render()});
+restoreBackendSession().catch(e=>{console.error('Firebase session restore:',e);authErr='Không khôi phục được phiên đăng nhập.';render()});
 
 
 /* Đóng preview khi click ra ngoài khung resPreviewBox */

@@ -98,7 +98,7 @@
 .db-game-feedback.ok{border-color:#27ae60}
 .db-game-feedback.bad{border-color:#c0392b}
 .db-game-bonus{padding:2px 8px;border-radius:99px;background:color-mix(in srgb,#f4b942 30%,transparent);font-size:.78rem;font-weight:800}
-.db-game-explain{margin:10px 0 0;padding:11px 14px;border-left:4px solid var(--brand);border-radius:0 10px 10px 0;background:var(--fill);color:var(--ink);font-size:.88rem;line-height:1.55}
+.db-game-explain{margin:10px 0 0;padding:11px 14px;border:1px solid color-mix(in srgb,var(--brand) 26%,var(--line));border-radius:12px;background:var(--fill);color:var(--ink);font-size:.88rem;line-height:1.55}
 .db-game-pop{position:absolute;left:100%;top:-4px;margin-left:6px;color:#27ae60;font-weight:900;pointer-events:none;animation:db-game-pop .9s ease-out forwards}
 .db-game-result{position:relative;overflow:hidden}
 .db-game-best{margin:6px 0 12px;font-weight:800;color:var(--ink)}
@@ -152,8 +152,8 @@
 .db-match-item.picking{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 18%,transparent);transform:scale(1.02);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 25%,transparent)}
 .db-match-tag{position:absolute;top:-8px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:var(--pc,#555);color:#fff;font-size:12px;font-weight:800;line-height:20px;text-align:center}
 .db-match-item.paired{border-color:var(--pc);background:color-mix(in srgb,var(--pc) 16%,transparent)}
-.db-match-item.p0{--pc:#f43f5e}.db-match-item.p1{--pc:#3978f6}.db-match-item.p2{--pc:#21a16b}
-.db-match-item.p3{--pc:#c98a0a}.db-match-item.p4{--pc:#9b59d0}.db-match-item.p5{--pc:#0f9fb5}
+.db-match-item.p0{--pc:#c85a53}.db-match-item.p1{--pc:#337391}.db-match-item.p2{--pc:#218b6e}
+.db-match-item.p3{--pc:#c98229}.db-match-item.p4{--pc:#2a7d76}.db-match-item.p5{--pc:#0f8f9e}
 .db-game-match-result{list-style:none;margin:8px 0;padding:0;display:grid;gap:8px}
 .db-game-match-result li{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1.5px solid;border-radius:12px}
 .db-game-match-result li.ok{border-color:#27ae60;background:color-mix(in srgb,#27ae60 16%,transparent)}

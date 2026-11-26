@@ -31,38 +31,41 @@
 
 /* Personal learning dashboard refinements. Keep all selectors local to this page. */
 .student-dashboard{gap:18px}
-.sd-welcome{position:relative;isolation:isolate;overflow:hidden;min-height:190px;padding:clamp(22px,3vw,30px);border:1px solid rgba(255,255,255,.28);border-radius:24px;background:linear-gradient(118deg,#1d4ed8 0%,#2563eb 52%,#0ea5e9 100%);color:#fff;box-shadow:0 18px 40px -24px rgba(29,78,216,.46)}
+.sd-welcome{position:relative;isolation:isolate;overflow:hidden;min-height:190px;padding:clamp(22px,3vw,30px);border:1px solid rgba(255,255,255,.24);border-radius:24px;background:linear-gradient(118deg,#164745 0%,#1f6f6b 54%,#2f857f 100%);color:#fff;box-shadow:0 18px 40px -24px rgba(22,71,69,.44)}
 .sd-welcome-copy{position:relative;z-index:2;max-width:61%}
 .sd-welcome-art{position:absolute;z-index:1;inset:0 0 0 auto;width:48%;overflow:hidden;pointer-events:none}
 .sd-welcome-art img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 38%;opacity:.92;-webkit-mask-image:linear-gradient(90deg,transparent 0%,rgba(0,0,0,.5) 16%,#000 38%,#000 88%,rgba(0,0,0,.5) 100%);mask-image:linear-gradient(90deg,transparent 0%,rgba(0,0,0,.5) 16%,#000 38%,#000 88%,rgba(0,0,0,.5) 100%)}
 .sd-welcome h2{margin:7px 0;font-size:clamp(25px,3vw,34px);line-height:1.12;color:#fff}
-.sd-welcome p{max-width:660px;color:rgba(240,249,255,.92);font-size:13px;line-height:1.55}
-.sd-welcome-copy>.btn{position:relative;z-index:2;max-width:100%;margin-top:12px;background:#ffffff;color:#1d4ed8;box-shadow:0 8px 20px rgba(15,35,70,.18)}
+.sd-welcome p{max-width:660px;color:rgba(235,248,245,.92);font-size:13px;line-height:1.55}
+.sd-welcome-copy>.btn{position:relative;z-index:2;max-width:100%;margin-top:12px;background:#ffffff;color:#164745;box-shadow:0 8px 20px rgba(10,36,35,.18)}
 .sd-eyebrow{font-size:10px;letter-spacing:.1em}
-.sd-welcome .sd-eyebrow{color:#bae6fd}
+.sd-welcome .sd-eyebrow{color:#b8ebe3}
 .sd-metrics{gap:12px}
-.sd-metric{--sd-accent:#2563eb;position:relative;isolation:isolate;overflow:hidden;min-height:100px;padding:16px;border:1px solid var(--lg-edge);border-radius:22px;background-color:transparent;background-image:linear-gradient(164deg,var(--lg-content-a),var(--lg-content-b));-webkit-backdrop-filter:var(--lg-blur-content);backdrop-filter:var(--lg-blur-content);box-shadow:var(--lg-content-rim),var(--lg-content-shadow)}
-.sd-metric:nth-child(2){--sd-accent:#059669}
-.sd-metric:nth-child(3){--sd-accent:#7c3aed}
-.sd-metric:nth-child(4){--sd-accent:#0284c7}
+.sd-metric{--sd-accent:#1f6f6b;position:relative;isolation:isolate;overflow:hidden;min-height:100px;padding:16px;border:1px solid rgba(31,111,107,.12);border-radius:22px;background:#edf7f3;box-shadow:0 6px 18px -12px rgba(19,34,38,.12)}
+.sd-metric:nth-child(2){--sd-accent:#c27829;background:#fbf5e8;border-color:rgba(194,120,41,.14)}
+.sd-metric:nth-child(3){--sd-accent:#c95952;background:#fbedec;border-color:rgba(201,89,82,.14)}
+.sd-metric:nth-child(4){--sd-accent:#2f7487;background:#edf4fb;border-color:rgba(47,116,135,.14)}
+:root[data-theme="dark"] .sd-metric{background:rgba(30,86,74,.24);border-color:rgba(72,184,174,.20);box-shadow:none}
+:root[data-theme="dark"] .sd-metric:nth-child(2){background:rgba(176,125,52,.20);border-color:rgba(227,168,87,.20)}
+:root[data-theme="dark"] .sd-metric:nth-child(3){background:rgba(182,78,72,.20);border-color:rgba(224,119,113,.20)}
+:root[data-theme="dark"] .sd-metric:nth-child(4){background:rgba(47,116,135,.22);border-color:rgba(99,179,199,.20)}
 .sd-metric>*{position:relative;z-index:1}
 .sd-metric>b{font-size:25px;letter-spacing:-.035em}
 .sd-metric>span:not(.sd-metric-icon):not(.sd-metric-progress){font-size:11px;line-height:1.4}
 .sd-metric-icon{border-radius:12px;background:color-mix(in srgb,var(--sd-accent) 16%,var(--surface));color:color-mix(in srgb,var(--sd-accent) 82%,var(--ink))}
-.sd-metric-icon.is-violet{background:color-mix(in srgb,#7c3aed 15%,var(--surface));color:color-mix(in srgb,#7c3aed 78%,var(--ink))}
-.sd-metric-icon.is-cyan{background:color-mix(in srgb,#0284c7 14%,var(--surface));color:color-mix(in srgb,#0284c7 80%,var(--ink))}
+.sd-metric-icon.is-sky,.sd-metric-icon.is-cyan{background:color-mix(in srgb,#2f7487 16%,var(--surface));color:color-mix(in srgb,#2f7487 82%,var(--ink))}
 .sd-metric-progress{grid-column:1/-1;display:block;height:7px;overflow:hidden;margin-top:3px;border-radius:999px;background:var(--track)}
-.sd-metric-progress i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#2563eb,#38bdf8)}
+.sd-metric-progress i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#1f6f6b,#3b8da1)}
 .sd-chart-period{flex:none;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--fill);color:var(--muted);font-size:10px;font-weight:700}
 .sd-chart-legend{display:flex;align-items:center;gap:8px;margin:0 0 2px 42px}
 .sd-chart-legend>span{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:10px}
-.sd-chart-legend i{width:8px;height:8px;border-radius:50%;background:var(--chart-accent,#2563eb)}
+.sd-chart-legend i{width:8px;height:8px;border-radius:50%;background:var(--chart-accent,#1f6f6b)}
 .sd-learning-chart{display:block;width:100%;height:auto;overflow:visible;margin:0}
 .sd-chart-grid-line{stroke:var(--chart-grid,var(--line));stroke-width:1;stroke-dasharray:3 5}
 .sd-chart-axis-label{fill:var(--muted);font:600 10px var(--font-body)}
 .sd-chart-area{fill:url(#sd-learning-area)}
-.sd-chart-line{fill:none;stroke:var(--chart-accent,#2563eb);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-.sd-chart-point{fill:var(--surface);stroke:var(--chart-accent,#2563eb);stroke-width:3}
+.sd-chart-line{fill:none;stroke:var(--chart-accent,#1f6f6b);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.sd-chart-point{fill:var(--surface);stroke:var(--chart-accent,#1f6f6b);stroke-width:3}
 .sd-chart-empty{display:grid;justify-items:center;gap:5px;min-height:180px;padding:24px 12px;border:1px dashed var(--line-strong);border-radius:16px;background:var(--fill);text-align:center}
 .sd-chart-empty>span{display:grid;place-items:center;width:40px;height:40px;margin-bottom:2px;border-radius:13px;background:var(--brand-soft);color:var(--brand-ink)}
 .sd-chart-empty>b{color:var(--ink);font-size:12px}
@@ -108,13 +111,13 @@
 .sd-recent-icon.good{background:var(--good-soft);color:var(--good)}
 .sd-recent-icon.prog{background:var(--prog-soft);color:var(--prog)}
 .sd-recent-icon.need{background:var(--need-soft);color:var(--need)}
-.sd-motivation{grid-column:1/-1;padding:20px;border:1px solid rgba(255,255,255,.28)!important;background:linear-gradient(112deg,#1d4ed8 0%,#2563eb 52%,#0ea5e9 100%)!important;color:#fff}
+.sd-motivation{grid-column:1/-1;padding:20px;border:1px solid rgba(255,255,255,.24)!important;background:linear-gradient(112deg,#164745 0%,#1f6f6b 54%,#2f857f 100%)!important;color:#fff}
 .sd-motivation .sd-eyebrow,.sd-motivation .sd-section-head h3{color:#fff}
-.sd-motivation>.btn{border:1px solid rgba(255,255,255,.35);background:#ffffff;color:#1d4ed8}
-.sd-motivation>p{margin:0 0 12px;color:rgba(240,249,255,.92);font-size:12px}
+.sd-motivation>.btn{border:1px solid rgba(255,255,255,.35);background:#ffffff;color:#164745}
+.sd-motivation>p{margin:0 0 12px;color:rgba(235,248,245,.92);font-size:12px}
 .sd-motivation>.btn{width:max-content}
-:root[data-theme="dark"] .sd-welcome{border-color:rgba(125,211,252,.22);background:linear-gradient(118deg,#1e3a8a 0%,#1d4ed8 52%,#0284c7 100%);box-shadow:0 18px 42px -24px rgba(2,6,23,.78)}
-:root[data-theme="dark"] .sd-motivation{background:linear-gradient(112deg,#1e3a8a 0%,#1d4ed8 52%,#0284c7 100%)!important}
+:root[data-theme="dark"] .sd-welcome{border-color:rgba(123,224,215,.22);background:linear-gradient(118deg,#113433 0%,#195350 54%,#256863 100%);box-shadow:0 18px 42px -24px rgba(4,10,12,.78)}
+:root[data-theme="dark"] .sd-motivation{background:linear-gradient(112deg,#113433 0%,#195350 54%,#256863 100%)!important}
 @media(max-width:850px){
   .sd-dashboard-grid{grid-template-columns:minmax(0,1fr)}
   .sd-progress,.sd-db-overview,.sd-gaps,.sd-db-gaps,.sd-tasks,.sd-db-tasks,.sd-activity,.sd-db-recent,.sd-motivation,.sd-db-motivation{grid-column:1/-1}

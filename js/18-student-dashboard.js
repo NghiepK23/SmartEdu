@@ -26,7 +26,7 @@ function studentLearningChart(data,label,emptyMessage){
   const dayLabels=points.map((point,index)=>`<text class='sd-chart-axis-label' x='${x(index)}' y='207' text-anchor='middle'>${esc(point.label)}</text>`).join('');
   const summary=points.map((point)=>`${point.label} ${point.value==null?'chưa có điểm':Math.round(point.value)+'%'}`).join('; ');
   return `<svg class='sd-learning-chart' viewBox='0 0 680 220' role='img' aria-label='${esc(`${label} trong 7 ngày qua: ${summary}`)}'>
-    <defs><linearGradient id='sd-learning-area' x1='0' x2='0' y1='0' y2='1'><stop offset='0' stop-color='#2563eb' stop-opacity='.30'/><stop offset='1' stop-color='#2563eb' stop-opacity='0'/></linearGradient></defs>
+    <defs><linearGradient id='sd-learning-area' x1='0' x2='0' y1='0' y2='1'><stop offset='0' stop-color='#1f6f6b' stop-opacity='.30'/><stop offset='1' stop-color='#1f6f6b' stop-opacity='0'/></linearGradient></defs>
     ${grid}${areas}${lines}${markers}${dayLabels}
   </svg>`;
 }

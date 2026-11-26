@@ -24,7 +24,8 @@
     '.survival-mode-card', '.race-question', '.race-arena', '.survival-mission',
     '.survival-zone', '.game-choice-card', '.ai-card', '.gr-work', '.gr-work-head',
     '.login-bg-panel', '.td-metric', '.sd-metric',
-    '.td-panel', '.sd-db-panel', '.td-ai-card'
+    '.td-panel', '.sd-db-panel', '.td-ai-card',
+    '.db-bottom-dock', '.db-dock-plus', '.db-quick-menu', '.td-work-panel', '.db-global-search-wrap'
   ].join(',');
 
   var raf = 0, pending = null;

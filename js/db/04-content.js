@@ -75,18 +75,31 @@ function dbContentRootView(d, lessonsBy, objBy) {
     </details>`;
   }).join('');
   return `<section class="panel" aria-labelledby="db-h-topic">
-    <div class="row between db-folder-heading"><div><h2 id="db-h-topic">Chủ đề học tập</h2><p class="lead">${d.topics.length ? d.topics.length + ' chủ đề · ' + d.lessons.length + ' bài học · ' + d.objectives.length + ' mục tiêu' : 'Lớp chưa có nội dung. Bắt đầu bằng cách tạo chủ đề đầu tiên.'}</p></div>
-      <details class="db-topic-create"><summary class="btn">${ic('plus', 16)}Tạo chủ đề</summary>
-        <form data-act="createTopic" class="db-form-row" novalidate>
-          ${dbField('Tên chủ đề mới', 'db-new-topic', `<input id="db-new-topic" name="title" maxlength="200" placeholder="Ví dụ: Mạng máy tính" required>`)}
-          <button type="submit" class="btn">${ic('plus', 16)}Thêm</button>${dbFormError()}
-        </form>
-      </details>
-    </div>
+    <div class="row between db-folder-heading"><div><h2 id="db-h-topic">Chủ đề học tập</h2><p class="lead">${d.topics.length ? d.topics.length + ' chủ đề · ' + d.lessons.length + ' bài học · ' + d.objectives.length + ' mục tiêu' : 'Lớp chưa có nội dung. Bắt đầu bằng cách tạo chủ đề đầu tiên.'}</p></div></div>
     <div class="db-topic-list" data-sort-scope="topics" aria-label="Danh sách chủ đề">${cards || `<div class="folder-empty">Chưa có chủ đề. Tạo chủ đề để bắt đầu xây dựng nội dung.</div>`}</div>
     <details class="db-content-settings"><summary>Cài đặt học tập</summary>
       <label class="db-check db-seq-toggle"><input type="checkbox" data-change="toggleSequential" ${DB.course && DB.course.sequential_unlock ? 'checked' : ''}> Mở bài học tuần tự: học sinh chỉ mở được bài sau khi nắm vững (≥ 0,8) mọi mục tiêu của bài trước</label>
-      <label class="db-check db-seq-toggle"><input type="checkbox" data-change="toggleStudentAi" ${!DB.course || DB.course.student_ai_enabled !== false ? 'checked' : ''}> Cho phép học sinh sử dụng Trợ lý AI trong lớp này</label>
+      <p class="muted db-hint">Trợ lý AI được bật/tắt cho từng bài tập và từng bài kiểm tra, ngay trong lúc tạo hoặc sửa bài.</p>
+    </details>
+    <details class="db-content-settings"><summary>Cài đặt luyện tập thích ứng</summary>
+      <div class="db-form-row" style="flex-wrap:wrap;gap:12px">
+        <div class="field"><label>Trọng số luyện tập (practice_weight)</label><input type="number" min="0" max="1" step="0.05" value="${h(DB.course ? (DB.course.practice_weight ?? 0.3) : 0.3)}" data-field="practice_weight"></div>
+        <div class="field"><label>Số KQ chính thức tối thiểu</label><input type="number" min="0" max="50" value="${h(DB.course ? (DB.course.practice_unlock_min_official ?? 1) : 1)}" data-field="practice_unlock_min_official"></div>
+        <div class="field"><label>Số câu/phiên</label><input type="number" min="1" max="50" value="${h(DB.course ? (DB.course.practice_session_length ?? 8) : 8)}" data-field="practice_session_length"></div>
+        <div class="field"><label>Phiên tính điểm/ngày</label><input type="number" min="0" max="50" value="${h(DB.course ? (DB.course.practice_daily_scored_sessions ?? 3) : 3)}" data-field="practice_daily_scored_sessions"></div>
+        <div class="field"><label>Tỷ trọng tối đa</label><input type="number" min="0" max="0.95" step="0.05" value="${h(DB.course ? (DB.course.practice_max_share ?? 0.5) : 0.5)}" data-field="practice_max_share"></div>
+      </div>
+      <div class="row" style="margin-top:10px">${dbBtn('Lưu cài đặt luyện tập', 'savePracticeSettings', {}, 'mini')}${dbBtn('Khôi phục mặc định', 'resetPracticeSettings', {}, 'light mini')}</div>
+    </details>
+    <details class="db-content-settings"><summary>Ngưỡng đánh giá chất lượng lớp</summary>
+      <div class="db-form-row" style="flex-wrap:wrap;gap:12px">
+        <div class="field"><label>Tỷ lệ dạy lại</label><input type="number" min="0" max="1" step="0.05" value="${h(DB.course ? (DB.course.dash_reteach_share ?? 0.4) : 0.4)}" data-field="dash_reteach_share"></div>
+        <div class="field"><label>Số HS tối thiểu</label><input type="number" min="1" max="200" value="${h(DB.course ? (DB.course.dash_min_students ?? 5) : 5)}" data-field="dash_min_students"></div>
+        <div class="field"><label>Ngưỡng xuất sắc</label><input type="number" min="0" max="1" step="0.05" value="${h(DB.course ? (DB.course.dash_advanced_threshold ?? 0.8) : 0.8)}" data-field="dash_advanced_threshold"></div>
+        <div class="field"><label>Ngày không hoạt động</label><input type="number" min="1" max="365" value="${h(DB.course ? (DB.course.dash_inactive_days ?? 14) : 14)}" data-field="dash_inactive_days"></div>
+        <div class="field"><label>Câu hỏi tối thiểu</label><input type="number" min="1" max="200" value="${h(DB.course ? (DB.course.dash_question_min_answers ?? 10) : 10)}" data-field="dash_question_min_answers"></div>
+      </div>
+      <div class="row" style="margin-top:10px">${dbBtn('Lưu ngưỡng', 'saveDashSettings', {}, 'mini')}</div>
     </details>
   </section>`;
 }
@@ -137,12 +150,11 @@ function dbContentLessonView(d, topic, lesson, objectives) {
     <nav class="folder-crumb" aria-label="Đường dẫn"><button type="button" data-act="openContentRoot">Thư mục nội dung</button><span aria-hidden="true">›</span><button type="button" data-act="openContentTopic" data-id="${h(topic.id)}">${h(topic.title)}</button><span aria-hidden="true">›</span><b>${h(lesson.title)}</b></nav>
     <section class="panel lesson-workspace">
       <div class="lesson-workspace-head">
-        <div class="row between"><div><h2>${h(lesson.title)}</h2><p class="lead">${dbStatusPill(lesson.status)} · ${h(topic.title)}</p>${lesson.description ? `<p class="muted">${h(lesson.description)}</p>` : ''}</div>
-          <div class="row">${dbBtn(ic('chat', 15) + ' Hỏi trợ lý AI', 'chatAskLesson', { lesson: lesson.id, 'lesson-title': lesson.title, mode: 'lesson_plan' }, 'light mini db-chat-trigger')}${dbBtn(published ? 'Gỡ xuất bản' : 'Xuất bản', 'toggleLesson', { id: lesson.id }, published ? 'light mini' : 'mini')}${dbBtn('Sửa bài học', 'editLesson', { id: lesson.id }, 'light mini')}${dbBtn('Xóa', 'deleteLesson', { id: lesson.id }, 'light mini danger-soft')}</div>
-        </div>${tabs}
+        <div class="row between"><div><h2>${h(lesson.title)}</h2><p class="lead">${dbStatusPill(lesson.status)} · ${h(topic.title)}</p>${lesson.description ? `<p class="muted">${h(lesson.description)}</p>` : ''}</div></div>${tabs}
       </div>
       <div class="lesson-workspace-body">${body}</div>
     </section>
+    <section class="panel" id="db-coverage-matrix"><h3>Bảng độ phủ tài liệu theo mục tiêu</h3><div id="db-coverage-body" class="muted">Đang tải độ phủ tài liệu/câu hỏi…</div></section>
   </div>`;
 }
 
@@ -151,12 +163,12 @@ function dbLessonObjectives(lesson, objectives) {
     <span class="row">${dbBtn('Sửa', 'editObjective', { id: o.id }, 'light mini')}${dbBtn('Xóa', 'deleteObjective', { id: o.id }, 'light mini danger-soft')}</span></li>`).join('');
   return `<section class="panel">
     <div class="row between"><div><h3>Mục tiêu cần đạt</h3><p class="lead">Mục tiêu được dùng để gắn câu hỏi và theo dõi mức độ nắm vững.</p></div><span class="pill plain">${objectives.length} mục tiêu</span></div>
-    ${rows ? `<ul class="db-objectives">${rows}</ul>` : `<div class="folder-empty">Chưa có mục tiêu cho bài học này.</div>`}
     <form data-act="createObjective" data-lesson="${h(lesson.id)}" class="db-form-row db-add-row" novalidate>
       ${dbField('Mã', 'db-oc-' + h(lesson.id), `<input id="db-oc-${h(lesson.id)}" name="code" maxlength="20" value="${h(dbNextObjectiveCode(objectives))}" class="db-input-code" required>`)}
       ${dbField('Mục tiêu mới', 'db-od-' + h(lesson.id), `<input id="db-od-${h(lesson.id)}" name="description" maxlength="500" placeholder="Nhập điều học sinh cần đạt" required>`)}
       <button type="submit" class="btn light">${ic('plus', 16)}Thêm mục tiêu</button>${dbFormError()}
     </form>
+    <div class="db-objectives-body">${rows ? `<ul class="db-objectives">${rows}</ul>` : `<div class="folder-empty">Chưa có mục tiêu cho bài học này.</div>`}</div>
   </section>`;
 }
 
@@ -416,6 +428,19 @@ DB_ACT.createTopic = (form) => dbRun(form, async (v) => {
   const course = await dbEnsureCourse();
   await dbCall(EducMindDB.createTopic({ course_id: course.id, title: v.title, display_order: dbNextOrder(DB.data.topics || []) }));
 }, 'Đã thêm chủ đề (bản nháp).');
+DB_ACT.openCreateTopicDialog = () => {
+  dbOpenDialog({
+    title: 'Tạo chủ đề mới',
+    okLabel: 'Thêm',
+    body: dbField('Tên chủ đề mới', 'db-new-topic', `<input id="db-new-topic" name="title" maxlength="200" placeholder="Ví dụ: Mạng máy tính" required>`),
+    onOk: async (v) => {
+      if (!v.title) throw new Error('Nhập tên chủ đề.');
+      const course = await dbEnsureCourse();
+      await dbCall(EducMindDB.createTopic({ course_id: course.id, title: v.title, display_order: dbNextOrder(DB.data.topics || []) }));
+      toast('Đã thêm chủ đề (bản nháp).');
+    },
+  });
+};
 DB_ACT.toggleTopic = (el) => dbRun(el, async () => {
   const t = DB.data.topics.find((x) => x.id === el.dataset.id);
   await dbCall(EducMindDB.updateTopic(t.id, { status: t.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED' }));
@@ -427,13 +452,6 @@ DB_ACT.toggleSequential = (el) => dbRun(el, async () => {
   await dbCall(EducMindDB.updateCourse(course.id, { sequential_unlock: el.checked }));
   DB.course.sequential_unlock = el.checked;
   toast(el.checked ? 'Đã bật mở bài học tuần tự.' : 'Đã tắt mở bài học tuần tự.');
-});
-/* Bật/tắt Trợ lý AI cho học sinh trong lớp đang chọn. */
-DB_ACT.toggleStudentAi = (el) => dbRun(el, async () => {
-  const course = await dbEnsureCourse();
-  await dbCall(EducMindDB.updateCourse(course.id, { student_ai_enabled: el.checked }));
-  DB.course.student_ai_enabled = el.checked;
-  toast(el.checked ? 'Đã bật Trợ lý AI cho học sinh lớp này.' : 'Đã tạm tắt Trợ lý AI cho học sinh lớp này.');
 });
 DB_ACT.editTopic = (el) => {
   const t = DB.data.topics.find((x) => x.id === el.dataset.id);
@@ -578,7 +596,82 @@ DB_PAGES.lessons = {
                 </div>`}
           </details>`).join('') || `<div class="folder-empty">Chủ đề chưa có bài học được xuất bản.</div>`}
         </div>
-      </details>`;
+          </details>`;
     }).join('');
   },
 };
+
+/* ===== Phase 1 & 2 — Coverage matrix loader + Practice/Dash settings ===== */
+/* Nhãn tiếng Việt cho mục đích sử dụng tài liệu (giá trị lưu trong CSDL vẫn là LEARN/PRACTICE/EXTEND). */
+const DB_PURPOSE_LABEL = { LEARN: 'Học kiến thức mới', PRACTICE: 'Luyện tập', EXTEND: 'Mở rộng' };
+const DB_PURPOSE_SHORT = { LEARN: 'Học mới', PRACTICE: 'Luyện tập', EXTEND: 'Mở rộng' };
+const DB_PURPOSE_ORDER = ['LEARN', 'PRACTICE', 'EXTEND'];
+
+/* Nhãn tiếng Việt cho bốn nhóm học sinh dùng ở trang chất lượng lớp và khi giao bài theo nhóm. */
+const DB_GROUP_LABEL = {
+  SUPPORT: 'Cần củng cố',
+  ON_TRACK: 'Đạt chuẩn',
+  ADVANCED: 'Xuất sắc',
+  INACTIVE: 'Chưa hoạt động',
+};
+function dbPurposeLabel(p) { return DB_PURPOSE_LABEL[p] || String(p || ''); }
+
+async function dbRenderCoverageMatrix() {
+  const body = document.getElementById('db-coverage-body');
+  if (!body || !DB.course) return;
+  try {
+    const cov = await dbCall(EducMindDB.getObjectiveCoverage(DB.course.id));
+    const objs = (cov.objectives || []).slice();
+    if (!objs.length) { body.innerHTML = '<p class="muted">Chưa có mục tiêu.</p>'; return; }
+    body.innerHTML = '<div class="tablewrap"><table><thead><tr><th>Mục tiêu</th>'
+      + DB_PURPOSE_ORDER.map((p) => '<th>' + h(DB_PURPOSE_LABEL[p]) + '</th>').join('')
+      + '<th>Câu hỏi</th><th>Cảnh báo</th></tr></thead><tbody>' + objs.map((o) => {
+      const c = (cov.linkByObj && cov.linkByObj[o.id]) || { LEARN: 0, PRACTICE: 0, EXTEND: 0 };
+      const q = (cov.qByObj && cov.qByObj[o.id]) || 0;
+      const warn = [];
+      if (!c.LEARN) warn.push('Thiếu tài liệu học kiến thức mới');
+      if (!q) warn.push('Thiếu câu hỏi');
+      const cells = DB_PURPOSE_ORDER.map((p) => '<td>' + Number(c[p] || 0) + '</td>').join('');
+      return '<tr><th scope="row">' + h(o.code) + '</th>' + cells + '<td>' + q + '</td><td>' + (warn.length ? '<span class="pill need">' + h(warn.join(' · ')) + '</span>' : '<span class="pill good">Đủ</span>') + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+  } catch (e) { body.innerHTML = '<p class="muted">Không tải được độ phủ: ' + h(dbErrText(e)) + '</p>'; }
+}
+// Trigger after render
+const _dbContentRenderOrig = typeof render === 'function' ? render : null;
+if (typeof MutationObserver !== 'undefined') {
+  new MutationObserver(() => { if (document.getElementById('db-coverage-body')) dbRenderCoverageMatrix(); }).observe(document.documentElement, { childList: true, subtree: true });
+}
+
+DB_ACT.savePracticeSettings = () => dbRun(document.body, async () => {
+  const read = (k) => { const el = document.querySelector('[data-field="' + k + '"]'); return el ? Number(el.value) : undefined; };
+  const patch = {
+    practice_weight: read('practice_weight'),
+    practice_unlock_min_official: read('practice_unlock_min_official'),
+    practice_session_length: read('practice_session_length'),
+    practice_daily_scored_sessions: read('practice_daily_scored_sessions'),
+    practice_max_share: read('practice_max_share'),
+  };
+  await dbCall(EducMindDB.updateCourse(DB.course.id, patch));
+  Object.assign(DB.course, patch);
+  toast('Đã lưu cài đặt luyện tập thích ứng.');
+});
+DB_ACT.resetPracticeSettings = () => dbRun(document.body, async () => {
+  const d = EducMindDB.PRACTICE_DEFAULTS || { practice_weight: 0.3, practice_unlock_min_official: 1, practice_session_length: 8, practice_daily_scored_sessions: 3, practice_max_share: 0.5 };
+  await dbCall(EducMindDB.updateCourse(DB.course.id, d));
+  Object.assign(DB.course, d);
+  toast('Đã khôi phục mặc định luyện tập.');
+  render();
+});
+DB_ACT.saveDashSettings = () => dbRun(document.body, async () => {
+  const read = (k) => { const el = document.querySelector('[data-field="' + k + '"]'); return el ? Number(el.value) : undefined; };
+  const patch = {
+    dash_reteach_share: read('dash_reteach_share'),
+    dash_min_students: read('dash_min_students'),
+    dash_advanced_threshold: read('dash_advanced_threshold'),
+    dash_inactive_days: read('dash_inactive_days'),
+    dash_question_min_answers: read('dash_question_min_answers'),
+  };
+  await dbCall(EducMindDB.updateCourse(DB.course.id, patch));
+  Object.assign(DB.course, patch);
+  toast('Đã lưu cài đặt bảng điều khiển.');
+});

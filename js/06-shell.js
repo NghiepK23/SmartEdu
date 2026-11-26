@@ -8,7 +8,9 @@ function logout(){
     if(uid&&typeof dbDraftClearUserAll==='function')dbDraftClearUserAll(uid);
     if(typeof dbReset==='function')dbReset();
     if(typeof dbClearRouteHash==='function')dbClearRouteHash();
-    if(supabaseClient)supabaseClient.auth.signOut().catch(console.error);
+    if(typeof FirebaseRuntime!=='undefined'&&FirebaseRuntime&&firebaseAuth){
+      FirebaseRuntime.authApi.signOut(firebaseAuth).catch(console.error);
+    }
   }
   render();
 }
@@ -42,30 +44,36 @@ const APP_ACT={
   openAvatarUpload:()=>{const input=document.getElementById('avatar-upload');if(input)input.click();},
   avatarFileChanged:(el)=>{if(el.files&&el.files[0])uploadAvatar(el.files[0]);el.value='';},
   authGoLogin:()=>goLogin(),
-  authGoSignup:()=>{authMode='signup';authErr='';authMsg='';render();},
-  authGoForgot:()=>goForgot(),
-  authDoLogin:()=>doLogin(),
-  authDoForgot:()=>doForgot(),
-  authBackendSignup:()=>backendSignup(),
+  authGoSignup:()=>goSignup(),
+  authGoReset:()=>goResetPassword(),
+  authEmailLogin:(form)=>doEmailLogin(form),
+  authEmailSignup:(form)=>doEmailSignup(form),
+  authEmailReset:(form)=>doEmailReset(form),
+  authTogglePassword:(el)=>toggleAuthPassword(el),
+  authResendVerify:()=>resendEmailVerification(),
+  authCheckVerify:()=>checkEmailVerification(),
+  authGoogleLogin:()=>doLogin(),
+  authCompleteOnboarding:()=>doCompleteOnboarding(),
+  authCancelOnboarding:()=>cancelGoogleOnboarding(),
   authSignupRoleChanged:(el)=>signupRoleChanged(el.value),
-  authVerifyCode:(el)=>verifyBackendCode((el.dataset&&el.dataset.purpose)||'signup'),
-  authResendCode:(el)=>resendBackendCode((el.dataset&&el.dataset.purpose)||'signup'),
-  authDoReset:()=>doReset(),
 };
-if(typeof app!=='undefined'&&app&&typeof app.addEventListener==='function'){
-  app.addEventListener('click',(ev)=>{
+const appEventRoot=(typeof document!=='undefined'&&document&&typeof document.addEventListener==='function')
+  ?document
+  :((typeof app!=='undefined'&&app&&typeof app.addEventListener==='function')?app:null);
+if(appEventRoot){
+  appEventRoot.addEventListener('click',(ev)=>{
     const el=ev.target&&ev.target.closest?ev.target.closest('[data-app-act]'):null;
     if(!el||el.tagName==='FORM'||el.disabled)return;
     const fn=APP_ACT[el.dataset.appAct];
     if(fn){ev.preventDefault();fn(el,ev);}
   });
-  app.addEventListener('submit',(ev)=>{
+  appEventRoot.addEventListener('submit',(ev)=>{
     const form=ev.target&&ev.target.closest?ev.target.closest('form[data-app-act]'):null;
     if(!form)return;
     const fn=APP_ACT[form.dataset.appAct];
     if(fn){ev.preventDefault();fn(form,ev);}
   });
-  app.addEventListener('change',(ev)=>{
+  appEventRoot.addEventListener('change',(ev)=>{
     const el=ev.target&&ev.target.closest?ev.target.closest('[data-app-change]'):null;
     if(!el)return;
     const fn=APP_ACT[el.dataset.appChange];

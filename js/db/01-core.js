@@ -1,13 +1,14 @@
 /* EducMind · js/db/01-core.js
-   Chế độ dữ liệu thật (đăng nhập bằng Supabase): trạng thái chung, hàm tiện ích, bộ điều phối thao tác và hàm vẽ màn hình.
-   Lưu ý: Các tệp trong js/db/ chỉ chạy khi người dùng đăng nhập bằng Supabase (sess.backend). Dữ liệu luôn đọc / ghi qua EducMindDB
-   (js/03-supabase.js); không dùng dữ liệu mẫu trong bộ nhớ của chế độ demo. */
+   Chế độ dữ liệu thật (đăng nhập bằng Firebase): trạng thái chung, hàm tiện ích, bộ điều phối thao tác và hàm vẽ màn hình.
+   Lưu ý: Các tệp trong js/db/ chỉ chạy khi người dùng đăng nhập bằng Firebase (sess.backend). Dữ liệu luôn đọc / ghi qua EducMindDB
+   (js/03-firebase.js); không dùng dữ liệu mẫu trong bộ nhớ của chế độ demo. */
 
 /* ===== Trạng thái ===== */
 const DB = {
   me: null,        // hồ sơ người đang đăng nhập: { id, email, full_name, role }
   classes: [],     // các lớp người này nhìn thấy
   classId: '',     // lớp đang chọn
+  classCourses: {}, // bản đồ classId -> khóa học (dùng hiển thị môn học khi chuyển lớp)
   course: null,    // khóa học của lớp đang chọn (mỗi lớp dùng một khóa học chứa toàn bộ nội dung)
   page: 'home',    // trang đang mở (khóa trong DB_PAGES)
   arg: {},         // tham số của trang, ví dụ { id: mã bài tập đang xem }
@@ -24,6 +25,15 @@ const DB = {
 /* Mỗi tệp trang đăng ký trang của mình vào DB_PAGES và các thao tác vào DB_ACT. */
 const DB_PAGES = {};   // khóa trang -> { title, sub, load(): Promise<data>, view(data): html, noClass }
 const DB_ACT = {};     // tên thao tác -> hàm (phần tử, sự kiện)
+const DB_UI = {
+  globalQuery: '',
+  globalOpen: false,
+  quickMenuOpen: false,
+  homeTab: 'ALL',
+  homeQuery: '',
+  dockSub: '',
+  settingsOpen: false,
+};
 
 const dbActive = () => !!(logged && sess && sess.backend && DB.me);
 const dbIsTeacher = () => !!DB.me && DB.me.role === 'TEACHER';
@@ -271,6 +281,10 @@ function dbSafeFileName(name) {
 
 /* ----- Lỗi từ máy chủ -> thông báo tiếng Việt ----- */
 const DB_ERRORS = [
+  /* Lỗi mạng phía máy chủ: máy chủ không gọi được Google nên không xác thực/lưu được.
+     Đây không phải lỗi của người dùng nên phải nói rõ, tránh câu "fetch failed" khó hiểu. */
+  [/fetch failed|ECONNRESET|ENOTFOUND|ETIMEDOUT|EAI_AGAIN/i, 'Máy chủ chưa kết nối được Google (Firebase/Gemini). Đây là lỗi mạng phía máy chủ — hãy thử lại sau hoặc báo người quản trị.'],
+  [/UPSTREAM_UNREACHABLE/i, 'Máy chủ chưa kết nối được Google (Firebase/Gemini). Đây là lỗi mạng phía máy chủ — hãy thử lại sau hoặc báo người quản trị.'],
   [/Invalid or expired class code/i, 'Mã lớp không đúng hoặc đã hết hạn.'],
   [/Only teachers can create a class/i, 'Chỉ tài khoản giáo viên mới tạo được lớp.'],
   [/Only students can join a class/i, 'Chỉ tài khoản học sinh mới vào lớp bằng mã.'],
@@ -472,6 +486,7 @@ async function dbGo(page, arg, opts) {
   const sameRoute = prevPage === norm.page && JSON.stringify(DB.arg) === JSON.stringify(norm.arg);
   const cur = DB_PAGES[prevPage];
   if (cur && cur.leave && norm.page !== prevPage) cur.leave();
+  if (!sameRoute || norm.page !== prevPage) DB_UI.dockSub = '';
   DB.page = norm.page; DB.arg = norm.arg; DB.data = null; DB.dialog = null; DB.resetForms = true;
   focusId = 'pageTitle';
   if (opts && opts.history === 'pop') {
@@ -498,9 +513,19 @@ async function dbLoadCourse() {
   if (!DB.classId) return;
   const list = await dbCall(EducMindDB.listCourses(DB.classId));
   DB.course = list[0] || null;
+  if (DB.course && DB.course.class_id) {
+    if (!DB.classCourses || typeof DB.classCourses !== 'object') DB.classCourses = {};
+    DB.classCourses[DB.course.class_id] = DB.course;
+  }
+  /* Trạng thái API key phụ thuộc lớp (học sinh dùng key của giáo viên chủ lớp). */
+  if (typeof dbAiKeyLoad === 'function') dbAiKeyLoad(true).then(() => {}).catch(() => {});
 }
 async function dbSetClass(id, page, arg, opts) {
-  DB.classId = id || '';
+  if (!id || !DB.classes.some((c) => c.id === id)) {
+    toast(dbIsTeacher() ? 'Không tìm thấy lớp thuộc quyền quản lý của bạn.' : 'Em chưa tham gia lớp học này.');
+    return;
+  }
+  DB.classId = id;
   try { localStorage.setItem('educmind.db.class', DB.classId); } catch (_) {}
   DB.course = null;
   try { await dbLoadCourse(); } catch (e) { console.error(e); }
@@ -508,6 +533,15 @@ async function dbSetClass(id, page, arg, opts) {
 }
 async function dbLoadClasses(preferredId) {
   DB.classes = await dbCall(EducMindDB.listClasses());
+  DB.classCourses = {};
+  if (DB.classes.length && typeof EducMindDB !== 'undefined' && typeof EducMindDB.listCoursesForClasses === 'function') {
+    try {
+      const courseList = await dbCall(EducMindDB.listCoursesForClasses(DB.classes.map((c) => c.id)));
+      (courseList || []).forEach((course) => {
+        if (course && course.class_id) DB.classCourses[course.class_id] = course;
+      });
+    } catch (_) {}
+  }
   if (preferredId && DB.classes.some((c) => c.id === preferredId)) {
     DB.classId = preferredId;
   } else if (!DB.classes.some((c) => c.id === DB.classId)) {
@@ -628,10 +662,22 @@ function dbUploadHide() {
 function dbOpenDialog(d) { DB.dialog = d; render(); const f = document.querySelector('.db-dialog [autofocus], .db-dialog input, .db-dialog textarea, .db-dialog select, .db-dialog #db-dlg-ok'); if (f) f.focus(); }
 function dbCloseDialog() { DB.dialog = null; render(); }
 function dbConfirm(title, text, okLabel, onOk, danger) { dbOpenDialog({ title, body: `<p class="muted">${text}</p>`, okLabel, danger, onOk }); }
+/* Hộp thoại được đặt trong cổng riêng nằm NGOÀI #main: #main là khung kính có
+   backdrop-filter nên sẽ trở thành containing block, khiến lớp phủ .ov bị kẹt
+   trong hình chữ nhật của #main thay vì phủ toàn màn hình. */
+function dbDialogHostHtml() {
+  const d = DB.dialog;
+  const raw = d ? [d.title || '', d.okLabel || '', d.body || '', d.danger ? '1' : '0', d.wide ? '1' : '0', d.compact ? '1' : '0'].join('\u0001') : '';
+  let mark = '';
+  for (let i = 0; i < raw.length; i++) mark = (mark * 31 + raw.charCodeAt(i)) % 2147483647;
+  return `<div class="db-dialog-host" data-mark="${raw ? mark : ''}">${dbDialogHtml()}</div>`;
+}
+
 function dbDialogHtml() {
   const d = DB.dialog;
   if (!d) return '';
-  return `<div class="ov db-dialog"><form class="dlg${d.wide ? ' db-dlg-wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="db-dlg-t" data-act="dialogOk" novalidate>
+  const sizeCls = d.wide ? ' db-dlg-wide' : d.compact ? ' db-dlg-compact' : '';
+  return `<div class="ov db-dialog" role="presentation"><form class="dlg${sizeCls}" role="dialog" aria-modal="true" aria-labelledby="db-dlg-t" data-act="dialogOk" novalidate>
     <h2 id="db-dlg-t" class="db-dlg-title">${d.title}</h2>${d.body || ''}${dbFormError()}
     <div class="row db-dlg-actions"><button type="button" class="btn light" data-act="dialogClose">${d.onOk ? 'Hủy' : 'Đóng'}</button>${d.onOk ? `<button type="submit" id="db-dlg-ok" class="btn ${d.danger ? 'danger' : ''}">${d.okLabel || 'Lưu'}</button>` : ''}</div>
   </form></div>`;
@@ -658,7 +704,7 @@ function dbDispatch(name, el, ev) {
   /* Hết hạn do không hoạt động: authGuard() trong render() sẽ đưa về màn hình đăng nhập, thao tác không được thực hiện. */
   if (Date.now() - sess.t > SESS_IDLE * 60000) { render(); return; }
   const setupDialogSave = name === 'dialogOk' && DB.dialog?.teacherSetup;
-  if (dbTeacherSetupRequired() && !setupDialogSave && !['go', 'setClass', 'openAccount', 'dialogClose', 'reload', 'filterNav'].includes(name)) {
+  if (dbTeacherSetupRequired() && !setupDialogSave && !['go', 'setClass', 'openAccount', 'dialogClose', 'reload', 'filterNav', 'globalSearch', 'globalSearchPick', 'toggleQuickMenu', 'dockSubAction', 'toggleSettingsMenu', 'openAccountFromSettings', 'openBgSettings', 'openThemeSettings', 'setThemeLight', 'setThemeDark'].includes(name)) {
     dbShowError(new Error('Hãy bổ sung Lớp và Môn học trong Tài khoản trước khi sử dụng chức năng giáo viên.'), el);
     return;
   }
@@ -668,6 +714,27 @@ function dbDispatch(name, el, ev) {
 }
 app.addEventListener('click', (ev) => {
   if (!dbActive()) return;
+  if (!ev.target.closest('#db-global-search-box')) {
+    DB_UI.globalOpen = false;
+    const gr = document.getElementById('db-global-results');
+    if (gr) gr.hidden = true;
+  }
+  if (!ev.target.closest('.db-dock-plus-wrap')) {
+    DB_UI.quickMenuOpen = false;
+    const qm = document.getElementById('db-quick-menu');
+    const qp = document.getElementById('db-dock-plus');
+    if (qm) qm.hidden = true;
+    if (qp) qp.setAttribute('aria-expanded', 'false');
+  }
+  if (!ev.target.closest('#db-settings-wrap') && !ev.target.closest('#db-settings-menu')) {
+    if (DB_UI.settingsOpen) {
+      DB_UI.settingsOpen = false;
+      const sm = document.getElementById('db-settings-menu');
+      const st = document.getElementById('db-settings-trigger');
+      if (sm) sm.hidden = true;
+      if (st) st.setAttribute('aria-expanded', 'false');
+    }
+  }
   const dtOpen = ev.target.closest('[data-db-datetime-open]');
   if (dtOpen) { ev.preventDefault(); dbDatetimeOpen(dtOpen); return; }
   const el = ev.target.closest('[data-act]');
@@ -682,6 +749,26 @@ app.addEventListener('submit', (ev) => {
   ev.preventDefault();
   dbDispatch(form.dataset.act, form, ev);
 });
+/* Cổng hộp thoại (#db-dialog-root) được gắn vào body nên nằm ngoài #app:
+   cần listener riêng để nút Hủy/Lưu và submit của biểu mẫu trong hộp thoại hoạt động. */
+function dbOnDialogRoot(ev) {
+  if (!dbActive()) return;
+  const root = ev.target.closest && ev.target.closest('#db-dialog-root');
+  if (!root) return;
+  if (ev.type === 'submit') {
+    const form = ev.target.closest('form[data-act]');
+    if (!form) return;
+    ev.preventDefault();
+    dbDispatch(form.dataset.act, form, ev);
+    return;
+  }
+  const el = ev.target.closest('[data-act]');
+  if (!el || el.tagName === 'FORM' || el.disabled) return;
+  ev.preventDefault();
+  dbDispatch(el.dataset.act, el, ev);
+}
+document.addEventListener('click', dbOnDialogRoot);
+document.addEventListener('submit', dbOnDialogRoot);
 /* Popup được gắn trực tiếp vào body nên nằm ngoài #app. Lắng nghe riêng
    các thao tác của popup để chọn ngày, đổi tháng, đặt lại và xác nhận đều hoạt động. */
 document.addEventListener('click', (ev) => {
@@ -789,7 +876,23 @@ app.addEventListener('input', (ev) => {
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && dbActive()) {
     if (DB.dialog) dbCloseDialog();
-    else if (typeof DB_CHAT !== 'undefined' && DB_CHAT.drawerOpen && typeof dbChatCloseDrawer === 'function') dbChatCloseDrawer();
+    else if (DB_UI.quickMenuOpen) {
+      DB_UI.quickMenuOpen = false;
+      const qm = document.getElementById('db-quick-menu');
+      const qp = document.getElementById('db-dock-plus');
+      if (qm) qm.hidden = true;
+      if (qp) qp.setAttribute('aria-expanded', 'false');
+    } else if (DB_UI.globalOpen) {
+      DB_UI.globalOpen = false;
+      const gr = document.getElementById('db-global-results');
+      if (gr) gr.hidden = true;
+    } else if (DB_UI.settingsOpen) {
+      DB_UI.settingsOpen = false;
+      const sm = document.getElementById('db-settings-menu');
+      const st = document.getElementById('db-settings-trigger');
+      if (sm) sm.hidden = true;
+      if (st) st.setAttribute('aria-expanded', 'false');
+    } else if (typeof DB_CHAT !== 'undefined' && DB_CHAT.drawerOpen && typeof dbChatCloseDrawer === 'function') dbChatCloseDrawer();
   }
 });
 
@@ -831,7 +934,7 @@ function dbNoClassHtml() {
 }
 
 /* ===== Bắt đầu và kết thúc phiên ===== */
-/* Gọi sau khi đăng nhập hoặc khôi phục phiên Supabase thành công (js/31-supabase-screens.js). */
+/* Gọi sau khi đăng nhập hoặc khôi phục phiên Firebase thành công (js/31-firebase-screens.js). */
 async function dbStart(profile) {
   const initialRoute = typeof location !== 'undefined' ? dbParseRouteHash(location.hash) : null;
   dbReset();
@@ -868,7 +971,8 @@ function dbReset() {
   }
   if (typeof dbLiveStop === 'function') dbLiveStop();
   if (typeof dbChatReset === 'function') dbChatReset();
-  Object.assign(DB, { me: null, classes: [], classId: '', course: null, page: 'home', arg: {}, data: null, loading: false, loadError: '', dialog: null, notifs: [], timers: [], resetForms: true, _routeKey: '' });
+  Object.assign(DB_UI, { globalQuery: '', globalOpen: false, quickMenuOpen: false, homeTab: 'ALL', homeQuery: '', dockSub: '', settingsOpen: false });
+  Object.assign(DB, { me: null, classes: [], classId: '', classCourses: {}, course: null, page: 'home', arg: {}, data: null, loading: false, loadError: '', dialog: null, notifs: [], timers: [], resetForms: true, _routeKey: '' });
   DB.seq++;
   if (typeof dbExamStop === 'function') dbExamStop();
 }

@@ -104,7 +104,9 @@ function createDomTestContext(opts = {}) {
     dispatchEvent: dispatchWinEvent,
     scrollTo: () => {},
     matchMedia: () => ({ matches: false, addEventListener: () => {} }),
-    supabaseClient: opts.supabaseClient || null,
+    FirebaseRuntime: opts.FirebaseRuntime || null,
+    firebaseAuth: opts.firebaseAuth || null,
+    firebaseDb: opts.firebaseDb || null,
     EducMindDB: opts.EducMindDB || {},
     backendBusy: false,
     backendRecovery: false,
@@ -124,7 +126,7 @@ function createDomTestContext(opts = {}) {
     'js/09-render.js',
     'js/18-student-dashboard.js',
     'js/30-auth-session.js',
-    'js/31-supabase-screens.js',
+    'js/31-firebase-screens.js',
     'js/32-auth-flows.js',
     'js/33-login-screen.js',
     'js/37-avatar-ownership.js',
@@ -150,8 +152,11 @@ function createDomTestContext(opts = {}) {
     'js/db/13-report.js',
     'js/db/14-ai.js',
     'js/db/14b-ai-chat.js',
+    'js/db/14c-ai-key.js',
     'js/db/15-games.js',
     'js/db/16-live.js',
+    'js/db/17-practice.js',
+    'js/db/18-class-overview.js',
   ];
   for (const rel of scripts) {
     const code = fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -214,8 +219,8 @@ test('DOM rendering & XSS immunity across auth, teacher, and student views', () 
 
   const { document, evalExpr } = createDomTestContext();
 
-  // 1. Auth views with adversarial inputs
-  for (const mode of ['login', 'signup', 'forgot', 'verify-signup', 'reset']) {
+  // 1. Auth views with adversarial inputs across login, signup, reset, and onboarding
+  for (const mode of ['login', 'signup', 'reset', 'onboarding']) {
     evalExpr(`
       logged = false;
       sess = null;
@@ -229,6 +234,20 @@ test('DOM rendering & XSS immunity across auth, teacher, and student views', () 
     assert.ok(document.getElementById('pageTitle'), `auth ${mode}: renders #pageTitle`);
     assertDomSafeFromXss(document, `auth:${mode}`);
   }
+  // Verify pre-role login -> signup -> reset mode navigation and password toggle
+  evalExpr(`logged = false; sess = null; authMode = 'login'; authEmail = ''; authErr = ''; authMsg = ''; render();`);
+  assert.ok(document.getElementById('login-email'), 'login renders #login-email');
+  assert.ok(document.getElementById('login-pass'), 'login renders #login-pass');
+  document.querySelector('[data-app-act="authTogglePassword"]').click();
+  assert.equal(document.getElementById('login-pass').type, 'text', 'toggles password visibility to text');
+  document.querySelector('[data-app-act="authGoSignup"]').click();
+  assert.equal(evalExpr('authMode'), 'signup');
+  assert.ok(document.getElementById('su-pass2'), 'signup renders confirm password');
+  document.querySelector('[data-app-act="authGoLogin"]').click();
+  assert.equal(evalExpr('authMode'), 'login');
+  document.querySelector('[data-app-act="authGoReset"]').click();
+  assert.equal(evalExpr('authMode'), 'reset');
+  assert.ok(document.getElementById('reset-email'), 'reset renders #reset-email');
 
   // 2. Logged-in Teacher shell + Home + Classes + Content + Assignments + Grading + Questions + Assessments
   evalExpr(`
@@ -321,19 +340,27 @@ test('DOM rendering & XSS immunity across auth, teacher, and student views', () 
   evalExpr('dbExamStop(false);');
 });
 
-test('Delegated event wiring works without inline attributes', () => {
+test('Delegated event wiring works without inline attributes', async () => {
   const { document, evalExpr } = createDomTestContext();
 
   evalExpr(`logged = false; sess = null; authMode = 'login'; render();`);
-  const signupBtn = document.querySelector('[data-app-act="authGoSignup"]');
-  assert.ok(signupBtn, 'login screen has delegated signup button');
-  signupBtn.click();
-  assert.equal(evalExpr('authMode'), 'signup');
-  assert.ok(document.querySelector('form[data-app-act="authBackendSignup"]'), 'signup form rendered via delegated click');
+  const googleBtn = document.querySelector('[data-app-act="authGoogleLogin"]');
+  assert.ok(googleBtn, 'login screen has delegated Google login button');
 
-  const backBtn = document.querySelector('[data-app-act="authGoLogin"]');
-  assert.ok(backBtn);
-  backBtn.click();
+  const bgTrigger = document.querySelector('[data-app-act="toggleLoginBgPanel"]');
+  assert.ok(bgTrigger, 'login screen has delegated background panel toggle');
+  bgTrigger.click();
+  assert.equal(evalExpr('authBgOpen'), true);
+
+  evalExpr(`authMode = 'onboarding'; authEmail = 'gv@edu.vn'; render();`);
+  assert.ok(document.querySelector('form[data-app-act="authCompleteOnboarding"]'), 'onboarding form rendered');
+  evalExpr(`signupRoleChanged('TEACHER');`);
+  assert.equal(document.getElementById('su-teacher-fields').hidden, false, 'teacher fields unhide on TEACHER role');
+
+  const cancelBtn = document.querySelector('[data-app-act="authCancelOnboarding"]');
+  assert.ok(cancelBtn);
+  cancelBtn.click();
+  await new Promise((r) => setTimeout(r, 10));
   assert.equal(evalExpr('authMode'), 'login');
 });
 
@@ -732,59 +759,636 @@ test('DOM & XSS interactive tests for Progress Report (13-report.js)', () => {
   assert.ok(Array.isArray(exportSheets) && exportSheets.length >= 5);
 });
 
-test('DOM & XSS interactive tests for Crema Studio shell, nav filter, and theme switch', () => {
+test('DOM & XSS interactive tests for Botanical Teal shell, user card, global search, bottom dock, work table, and theme switch', async () => {
   const XSS_HTML = '<img src=x onerror=alert(9)><script>window.__xssShell=1</script>';
   const { document, evalExpr } = createDomTestContext();
+
+  // Default fallback theme is light when educmind.theme is unset
+  assert.equal(evalExpr('applyTheme(); document.documentElement.dataset.theme'), 'light', 'defaults to light pastel theme');
+
   evalExpr(`
     logged = true;
     role = 'T';
     sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 'teacher-1' };
     DB.me = { id: 'teacher-1', email: 'gv@edu.vn', full_name: ${JSON.stringify(XSS_HTML)}, role: 'TEACHER' };
-    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classes = [{ id: 'c1', name: ${JSON.stringify('10A1 ' + XSS_HTML)}, grade: 10 }];
     DB.classId = 'c1';
     DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.notifs = [{ id: 'n1', title: 'Mới', is_read: false }];
     DB.page = 'home';
     DB.data = {
-      topics: [], lessons: [], objectives: [], assignments: [], assessments: [],
-      submissions: [], attempts: [], mastery: [], gaps: [], members: [], profiles: {}, invites: [], resources: [],
+      topics: [], lessons: [{ id: 'l1', title: ${JSON.stringify('Bài 1 ' + XSS_HTML)}, status: 'PUBLISHED' }],
+      objectives: [],
+      assignments: [{ id: 'a1', title: ${JSON.stringify('BT ' + XSS_HTML)}, status: 'PUBLISHED', due_at: '2026-12-01T10:00:00Z', max_score: 10 }],
+      assessments: [{ id: 'e1', title: ${JSON.stringify('KT ' + XSS_HTML)}, status: 'PUBLISHED', duration_minutes: 20 }],
+      submissions: [{ id: 's1', assignment_id: 'a1', student_id: 'stu-1', status: 'SUBMITTED' }],
+      attempts: [], mastery: [], gaps: [], members: [{ student_id: 'stu-1' }], profiles: {}, invites: [], resources: [],
     };
     setTheme('light');
+    dbRender();
   `);
 
-  assertDomSafeFromXss(document, 'shell:crema-xss');
+  assertDomSafeFromXss(document, 'shell:botanical-xss');
   assert.ok(document.querySelector('.side-brand'), 'renders .side-brand');
-  assert.ok(document.getElementById('db-nav-filter'), 'renders #db-nav-filter search input');
+  assert.equal(document.querySelector('.side-user-card'), null, 'removes redundant .side-user-card from sidebar');
+  assert.equal(document.querySelector('#nav-home .nav-badge').textContent, '1', 'renders unread nav badge');
+  assert.equal(document.getElementById('db-nav-filter'), null, 'removes redundant #db-nav-filter search input from sidebar');
+  assert.ok(document.getElementById('db-global-search'), 'renders integrated #db-global-search in topbar');
   assert.ok(document.querySelectorAll('.nav-ic-tile').length >= 10, 'renders squircle .nav-ic-tile icons');
   assert.equal(document.querySelector('.side-theme-row'), null, 'does not duplicate theme toggle inside sidebar');
   assert.equal(document.querySelector('.side-profile-btn'), null, 'does not duplicate account button inside sidebar');
   const greeting = document.querySelector('.top .user-greeting');
   assert.ok(greeting && greeting.textContent.includes(XSS_HTML), 'escapes full_name safely inside .user-greeting');
-  assert.equal(document.querySelector('.top .theme-btn').getAttribute('aria-pressed'), 'false');
+  assert.ok(document.querySelector('.db-settings-menu [data-act="openThemeSettings"]'), 'renders theme settings menu item');
 
-  // Toggle theme and verify topbar theme button aria-pressed flips to true
-  evalExpr('toggleTheme();');
-  assert.equal(document.querySelector('.top .theme-btn').getAttribute('aria-pressed'), 'true');
+  // Settings gear menu groups Account, Theme toggle, and Wallpaper while keeping Logout button in topbar
+  const settingsBtn = document.getElementById('db-settings-trigger');
+  assert.ok(settingsBtn && document.querySelector('.side #db-settings-trigger'), 'renders gear settings button in sidebar');
+  const logoutBtn = document.querySelector('.top [data-app-act="logout"]');
+  assert.ok(logoutBtn, 'renders standalone logout button in topbar');
+  const settingsMenu = document.getElementById('db-settings-menu');
+  assert.ok(settingsMenu, 'renders settings dropdown menu');
+  assert.equal(settingsMenu.hidden, true, 'settings menu is closed by default');
+  settingsBtn.click();
+  assert.equal(settingsMenu.hidden, false, 'clicking gear button opens settings menu');
 
-  // Sidebar search filter supports accent-folded Vietnamese matching and restores all items on clear
+  // Verify the 3 grouped items exist inside the gear settings menu
+  const accountItem = settingsMenu.querySelector('[data-act="openAccountFromSettings"]');
+  const themeItem = settingsMenu.querySelector('[data-act="openThemeSettings"]');
+  const bgItem = settingsMenu.querySelector('[data-act="openBgSettings"]');
+  assert.ok(accountItem, 'settings menu contains Account item');
+  assert.ok(themeItem, 'settings menu contains Theme settings item');
+  assert.ok(bgItem, 'settings menu contains Wallpaper change item');
+  assert.equal(document.querySelector('.app-bg-controls'), null, 'removes standalone floating background button');
+
+  // Test opening background dialog from settings menu
+  bgItem.click();
+  assert.ok(document.querySelector('.db-dialog'), 'clicking change background opens background dialog');
+  {
+    const ov = document.querySelector('.db-dialog.ov');
+    const root = document.getElementById('db-dialog-root');
+    assert.ok(ov && root && root.contains(ov), 'dialog overlay is portaled into #db-dialog-root');
+    assert.equal(ov.closest('#main'), null, 'dialog overlay is outside #main so backdrop-filter cannot trap it');
+    assert.equal(ov.closest('#app'), null, 'dialog overlay portals out of #app to cover the whole viewport');
+  }
+  assert.ok(document.getElementById('app-bg-url'), 'background dialog contains image URL input');
+  assert.ok(document.getElementById('app-bg-file'), 'background dialog contains file upload input');
+  const applyBgBtn = document.querySelector('#db-dialog-root [data-app-act="applyLayer4BgUrl"]');
+  assert.ok(applyBgBtn, 'background dialog contains apply button');
+  applyBgBtn.click();
+  assert.match(document.getElementById('app-bg-status').textContent, /liên kết/i, 'clicking apply inside portaled dialog invokes APP_ACT');
+  evalExpr('storeLayer4Background("https://images.unsplash.com/photo-1506744038136-46273834b3fb");');
+  assert.match(document.querySelector('#app .layout').style.getPropertyValue('--layer4-bg-image'), /unsplash\.com/, 'background CSS custom property is applied to layout');
+  evalExpr('dbCloseDialog();');
+  settingsBtn.click();
+  document.querySelector('[data-act="openBgSettings"]').click();
+  const clearBgBtn = document.querySelector('#db-dialog-root [data-app-act="clearLayer4Background"]');
+  assert.ok(clearBgBtn, 'background dialog shows clear button when background is set');
+  clearBgBtn.click();
+  assert.equal(document.querySelector('#app .layout').style.getPropertyValue('--layer4-bg-image'), '', 'clicking clear inside portaled dialog removes background CSS custom property');
+  evalExpr('dbCloseDialog();');
+
+  // Open theme settings dialog from menu and pick dark mode
+  settingsBtn.click();
+  const freshThemeItem = document.querySelector('[data-act="openThemeSettings"]');
+  freshThemeItem.click();
+  assert.ok(document.querySelector('.db-dialog'), 'clicking theme settings opens theme dialog');
+  const themeDarkBtn = document.querySelector('[data-act="setThemeDark"]');
+  assert.ok(themeDarkBtn, 'theme dialog contains dark mode button');
+  themeDarkBtn.click();
+  assert.equal(document.documentElement.dataset.theme, 'dark');
+
+  // Global search filters classes/assignments safely & picks target
   evalExpr(`(() => {
-    const filterEl = document.getElementById('db-nav-filter');
-    filterEl.value = 'bao cao';
-    DB_ACT.filterNav(filterEl);
+    const gs = document.getElementById('db-global-search');
+    gs.value = '10A1';
+    DB_ACT.globalSearch(gs);
   })()`);
-  const reportBtn = document.getElementById('nav-report');
-  const homeBtn = document.getElementById('nav-home');
-  assert.equal(reportBtn.hidden, false, 'matching nav item remains visible');
-  assert.equal(homeBtn.hidden, true, 'non-matching nav item is hidden');
-  const emptyGrp = homeBtn.closest('.grp');
-  assert.equal(emptyGrp.hidden, true, 'group with zero matching items is hidden');
+  const gResults = document.getElementById('db-global-results');
+  assert.equal(gResults.hidden, false, 'global search dropdown opens');
+  assert.ok(gResults.querySelector('.db-global-item'), 'global search renders matching item');
+  assertDomSafeFromXss(document, 'shell:global-search');
 
+  // Floating bottom dock displays internal sub-functions of the active sidebar page + quick-create menu
+  const dockWrap = document.querySelector('.db-dock-wrap');
+  assert.ok(dockWrap, 'renders bottom dock wrapper');
+  assert.equal(dockWrap.closest('#main'), null, 'bottom dock wrapper is mounted outside #main so backdrop-filter cannot trap fixed positioning');
+  const dockEl = document.querySelector('.db-bottom-dock');
+  assert.ok(dockEl, 'renders bottom dock');
+  assert.equal(dockEl.querySelector('[data-act="go"]'), null, 'bottom dock does not duplicate top-level sidebar routes');
+  assert.ok(dockEl.querySelector('.db-dock-item.is-active[data-sub="home-work"]'), 'highlights active sub-function inside home');
+  assert.ok(dockEl.querySelector('.db-dock-item[data-sub="home-pending"]'), 'includes internal pending-grading filter inside home');
+  const plusBtn = document.getElementById('db-dock-plus');
+  assert.equal(plusBtn, null, 'removes floating + quick-create button from bottom dock');
+  assert.equal(document.getElementById('db-quick-menu'), null, 'removes quick-create menu');
+  assert.equal(document.querySelector('#main .head #classSelect'), null, 'removes class select from #main .head');
+  // Giáo viên: được chuyển đổi giữa các lớp do mình tạo qua #classSelect ở .top .user.
+  const topClassSelect = document.querySelector('.top .user #classSelect');
+  assert.ok(topClassSelect, 'teacher sees class switcher (#classSelect) in .top .user');
+  assert.equal(document.querySelector('.top .user .user-class-static'), null, 'teacher does not see static class badge when classes exist');
+
+  // Clicking bottom dock sub-function switches internal home filter without leaving sidebar page
+  dockEl.querySelector('.db-dock-item[data-sub="home-pending"]').click();
+  assert.equal(evalExpr('DB.page'), 'home', 'dock sub-action keeps active sidebar page');
+  assert.equal(document.querySelector('.td-seg-tab[data-tab="PENDING"]').classList.contains('is-active'), true, 'dock sub-action updates work table tab');
+  assert.equal(document.querySelector('.db-dock-item[data-sub="home-pending"]').classList.contains('is-active'), true, 'dock highlights selected sub-function');
+
+  // Unified Activity & Work Table filter tabs and search
+  assert.ok(document.getElementById('db-home-work-panel'), 'renders unified work table');
+  const allTab = document.querySelector('.td-seg-tab[data-tab="ALL"]');
+  assert.ok(allTab);
+  allTab.click();
+  assert.equal(allTab.classList.contains('is-active'), true, 'switches active work table tab back to ALL');
+  assert.equal(document.querySelector('.db-dock-item[data-sub="home-work"]').classList.contains('is-active'), true, 'dock syncs back when in-page tab clicked');
+  const pendingTab = document.querySelector('.td-seg-tab[data-tab="PENDING"]');
+  pendingTab.click();
+  assert.equal(pendingTab.classList.contains('is-active'), true, 'switches active work table tab');
   evalExpr(`(() => {
-    const filterEl = document.getElementById('db-nav-filter');
-    filterEl.value = '';
-    DB_ACT.filterNav(filterEl);
+    const ts = document.getElementById('db-home-table-search');
+    ts.value = 'BT';
+    DB_ACT.homeFilterTable(ts);
   })()`);
-  assert.equal(homeBtn.hidden, false, 'clearing search restores all nav items');
-  assert.equal(emptyGrp.hidden, false, 'clearing search restores nav groups');
+  assert.ok(document.querySelectorAll('#db-home-work-tbody tr').length >= 1, 'table search filters rows');
+  assertDomSafeFromXss(document, 'shell:work-table');
+
+  // Switching sidebar page updates bottom dock to that page's internal sub-functions
+  evalExpr(`DB.page = 'chat'; DB.arg = {}; DB.data = { topics: [], lessons: [], objectives: [], assignments: [], assessments: [], members: [], profiles: {} }; dbRender();`);
+  assert.ok(document.querySelector('.db-dock-item.is-active[data-sub="chat-mode:tutor"]'), 'chat page dock shows chat modes');
+  assert.equal(document.querySelector('.db-dock-item[data-sub="home-work"]'), null, 'chat dock removes previous page sub-functions');
+  document.querySelector('.db-dock-item[data-sub="chat-mode:quiz"]').click();
+  assert.equal(evalExpr('DB_CHAT.mode'), 'quiz', 'clicking dock mode item switches AI chat mode in-place');
+  assert.equal(document.querySelector('.db-dock-item[data-sub="chat-mode:quiz"]').classList.contains('is-active'), true, 'highlights switched chat mode in dock');
+
+  evalExpr(`DB.page = 'assessments'; DB.arg = { id: 'ex1', tab: 'preview' }; DB.data = { topics: [], lessons: [], objectives: [], assessments: [{ id: 'ex1', title: 'KT 15p', status: 'DRAFT', duration_minutes: 15, max_attempts: 1, open_at: new Date().toISOString(), close_at: new Date(Date.now() + 86400000).toISOString() }], aq: [], attempts: [], questions: [], members: [], profiles: {}, extra: [] }; dbRender();`);
+  assert.ok(document.querySelector('.db-dock-item.is-active[data-sub="ex-preview"]'), 'assessment detail dock highlights active sub-tab');
+  assert.ok(document.querySelector('.db-dock-item[data-sub="ex-attempts"]'), 'assessment detail dock exposes attempts sub-tab');
+
+  // Restore home page before integrated top search checks
+  evalExpr(`DB.page = 'home'; DB.arg = {}; DB.data = { topics: [], lessons: [], objectives: [], assignments: [{ id: 'a1', title: 'BT1', status: 'PUBLISHED', due_at: new Date().toISOString(), max_score: 10 }], assessments: [], submissions: [], attempts: [], mastery: [], gaps: [], members: [], profiles: {} }; dbRender();`);
+
+  // Integrated top search supports accent-folded Vietnamese nav matching and picks target route
+  evalExpr(`(() => {
+    const gs = document.getElementById('db-global-search');
+    gs.value = 'bao cao';
+    DB_ACT.globalSearch(gs);
+  })()`);
+  const navMatch = document.querySelector('#db-global-results .db-global-item[data-page="report"]');
+  assert.ok(navMatch && navMatch.dataset.kind === 'page', 'integrated top search matches accent-folded Vietnamese sidebar item');
+
+  // Integrated top search also exposes settings actions (e.g. theme switch) and opens dialog on click
+  evalExpr(`(() => {
+    const gs = document.getElementById('db-global-search');
+    gs.value = 'giao dien';
+    DB_ACT.globalSearch(gs);
+  })()`);
+  const themeSearchMatch = document.querySelector('#db-global-results .db-global-item[data-target-act="openThemeSettings"]');
+  assert.ok(themeSearchMatch, 'integrated top search matches settings actions');
+  themeSearchMatch.click();
+  assert.ok(document.querySelector('.db-dialog [data-act="setThemeDark"]'), 'clicking settings search match opens theme dialog');
+  evalExpr(`dbCloseDialog(); DB.page = 'home'; DB.arg = {}; DB_UI.globalOpen = false; DB_UI.globalQuery = ''; dbRender();`);
+
+  // Student view renders student internal dock sub-functions, quick-create & hides dock during exam
+  evalExpr(`
+    dbReset();
+    role = 'S';
+    sess = { email: 'hs@edu.vn', role: 'S', t: Date.now(), backend: true, userId: 'stu-1' };
+    DB.me = { id: 'stu-1', email: 'hs@edu.vn', full_name: 'Minh', role: 'STUDENT' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1';
+    DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.page = 'home';
+    DB.data = { topics: [], lessons: [], objectives: [], assignments: [], assessments: [], submissions: [], attempts: [], mastery: [], gaps: [], recs: [] };
+    dbRender();
+  `);
+  assert.ok(document.getElementById('db-home-work-panel'), 'student home renders unified work table');
+  assert.ok(document.querySelector('.db-dock-item[data-sub="home-todo"]'), 'student home dock shows internal todo filter');
+  assert.equal(document.getElementById('db-dock-plus'), null, 'student bottom dock does not render + button');
+  const stuClassSelect = document.querySelector('.top .user #classSelect');
+  assert.equal(stuClassSelect, null, 'single-class student does not see class switcher dropdown (#classSelect)');
+  const stuClassStatic = document.querySelector('.top .user .user-class-static');
+  assert.ok(stuClassStatic && stuClassStatic.textContent.includes('10A1'), 'student sees static class badge in .top .user');
+  // Học sinh chỉ ở 1 lớp không thể chuyển sang lớp không thuộc danh sách của mình.
+  assert.equal(evalExpr('(DB_ACT.setClass({ value: "c-unknown" }), role)'), 'S');
+  assert.equal(evalExpr('DB.classId'), 'c1', 'student cannot switch to unenrolled class');
+  // Trang Lớp của em vẫn hiển thị ô nhập mã để học sinh vào thêm các môn khác cùng khối.
+  evalExpr(`
+    DB.page = 'classes';
+    DB.classes = [
+      { id: 'c1', name: '10A1', grade: 10, owner_teacher_id: 't1' },
+      { id: 'c2', name: '10A1', grade: 10, owner_teacher_id: 't2' }
+    ];
+    DB.classCourses = {
+      c1: { id: 'c1', class_id: 'c1', title: 'Tin học' },
+      c2: { id: 'c2', class_id: 'c2', title: 'Toán' }
+    };
+    DB.data = {
+      members: [],
+      profiles: { t1: { id: 't1', full_name: 'Thầy A' }, t2: { id: 't2', full_name: 'Cô C' } },
+      courses: DB.classCourses
+    };
+    dbRender();
+  `);
+  assert.ok(document.querySelector('#main form[data-act="joinClass"]'), 'student classes view keeps join-by-code form for additional subjects');
+  const multiStuSelect = document.querySelector('.top .user #classSelect');
+  assert.ok(multiStuSelect, 'multi-subject student sees #classSelect in .top .user');
+  assert.match(multiStuSelect.textContent, /10A1 · Tin học/, 'top switcher shows subject name for class 1');
+  assert.match(multiStuSelect.textContent, /10A1 · Toán/, 'top switcher shows subject name for class 2');
+  assert.equal(document.querySelectorAll('#main [data-act="selectClass"]').length, 2, 'multi-subject student can switch between enrolled subject cards');
+  evalExpr(`DB.page = 'exam'; DBX = { assessment: { id: 'ex1', title: 'KT' }, attempt: { id: 'att1', status: 'IN_PROGRESS' }, questions: [], answers: {}, state: {}, debounce: {} }; dbRender();`);
+  assert.equal(document.querySelector('.db-bottom-dock'), null, 'bottom dock is hidden during active exam');
+  evalExpr(`DB_PAGES.exam && dbExamStop(false);`);
+});
+
+test('Adaptive practice page (17-practice.js) exposes a floating dock and styled stats', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  evalExpr(`
+    logged = true;
+    role = 'S';
+    sess = { email: 'hs@edu.vn', role: 'S', t: Date.now(), backend: true, userId: 's1' };
+    DB.me = { id: 's1', email: 'hs@edu.vn', full_name: 'An', role: 'STUDENT' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1';
+    DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.notifs = [];
+    DB.page = 'practice';
+    DB.arg = { objectiveId: 'o1' };
+    DB_PRACTICE = { session: null, objectiveId: '', idx: 0, questions: [], answers: [], levelPath: [], cfg: {} };
+    DB.loading = false;
+    DB.loadError = '';
+    DB.data = {
+      objective: { id: 'o1', code: 'O1', description: 'Mục tiêu thử' },
+      mastery: { mastery_score: 0.5 }, evidenceCount: 3, officialCount: 2,
+      bankCount: 12, cfg: { practice_session_length: 8, practice_unlock_min_official: 1 },
+      canStart: true,
+    };
+    dbRender();
+  `);
+  const dock = document.querySelector('.db-bottom-dock');
+  assert.ok(dock, 'practice page renders the floating bottom dock');
+  assert.equal(dock.dataset.context, 'practice');
+  assert.ok(dock.querySelector('[data-sub="pr-start"]'), 'dock can jump to the start button');
+  assert.equal(document.querySelectorAll('.db-practice-stats .db-stat').length, 3, 'renders three practice stats');
+  assert.ok(document.querySelector('#db-practice-resources'), 'resources slot exists');
+});
+
+test('Every page except the exam screen offers floating dock sub-tabs', async () => {
+  const { evalExpr } = createDomTestContext();
+  const missing = evalExpr(`(() => {
+    const out = [];
+    const prev = DB.page;
+    for (const p of Object.keys(DB_PAGES)) {
+      if (p === 'exam') continue;
+      DB.page = p;
+      DB.arg = {};
+      DB_UI.dockSub = '';
+      if (!dbDockSubItems(true).length) out.push('GV:' + p);
+      if (!dbDockSubItems(false).length) out.push('HS:' + p);
+    }
+    DB.page = prev;
+    return out;
+  })()`);
+  assert.equal(missing.length, 0, 'mọi trang (trừ màn làm bài) đều có tab bar nổi: ' + missing.join(', '));
+});
+
+test('Sidebar brand uses the same EducMind logo as the login screen, and nav icons are unique', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  evalExpr(`
+    logged = true; role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 't1' };
+    DB.me = { id: 't1', email: 'gv@edu.vn', full_name: 'GV', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1'; DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.notifs = []; DB.loading = false; DB.loadError = '';
+    DB.page = 'home'; DB.arg = {}; DB.data = null;
+    dbRender();
+  `);
+
+  // Logo thanh bên phải là cùng SVG với logo trên thanh trên (dùng chung BRAND_MARK_SVG).
+  const sideMark = document.querySelector('.side-brand .logo-mark');
+  const topMark = document.querySelector('.top .logo .logo-mark');
+  assert.ok(sideMark, 'sidebar renders the brand mark');
+  assert.ok(topMark, 'top bar renders the brand mark');
+  assert.equal(sideMark.innerHTML.trim(), topMark.innerHTML.trim(), 'sidebar và thanh trên dùng chung một biểu tượng');
+  assert.ok(sideMark.querySelector('svg path'), 'brand mark là SVG mở sách, không phải biểu tượng khác');
+  // Không còn mũ tốt nghiệp trong khối thương hiệu thanh bên.
+  assert.equal(evalExpr("String(document.querySelector('.side-brand').innerHTML).includes('M2 9l10-5 10 5-10 5z')"), false,
+    'không dùng lại icon mũ tốt nghiệp cho logo');
+
+  // Mỗi mục điều hướng một biểu tượng riêng.
+  const labels = [...document.querySelectorAll('.side .nav')].map((b) => (b.getAttribute('aria-label') || '').trim());
+  const tiles = [...document.querySelectorAll('.side .nav .nav-ic-tile')].map((t) => (t.innerHTML || '').trim());
+  assert.equal(new Set(tiles).size, tiles.length, 'không có hai mục nào dùng cùng một biểu tượng');
+  const quality = document.querySelector('.side .nav[data-page="class_overview"]');
+  const classes = document.querySelector('.side .nav[data-page="classes"]');
+  assert.ok(quality && classes, 'có cả mục Chất lượng lớp học và Lớp học phụ trách');
+  assert.notEqual((quality.querySelector('.nav-ic-tile').innerHTML || '').trim(),
+    (classes.querySelector('.nav-ic-tile').innerHTML || '').trim(), 'hai mục này không trùng biểu tượng');
+
+  // Màn hình khoá (đăng nhập) dùng đúng biểu tượng đó.
+  const loginMarkup = evalExpr('brandLogoHtml()');
+  assert.ok(loginMarkup.includes(evalExpr('BRAND_MARK_SVG')), 'login logo dùng chung BRAND_MARK_SVG');
+  assert.equal(tiles.length, labels.length, 'số biểu tượng khớp số mục điều hướng');
+});
+
+test('Logo EducMind dùng một gradient chung ở mọi vị trí, không còn màu xanh rêu', async () => {
+  const { document } = createDomTestContext();
+  const base = fs.readFileSync(path.join(ROOT, 'css/01-base.css'), 'utf8');
+  const glass = fs.readFileSync(path.join(ROOT, 'css/08-liquid-glass.css'), 'utf8');
+  const chat = fs.readFileSync(path.join(ROOT, 'css/14-ai-chat.css'), 'utf8');
+  const all = base + '\n' + glass + '\n' + chat;
+  const flat = all.replace(/\s+/g, ' ');
+
+  // Gradient logo được khai báo bằng biến, có bản tối riêng.
+  assert.ok(base.includes('--brand-logo-grad:linear-gradient(145deg,#4f8ef7 0%,#6f5bd6 52%,#8b4bc4 100%)'), 'có biến gradient logo cho giao diện sáng');
+  assert.ok(/\[data-theme="dark"\]\{[^}]*--brand-logo-grad:linear-gradient\(145deg,#6ba4ff/.test(flat), 'có gradient logo riêng cho giao diện tối');
+  assert.ok(base.includes('--brand-logo-shadow') && base.includes('--brand-logo-accent'), 'có biến bóng đổ và màu nhấn cho logo');
+
+  // Mọi khối .logo-mark (gốc, thanh bên, bản tối) đều dùng chung biến.
+  // Chỉ xét các khối .logo-mark có khai báo màu nền (bỏ qua khối chỉ đổi kích thước cho màn hình khoá).
+  const logoMarkRules = [...flat.matchAll(/\.logo-mark\{([^}]*)\}/g)].map((m) => m[1])
+    .filter((rule) => rule.includes('background'));
+  assert.ok(logoMarkRules.length >= 2, 'có nhiều khối .logo-mark đặt màu nền');
+  logoMarkRules.forEach((rule) => {
+    assert.ok(rule.includes('background:var(--brand-logo-grad)'), 'mỗi .logo-mark đều dùng biến gradient: ' + rule);
+    assert.ok(rule.includes('var(--brand-logo-shadow)'), 'mỗi .logo-mark đều dùng biến bóng đổ: ' + rule);
+  });
+
+  // Không còn hex xanh rêu trong bất kỳ khai báo nền/đổ bóng nào của logo.
+  const logoDecls = [...flat.matchAll(/(?:^|[ ;])\.logo-mark[^{]*\{([^}]*)\}/g)].map((m) => m[1]).join(' ');
+  ['#2a8580', '#164f4c', '#2d918a', '#154946'].forEach((hex) => {
+    assert.ok(!logoDecls.toLowerCase().includes(hex), 'không còn màu xanh rêu ' + hex + ' trong logo');
+  });
+
+  // Ảnh đại diện khung chat và tông chữ "Mind" đi theo gradient mới.
+  const badgeRule = [...flat.matchAll(/\.db-chat-badge-ic\{([^}]*)\}/g)].map((m) => m[1])[0] || '';
+  assert.ok(badgeRule.includes('var(--brand-logo-grad'), 'khung chat dùng cùng gradient logo: ' + badgeRule);
+  assert.ok(flat.includes('.logo-word i{color:var(--brand-logo-accent'), 'chữ "Mind" dùng tông nhấn của logo');
+
+  // Mọi vị trí có logo đều dùng chung biến: không nơi nào tự khai báo gradient xanh rêu.
+  assert.ok(!/logo-mark[^{]*\{[^}]*linear-gradient\(145deg,#(?:2a8580|2d918a)/.test(flat),
+    'không còn gradient xanh rêu cứng trong .logo-mark');
+});
+
+test('Trợ lý AI có đúng một lối vào trên thanh bên/thanh trên, không trùng lặp', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  for (const role of ['T', 'S']) {
+    evalExpr(`
+      logged = true; role = '${role}';
+      sess = { email: 'u@edu.vn', role: '${role}', t: Date.now(), backend: true, userId: 'u1' };
+      DB.me = { id: 'u1', email: 'u@edu.vn', full_name: 'Người dùng', role: '${role === 'T' ? 'TEACHER' : 'STUDENT'}' };
+      DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+      DB.classId = 'c1'; DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+      DB.notifs = []; DB.loading = false; DB.loadError = '';
+      DB.page = 'home'; DB.arg = {};
+      DB.data = null;
+      dbRender();
+    `);
+    assert.equal(document.querySelector('.side [data-page="chat"]'), null, `${role}: thanh bên không còn mục Trợ lý AI`);
+    assert.ok(document.getElementById('db-chat-toggle'), `${role}: nút Trợ lý AI trên thanh trên vẫn còn`);
+    const navLabels = [...document.querySelectorAll('.side .nav')].map((b) => b.getAttribute('aria-label'));
+    assert.equal(navLabels.filter((l) => l === 'Trợ lý AI').length, 0, `${role}: không có nhãn Trợ lý AI lặp trong thanh bên`);
+  }
+
+  // Trang chat đầy đủ vẫn mở được từ khung chat nổi và từ tìm kiếm
+  const pages = evalExpr('Object.keys(DB_PAGES)');
+  assert.ok(pages.includes('chat'), 'trang chat toàn màn hình vẫn tồn tại');
+  const matches = evalExpr('dbGlobalSearchMatches("trợ lý ai")');
+  assert.ok(matches.some((m) => m.title === 'Trợ lý AI' && m.kind === 'act'), 'tìm kiếm vẫn tìm được Trợ lý AI');
+});
+
+test('Báo cáo tiến bộ: bố cục thẻ chỉ số rõ ràng, có lối xuất tệp và ghi chú thu gọn', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  evalExpr(`
+    logged = true; role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 't1' };
+    DB.me = { id: 't1', email: 'gv@edu.vn', full_name: 'GV', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1'; DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.page = 'report'; DB.arg = {}; DB_REPORT_STU = '';
+    DB.data = {
+      topics: [{ id: 't1', title: 'Chủ đề 1' }], lessons: [{ id: 'l1', topic_id: 't1', title: 'Bài 1' }],
+      objectives: [{ id: 'o1', lesson_id: 'l1', code: 'O1', description: 'Mục tiêu 1' }],
+      assignments: [{ id: 'a1', title: 'Bài tập 1', due_at: '2026-12-01T10:00:00Z', max_score: 10 }],
+      assessments: [{ id: 'e1', title: 'Kiểm tra 1' }],
+      submissions: [{ id: 's1', assignment_id: 'a1', student_id: 'stu-1', score: 8 }],
+      attempts: [{ id: 'att1', assessment_id: 'e1', student_id: 'stu-1', total_score: 7 }],
+      mastery: [{ student_id: 'stu-1', objective_id: 'o1', mastery_score: 0.9 }],
+      gaps: [], evidence: [],
+      members: [{ student_id: 'stu-1' }],
+      profiles: { 'stu-1': { id: 'stu-1', full_name: 'Nguyễn An' } },
+      maxBy: { e1: 10 },
+    };
+    dbRender();
+  `);
+
+  // Đầu trang: tiêu đề phạm vi + dải nhãn + nút xuất tệp ngay trên cùng.
+  assert.ok(document.querySelector('.db-rep-hero h2'), 'có tiêu đề khối đầu trang');
+  assert.ok(document.querySelectorAll('.db-rep-chips .db-rep-chip').length >= 3, 'có dải nhãn tóm tắt');
+  assert.ok(document.querySelector('[data-act="reportExcel"]'), 'có nút Xuất Excel');
+  assert.ok(document.querySelector('[data-act="reportWord"]'), 'có nút Xuất Word');
+  assert.ok(document.querySelector('#db-rep-stu'), 'giáo viên chọn được phạm vi xem');
+
+  // Ô chỉ số: nhãn và số là hai phần tử riêng (không dính chữ như bản cũ).
+  const stats = [...document.querySelectorAll('.db-rep-stat')];
+  assert.equal(stats.length, 4, 'tổng hợp cả lớp có 4 ô chỉ số');
+  stats.forEach((st) => {
+    assert.ok(st.querySelector('.db-rep-stat-label'), 'ô chỉ số có nhãn riêng');
+    assert.ok(st.querySelector('.db-rep-stat-value'), 'ô chỉ số có giá trị riêng');
+    assert.equal(st.querySelector('.db-rep-stat-label').contains(st.querySelector('.db-rep-stat-value')), false,
+      'nhãn không bao quanh giá trị');
+  });
+
+  // Không còn lưới .grid.dp-metrics bị bóp hẹp như bản cũ.
+  assert.equal(document.querySelectorAll('.db-rep .grid.db-metrics').length, 0, 'không dùng lưới chỉ số cũ');
+
+  // Chi tiết học sinh: mở từ nút trong bảng, quay lại được cả lớp.
+  document.querySelector('[data-act="reportPick"][data-id="stu-1"]').click();
+  assert.ok(document.querySelector('.db-rep-hero h2').textContent.includes('Nguyễn An'), 'tiêu đề đổi sang tên học sinh');
+  assert.ok(document.querySelector('[data-act="reportClass"]'), 'có nút quay lại xem cả lớp');
+  assert.ok(document.querySelectorAll('.db-rep .db-rep-block').length >= 4, 'chi tiết có các khối bảng riêng');
+  document.querySelector('[data-act="reportClass"]').click();
+  assert.equal(evalExpr('DB_REPORT_STU'), '', 'quay lại tổng hợp cả lớp');
+
+  // Ghi chú cách tính nằm trong <details> để không chiếm chỗ.
+  const notes = document.querySelector('details.db-rep-notes');
+  assert.ok(notes, 'có khối ghi chú cách tính thu gọn');
+  assert.ok(notes.querySelectorAll('dl > div').length >= 5, 'ghi chú liệt kê cách tính từng chỉ số');
+
+  // CSS của trang được nạp trong index.html và có luật cho các lớp mới.
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  assert.ok(html.includes('css/17-progress-report.css'), 'index.html nạp CSS trang báo cáo');
+  const css = fs.readFileSync(path.join(ROOT, 'css/17-progress-report.css'), 'utf8').replace(/\s+/g, ' ');
+  ['.db-rep-hero', '.db-rep-stat-value', '.db-rep-bands', '.db-rep-watch', '.db-rep-inline-bar', '[data-theme="dark"]']
+    .forEach((sel) => assert.ok(css.includes(sel), 'CSS có luật cho ' + sel));
+  assert.ok(!/\.db-rep \.grid/.test(css), 'không tạo lưới chỉ số cũ cho trang báo cáo');
+});
+
+test('Sidebar collapse handle does not shift when a nav or dock button is pressed', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  const src = fs.readFileSync(path.join(ROOT, 'js/09-render.js'), 'utf8');
+  assert.ok(!src.includes('--tog-x'), 'collapse handle position is not written by JS');
+  assert.ok(!/setProperty\('--tog-x'/.test(src), 'no runtime --tog-x writes');
+
+  const css = fs.readdirSync(path.join(ROOT, 'css')).filter((f) => f.endsWith('.css'))
+    .map((f) => fs.readFileSync(path.join(ROOT, 'css', f), 'utf8')).join('\n');
+  const flat = css.replace(/\s+/g, ' ');
+  assert.ok(flat.includes('left:calc(max(18px, 50vw - 702px) + 196px - 16px)'),
+    'handle position derives from the sidebar formula in CSS');
+  assert.ok(flat.includes('left:calc(max(18px, 50vw - 702px) + 74px - 16px)'),
+    'collapsed sidebar keeps the handle on its right edge');
+  assert.ok(!/left \.22s/.test(css), 'no left transition that animates the handle sideways');
+
+  evalExpr(`
+    logged = true; role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 't1' };
+    DB.me = { id: 't1', email: 'gv@edu.vn', full_name: 'GV', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1'; DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.notifs = []; DB.loading = false; DB.loadError = '';
+    DB.page = 'class_overview'; DB.arg = {};
+    DB.data = null;
+    dbRender();
+  `);
+  const before = String(document.querySelector('.side-toggle').getAttribute('style') || '');
+  // Bấm một mục ở thanh bên trái rồi một nút trên tab bar nổi.
+  evalExpr("DB_ACT.dockSubAction({ dataset: { sub: 'co-kpi' } })");
+  evalExpr("dbGo('class_overview', {})");
+  const after = String(document.querySelector('.side-toggle').getAttribute('style') || '');
+  assert.ok(!/--tog-x|-?\d+px/.test(before), 'handle starts with no JS-positioned offset: ' + before);
+  assert.equal(after.replace(/\s+/g, ' ').trim(), before.replace(/\s+/g, ' ').trim(), 'handle style unchanged after clicking nav/dock');
+});
+
+test('Class quality page uses Vietnamese labels (no Coverage Matrix / LEARN / PRACTICE / EXTEND in UI)', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  evalExpr(`
+    logged = true; role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 'teacher-1' };
+    DB.me = { id: 'teacher-1', email: 'gv@edu.vn', full_name: 'GV', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1';
+    DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.notifs = [];
+    DB.loading = false; DB.loadError = '';
+    DB.page = 'class_overview'; DB.arg = {};
+    DB.data = {
+      cfg: { dash_reteach_share: 0.4, dash_min_students: 5, dash_advanced_threshold: 0.8, dash_inactive_days: 14, dash_question_min_answers: 10 },
+      members: [{ student_id: 's1' }], profilesById: { s1: { full_name: 'An' } },
+      mastery: [], gaps: [], evidence: [], practiceSessions: [], questions: [],
+      content: { objectives: [{ id: 'o1', code: 'O1', description: 'Mục tiêu một' }], topics: [], lessons: [] },
+      reteach: [], groups: { SUPPORT: [], ON_TRACK: [], ADVANCED: [], INACTIVE: [] }, questionStats: [],
+      linkCountByObj: { o1: { LEARN: 1, PRACTICE: 1, EXTEND: 0 } }, qCountByObj: { o1: 3 },
+    };
+    dbRender();
+  `);
+
+  assert.equal(evalExpr("DB_PAGES.class_overview.title"), 'Chất lượng lớp học', 'nav title uses a descriptive Vietnamese name');
+
+  const view = document.getElementById('main').textContent;
+  ['Coverage Matrix', 'LEARN', 'PRACTICE', 'EXTEND'].forEach((en) => {
+    assert.ok(!new RegExp('\\b' + en + '\\b').test(view), `no English label "${en}" rendered`);
+  });
+  ['Chất lượng lớp', 'Bảng độ phủ tài liệu theo mục tiêu', 'Học kiến thức mới', 'Luyện tập', 'Mở rộng'].forEach((vi) => {
+    assert.ok(view.includes(vi), `Vietnamese label present: ${vi}`);
+  });
+  // Nhãn dock dùng tiếng Việt đầy đủ, không viết tắt kiểu "HS" hay "KPI"
+  const dockLabels = [...document.querySelectorAll('.db-bottom-dock .db-dock-item')].map((b) => b.getAttribute('aria-label') || '');
+  assert.equal(dockLabels.length, 5, 'dock keeps five sub-tabs');
+  dockLabels.forEach((label) => {
+    assert.ok(label.trim().length > 2, `dock label not empty: ${label}`);
+    assert.ok(!/(^|\s)(HS|KPI|GV)(\s|$)/.test(label), `dock label avoids abbreviations: ${label}`);
+  });
+});
+
+test('Assignment targeting dialog and class-quality groups use Vietnamese labels', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  evalExpr(`
+    logged = true; role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 'teacher-1' };
+    DB.me = { id: 'teacher-1', email: 'gv@edu.vn', full_name: 'GV', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1';
+    DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.notifs = [];
+    DB.loading = false; DB.loadError = '';
+    DB.page = 'assignments'; DB.arg = {};
+    EducMindDB.getClassOverview = async () => ({ data: { groups: { SUPPORT: [1, 2], ON_TRACK: [3], ADVANCED: [], INACTIVE: [4] } }, error: null });
+  `);
+
+  assert.equal(evalExpr('DB_GROUP_LABEL.SUPPORT'), 'Cần củng cố', 'group labels are Vietnamese');
+  assert.equal(evalExpr('dbPurposeLabel("EXTEND")'), 'Mở rộng', 'resource purpose labels are Vietnamese');
+  assert.ok(evalExpr('DB_PURPOSE_ORDER.length') === 3);
+
+  // Hộp thoại giao bài theo nhóm: nhãn nhóm + câu chữ đều tiếng Việt
+  return evalExpr('DB_ACT.openAssignmentTargeting({ dataset: { id: "a1" } })').then(() => {
+    // Chỉ kiểm tra chữ HIỂN THỊ; giá trị kỹ thuật (value="SUPPORT") vẫn được phép nằm trong DOM.
+    const text = (document.body.textContent || '') + [...document.querySelectorAll('.db-dialog option')].map((o) => o.textContent || '').join(' ');
+    ['SUPPORT', 'ON_TRACK', 'ADVANCED', 'INACTIVE', 'Targeting'].forEach((en) => {
+      assert.ok(!text.includes(en), `no English token "${en}" in targeting dialog`);
+    });
+    assert.ok(text.includes('Cần củng cố'), 'dialog lists Vietnamese group names');
+  });
+});
+
+test('Class overview dashboard (18-class-overview.js) has dock sub-tabs and styled KPI cards', async () => {
+  const { document, evalExpr } = createDomTestContext();
+  evalExpr(`
+    logged = true;
+    role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 'teacher-1' };
+    DB.me = { id: 'teacher-1', email: 'gv@edu.vn', full_name: 'GV', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1';
+    DB.course = { id: 'course-1', class_id: 'c1', title: 'Tin học' };
+    DB.notifs = [];
+    DB.page = 'class_overview';
+    DB.arg = {};
+    DB.loading = false;
+    DB.loadError = '';
+    DB.data = {
+      cfg: { dash_reteach_share: 0.4, dash_min_students: 5, dash_advanced_threshold: 0.8, dash_inactive_days: 14, dash_question_min_answers: 10 },
+      members: [{ student_id: 's1' }], profilesById: { s1: { full_name: 'An' } },
+      mastery: [], gaps: [], evidence: [], practiceSessions: [], questions: [],
+      content: { objectives: [], topics: [], lessons: [] },
+      reteach: [], groups: { SUPPORT: [], ON_TRACK: [], ADVANCED: [], INACTIVE: [] }, questionStats: [],
+      linkCountByObj: {}, qCountByObj: {},
+    };
+    dbRender();
+  `);
+
+  // Có tab bar nổi như mọi phân hệ khác
+  const dock = document.querySelector('.db-bottom-dock');
+  assert.ok(dock, 'class overview renders the floating bottom dock');
+  assert.equal(dock.dataset.context, 'class_overview', 'dock is scoped to the class overview page');
+  assert.ok(dock.querySelector('[data-sub="co-kpi"]'), 'dock has quick-metrics item');
+  assert.ok(dock.querySelector('[data-sub="co-groups"]'), 'dock has student-group item');
+  assert.equal(dock.querySelectorAll('.db-dock-item').length, 5, 'dock is compact like other feature pages');
+  assert.ok(document.getElementById('db-co-kpi') && document.getElementById('db-co-groups'), 'dock targets exist on the page');
+
+  // Nhãn chỉ số nằm trong phần tử riêng, không dính vào số
+
+  const kpis = [...document.querySelectorAll('.db-overview-grid .db-kpi')];
+  assert.equal(kpis.length, 4, 'renders four KPI cards');
+  kpis.forEach((kpi) => {
+    assert.ok(kpi.querySelector('b'), 'KPI has a value');
+    assert.ok(kpi.querySelector('.db-kpi-label'), 'KPI label is wrapped in its own element');
+    assert.ok(kpi.querySelector('.db-kpi-meta'), 'KPI hint is wrapped in its own element');
+    assert.equal(kpi.querySelector('span:not([class])'), null, 'no bare span label that could collide with the value');
+  });
+
+  // Mỗi lớp CSS dùng ở trang này phải tồn tại trong bundle CSS
+  const css = fs.readdirSync(path.join(ROOT, 'css'))
+    .filter((f) => f.endsWith('.css'))
+    .map((f) => fs.readFileSync(path.join(ROOT, 'css', f), 'utf8'))
+    .join('\n');
+  ['.db-overview-grid', '.db-kpi', '.db-kpi-label', '.db-kpi-meta', '.db-settings-grid', '.db-co-tabs'].forEach((sel) => {
+    assert.ok(css.includes(sel + '{') || css.includes(sel + ' '), `CSS defines ${sel}`);
+  });
+
+  // Cài đặt ngưỡng đọc được bằng data-field (saveDashSettings)
+  ['dash_reteach_share', 'dash_min_students', 'dash_advanced_threshold', 'dash_inactive_days'].forEach((k) => {
+    assert.ok(document.querySelector(`#db-co-settings [data-field="${k}"]`), `settings input exposes ${k}`);
+  });
+  assert.ok(document.querySelector('#db-co-settings [data-act="saveDashSettings"]'), 'settings panel can save');
 });
 
 test('Build script bundles & minifies assets, converts to WebP, runs minified runtime, and Express serves CSP + Brotli/Gzip', async () => {
@@ -808,7 +1412,11 @@ test('Build script bundles & minifies assets, converts to WebP, runs minified ru
   const distScripts = [...distHtml.matchAll(/<script\s+src="([^"]+)"><\/script>/g)].map((m) => m[1]);
   const distLinks = [...distHtml.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)">/g)].map((m) => m[1]);
   assert.equal(distLinks.length, 1, 'dist/index.html loads single hashed CSS bundle');
-  assert.equal(distScripts.length, 4, 'dist/index.html loads supabase, core bundle, env override, app bundle');
+  assert.equal(distScripts.length, 4, 'dist/index.html loads firebase, core bundle, env override, app bundle');
+  assert.equal(distScripts[0], buildInfo.firebaseFile, 'dist/index.html loads content-hashed Firebase SDK bundle');
+  const fbCfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase-applet-config.json'), 'utf8'));
+  const fbDistJs = fs.readFileSync(path.join(ROOT, 'dist', buildInfo.firebaseFile), 'utf8');
+  assert.ok(fbDistJs.includes(`projectId:${JSON.stringify(fbCfg.projectId)}`), 'hashed Firebase bundle matches firebase-applet-config.json');
   assert.ok(fs.existsSync(path.join(ROOT, 'dist', 'js', 'vendor', 'xlsx.full.min.js')));
   assert.ok(fs.existsSync(path.join(ROOT, 'dist', 'js', 'vendor', 'mammoth.browser.min.js')));
 
@@ -830,7 +1438,7 @@ test('Build script bundles & minifies assets, converts to WebP, runs minified ru
     localStorage: { length: 0, key: () => null, getItem: () => null, setItem() {}, removeItem() {}, clear() {} },
     addEventListener() {}, removeEventListener() {}, dispatchEvent: () => true,
     scrollTo() {}, matchMedia: () => ({ matches: false, addEventListener() {} }),
-    supabaseClient: null,
+    FirebaseRuntime: null, firebaseAuth: null, firebaseDb: null,
   };
   minSandbox.window = minSandbox;
   minSandbox.globalThis = minSandbox;
@@ -874,8 +1482,11 @@ test('Build script bundles & minifies assets, converts to WebP, runs minified ru
     assert.equal(brRes.headers['x-frame-options'], undefined, 'must not send X-Frame-Options that breaks AI Studio iframe');
     const csp = String(brRes.headers['content-security-policy'] || '');
     assert.match(csp, /script-src 'self'/);
+    assert.match(csp, /script-src [^;]*https:\/\/apis\.google\.com/);
+    assert.match(csp, /script-src [^;]*https:\/\/www\.gstatic\.com/);
     assert.match(csp, /script-src-attr 'none'/);
-    assert.match(csp, /connect-src 'self' https:\/\/\*\.supabase\.co wss:\/\/\*\.supabase\.co/);
+    assert.match(csp, /connect-src 'self' https:\/\/\*\.googleapis\.com https:\/\/apis\.google\.com https:\/\/identitytoolkit\.googleapis\.com/);
+    assert.match(csp, /frame-src [^;]*https:\/\/\*\.firebaseapp\.com/);
     assert.match(csp, /frame-ancestors 'self' https:\/\/aistudio\.google\.com/);
     assert.equal(brRes.headers['content-encoding'], 'br');
     assert.match(String(brRes.headers['vary'] || ''), /Accept-Encoding/i);
@@ -893,6 +1504,34 @@ test('Build script bundles & minifies assets, converts to WebP, runs minified ru
     const webpRes = await requestRaw('/assets/student-characters.webp');
     assert.equal(webpRes.status, 200);
     assert.match(String(webpRes.headers['content-type'] || ''), /image\/webp/i);
+
+    // 4. Express server API endpoints: server-now + auth-protected AI routes
+    const nowRes = await requestRaw('/api/server-now');
+    assert.equal(nowRes.status, 200);
+    const nowJson = JSON.parse(nowRes.body.toString('utf8'));
+    assert.ok(!Number.isNaN(Date.parse(nowJson.now)), '/api/server-now returns valid ISO timestamp');
+
+    const postJson = (reqPath, body) => new Promise((resolve, reject) => {
+      const payload = JSON.stringify(body);
+      const req = http.request({
+        host: '127.0.0.1',
+        port,
+        path: reqPath,
+        method: 'POST',
+        headers: { Connection: 'close', 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+      }, (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
+      });
+      req.on('error', reject);
+      req.end(payload);
+    });
+
+    const genUnauth = await postJson('/api/ai/generate', { quantity: 1 });
+    assert.equal(genUnauth.status, 401, '/api/ai/generate rejects unauthenticated calls');
+    const chatUnauth = await postJson('/api/ai/chat', { message: 'hello' });
+    assert.equal(chatUnauth.status, 401, '/api/ai/chat rejects unauthenticated calls');
   } finally {
     if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
@@ -965,10 +1604,29 @@ test('DOM & XSS interactive tests for Gemini AI Chatbot workspace, drawer, quiz 
 
   await evalExpr('(async () => { await DB_PAGES.chat.load(); DB.data = { ready: true, lessons: [{ id: "l1", title: "Bài 1" }] }; dbRender(); })()');
   assert.ok(document.getElementById('db-chat-workspace'), 'renders dedicated chat workspace');
-  assert.ok(document.getElementById('nav-chat'), 'renders Trợ lý AI in sidebar');
+  assert.equal(document.getElementById('nav-chat'), null, 'Trợ lý AI không còn mục riêng ở thanh bên');
+  assert.ok(document.getElementById('db-chat-toggle'), 'vẫn còn nút Trợ lý AI trên thanh trên');
   assert.ok(document.querySelector('.db-chat-code'), 'renders fenced code block');
+  assert.ok(document.querySelector('.db-chat-code-head .db-chat-code-dots'), 'renders macOS window header inside code block');
   assert.ok(document.querySelector('.db-chat-quiz'), 'renders interactive quiz card');
+  assert.equal(document.querySelector('#db-chat-workspace .db-chat-mode-row'), null, 'omits redundant mode row in dedicated chat workspace');
+  assert.equal(document.querySelector('#db-chat-workspace .db-chat-stage-head [data-act="chatNewThread"]'), null, 'omits duplicate new-thread button in stage head');
   assertDomSafeFromXss(document, 'ai-chat:teacher-workspace');
+
+  // 1b. Collapsing & expanding the chat threads sidebar
+  const ws = document.getElementById('db-chat-workspace');
+  const toggleSidebarBtn = document.querySelector('[data-act="chatToggleSidebar"]');
+  assert.ok(toggleSidebarBtn, 'renders collapse button for chat sidebar');
+  assert.equal(ws.classList.contains('is-sidebar-collapsed'), false);
+  toggleSidebarBtn.click();
+  assert.equal(evalExpr('DB_CHAT.sidebarCollapsed'), true);
+  assert.equal(document.getElementById('db-chat-workspace').classList.contains('is-sidebar-collapsed'), true);
+  assert.equal(document.querySelector('.db-chat-sidebar').classList.contains('is-collapsed'), true);
+  assert.equal(document.querySelector('[data-act="chatToggleSidebar"]').getAttribute('aria-expanded'), 'false');
+  assert.equal(document.querySelector('.db-chat-rail-history'), null);
+  document.querySelector('[data-act="chatToggleSidebar"]').click();
+  assert.equal(evalExpr('DB_CHAT.sidebarCollapsed'), false);
+  assert.equal(document.getElementById('db-chat-workspace').classList.contains('is-sidebar-collapsed'), false);
 
   // 2. Teacher saves chat quiz questions into AI draft queue
   const saveDraftBtn = document.querySelector('[data-act="chatSaveQuizDrafts"]');
@@ -1009,9 +1667,153 @@ test('DOM & XSS interactive tests for Gemini AI Chatbot workspace, drawer, quiz 
   assert.equal(evalExpr('DB_CHAT.drawerOpen'), false);
   assert.ok(document.getElementById('db-chat-toggle').classList.contains('is-locked'));
 
+  // 5b. Trạng thái AI do máy chủ/giáo viên quyết định: đang làm bài thì khoá, nộp rồi thì mở
+  const examState = evalExpr('dbAiStudentState()');
+  assert.equal(examState.allowed, false);
+  assert.match(examState.reason, /làm bài kiểm tra/);
+  evalExpr(`DBX = null; dbAssignmentMarkBusy('as-1');`);
+  const busyState = evalExpr('dbAiStudentState()');
+  assert.equal(busyState.allowed, false, 'đang làm bài tập thì Trợ lý AI bị khoá');
+  assert.match(busyState.reason, /làm bài tập/);
+  evalExpr(`dbAssignmentMarkBusy('as-1', false);`);
+  assert.equal(evalExpr('dbAssignmentBusy()'), false, 'nộp bài xong thì bỏ khoá');
+
   // 6. Logout resets DB_CHAT cleanly
   evalExpr('DBX = null; dbReset();');
   assert.equal(evalExpr('DB_CHAT.threads.length'), 0);
   assert.equal(evalExpr('DB_CHAT.activeThreadId'), '');
   assert.equal(evalExpr('DB_CHAT.drawerOpen'), false);
+  assert.equal(evalExpr('DB_CHAT.sidebarCollapsed'), false);
+});
+
+test('API key Gemini panel: status, save/test/delete, and the per-work AI switch (14c-ai-key.js)', async () => {
+  const calls = [];
+  const mockDb = {
+    aiKeyStatus: async () => {
+      calls.push('status');
+      return { data: { role: 'TEACHER', hasKey: false, hint: '', classOwner: null, sharedKeyAvailable: false }, error: null };
+    },
+    aiKeySave: async (key) => { calls.push('save:' + key); return { data: { ok: true, hint: key.slice(-4) }, error: null }; },
+    aiKeyDelete: async () => { calls.push('delete'); return { data: { ok: true }, error: null }; },
+    aiKeyTest: async (key) => { calls.push('test:' + (key || 'stored')); return { data: { ok: true, model: 'gemini-3.1-flash-lite' }, error: null }; },
+  };
+  const { document, evalExpr } = createDomTestContext({ EducMindDB: mockDb });
+  evalExpr(`
+    logged = true;
+    role = 'T';
+    sess = { email: 'gv@edu.vn', role: 'T', t: Date.now(), backend: true, userId: 'teacher-1' };
+    DB.me = { id: 'teacher-1', email: 'gv@edu.vn', full_name: 'Cô An', role: 'TEACHER' };
+    DB.classes = [{ id: 'c1', name: '10A1', grade: 10 }];
+    DB.classId = 'c1';
+    DB.data = { ready: true };
+  `);
+
+  // 1. Hộp thoại Tài khoản có thẻ API key, hiển thị trạng thái "chưa lưu"
+  await evalExpr('(async () => { await dbAiKeyLoad(true); })()');
+  evalExpr(`DB.dialog = { title: 'Tài khoản', compact: true, body: '<div>' + dbAiKeyPanelMarked() + '</div>' }; dbRender();`);
+  const bodyHtml = () => document.body.textContent;
+  assert.ok(document.getElementById('db-ai-key-input'), 'renders the API key input');
+  assert.match(bodyHtml(), /Quản lý API key Gemini/);
+  assert.match(bodyHtml(), /Chưa lưu API key/);
+  assert.ok(document.querySelector('[data-act="aiKeySave"]'), 'has save button');
+  assert.ok(!document.querySelector('[data-act="aiKeyDelete"]'), 'no delete button before a key exists');
+  assertDomSafeFromXss(document, 'ai-key-panel:empty');
+
+  // 2. Dán key -> nút Lưu gửi đúng key lên máy chủ (một lần), sau đó thẻ cập nhật
+  document.getElementById('db-ai-key-input').value = 'AIzaSyDummyKeyForTesting1234567890';
+  await evalExpr('(async () => { await DB_ACT.aiKeySave(); })()');
+  assert.deepEqual(calls.filter((c) => c.startsWith('save:')), ['save:AIzaSyDummyKeyForTesting1234567890']);
+
+  // 3. Trạng thái sau khi lưu: chỉ hiện 4 ký tự cuối, không có key thô trong DOM
+  mockDb.aiKeyStatus = async () => ({ data: { role: 'TEACHER', hasKey: true, hint: '7890', updatedAt: '2026-11-25T09:00:00Z', classOwner: null, sharedKeyAvailable: false }, error: null });
+  await evalExpr('(async () => { await dbAiKeyLoad(true); dbAiKeyPaint(); })()');
+  assert.match(bodyHtml(), /Đã lưu key/);
+  assert.match(bodyHtml(), /••••7890/);
+  assert.doesNotMatch(document.body.innerHTML, /AIzaSyDummyKeyForTesting1234567890/, 'raw key never rendered');
+  assert.ok(document.querySelector('[data-act="aiKeyDelete"]'), 'delete button appears once a key exists');
+  assertDomSafeFromXss(document, 'ai-key-panel:saved');
+
+  // 4. Nút Kiểm tra dùng key đang gõ (chưa cần lưu)
+  document.getElementById('db-ai-key-input').value = 'AIzaDraftKeyForTesting0987654321';
+  await evalExpr('(async () => { await DB_ACT.aiKeyTest(); })()');
+  assert.ok(calls.includes('test:AIzaDraftKeyForTesting0987654321'), 'tests the typed key before saving');
+  assert.match(bodyHtml(), /Key hoạt động bình thường/);
+
+  // 5. Học sinh: thấy ghi chú dùng key của giáo viên
+  evalExpr(`
+    role = 'S';
+    DB.me = { id: 'stu-1', role: 'STUDENT' };
+    DB_AI_KEY.status = { role: 'STUDENT', hasKey: false, hint: '', classOwner: { hasKey: true }, sharedKeyAvailable: false };
+    DB.dialog = { title: 'Tài khoản', body: '<div>' + dbAiKeyPanelMarked() + '</div>' };
+    dbRender();
+  `);
+  assert.match(bodyHtml(), /Giáo viên lớp này đã lưu API key/);
+  assertDomSafeFromXss(document, 'ai-key-panel:student');
+
+  // 6. Công tắc trong form bài tập / bài kiểm tra: mặc định bật, tên trường đúng
+  evalExpr(`DB.dialog = null; DB.data = { ready: true };`);
+  const switchHtml = evalExpr(`dbAiSwitchHtml('assignment', true, 'Học sinh được dùng Trợ lý AI', 'Ghi chú')`);
+  assert.match(switchHtml, /name="student_ai_enabled"/);
+  assert.match(switchHtml, /checked/);
+  assert.match(switchHtml, /data-ai-switch="assignment"/);
+  const offSwitch = evalExpr(`dbAiSwitchHtml('assessment', false, 'Học sinh được dùng Trợ lý AI')`);
+  assert.doesNotMatch(offSwitch, /\schecked/);
+});
+
+test('Server API auth: header Authorization and body auth_token both accepted, foreign origin rejected', async () => {
+  const { createApp } = await import('../server.js');
+  const app = createApp({ rootDir: ROOT, serveSource: false });
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  const post = (headers, body) => new Promise((resolve, reject) => {
+    const req = http.request(
+      { host: '127.0.0.1', port, path: '/api/ai/key', method: 'POST', headers: { Connection: 'close', 'Content-Type': 'application/json', ...headers } },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
+      },
+    );
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase-applet-config.json'), 'utf8'));
+  const jwt = [b64({ alg: 'RS256', kid: 'test' }), b64({ sub: 'u1', aud: cfg.projectId, iss: `https://securetoken.google.com/${cfg.projectId}`, exp: 9999999999, iat: 1, email_verified: true }), 'sig'].join('.');
+  const payload = { apiKey: 'AIzaXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' };
+
+  try {
+    // 1. Không có thông tin đăng nhập -> 401 kèm chẩn đoán, KHÔNG lộ token.
+    const none = await post({}, JSON.stringify(payload));
+    assert.equal(none.status, 401);
+    const noneJson = JSON.parse(none.body);
+    assert.equal(noneJson.code, 'AUTH_REQUIRED');
+    assert.equal(noneJson.auth.hasAuthHeader, false);
+    assert.equal(noneJson.auth.hasBodyToken, false);
+
+    // 2. Token chỉ nằm trong thân request nhưng đến từ nguồn khác -> từ chối (chống trang khác gọi hộ).
+    const foreign = await post({ Origin: 'https://evil.example' }, JSON.stringify({ ...payload, auth_token: jwt }));
+    assert.equal(foreign.status, 401);
+    assert.match(JSON.parse(foreign.body).error, /phải đến từ ứng dụng EducMind/);
+
+    // 3. Token trong thân, Origin cùng nguồn -> qua lớp xác thực (đi tiếp tới Firestore).
+    const sameOrigin = await post({ Origin: `http://127.0.0.1:${port}` }, JSON.stringify({ ...payload, auth_token: jwt }));
+    assert.doesNotMatch(sameOrigin.body, /Cần đăng nhập/, 'token trong thân phải được chấp nhận');
+    assert.doesNotMatch(sameOrigin.body, /phải đến từ ứng dụng/);
+
+    // 4. Token trong header Authorization (đường chuẩn) -> cũng qua lớp xác thực.
+    const viaHeader = await post({ Authorization: 'Bearer ' + jwt }, JSON.stringify(payload));
+    assert.doesNotMatch(viaHeader.body, /Cần đăng nhập/);
+    assert.doesNotMatch(viaHeader.body, new RegExp(jwt.slice(0, 24)), 'không phản chiếu token về trình duyệt');
+
+    // 5. Header riêng X-EducMind-Token (proxy hay bỏ Authorization nhưng giữ header lạ).
+    const viaAltHeader = await post({ 'X-EducMind-Token': 'Bearer ' + jwt }, JSON.stringify(payload));
+    assert.doesNotMatch(viaAltHeader.body, /Cần đăng nhập/);
+    const noneDiag = JSON.parse(none.body).auth;
+    assert.equal(noneDiag.hasAltHeader, false, 'chẩn đoán có báo trạng thái header riêng');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });

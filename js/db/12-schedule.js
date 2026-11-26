@@ -130,8 +130,6 @@ function dbSchedCalendar(items) {
     <div class="db-sched-month-bar">
       <h2 id="db-h-cal">Lịch tháng ${m + 1}/${y}</h2>
       <div class="db-sched-month-actions">
-        <button type="button" class="btn light mini" data-act="schedMonthPrev" aria-label="Tháng trước" title="Tháng trước">‹</button>
-        <button type="button" class="btn light mini" data-act="schedMonthNext" aria-label="Tháng sau" title="Tháng sau">›</button>
         ${dbBtn('Tháng hiện tại', 'schedMonthToday', {}, 'light mini')}
         ${DB_SCHED_SEL ? dbBtn('Bỏ lọc ngày', 'schedAll', {}, 'light mini') : ''}
       </div>

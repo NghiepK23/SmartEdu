@@ -42,7 +42,7 @@ function dbHomeEventRows(d) {
   const rows = dbHomeActivities(d);
   return rows.length ? rows.map((e) => {
     const graded = e.detail.startsWith('Đã chấm');
-    const tone = e.page === 'assessments' ? 'is-violet' : graded ? 'is-good' : '';
+    const tone = e.page === 'assessments' ? 'is-sky' : graded ? 'is-good' : '';
     const icon = e.page === 'assessments' ? 'assessments' : graded ? 'check' : 'assignments';
     return `<div class="td-activity-row"><span class="td-activity-icon ${tone}">${ic(icon, 16)}</span><span><b>${h(e.title)}</b><small>${h(e.detail)} · ${dbDateTime(e.at)}</small></span>${dbBtn('Mở', 'go', { page: e.page, id: e.id }, 'light mini')}</div>`;
   }).join('') : `<div class="td-empty">Chưa có hoạt động gần đây để hiển thị.</div>`;
@@ -124,8 +124,8 @@ function dbHomeTrendChart(d) {
   const dayLabels = trend.labels.map((label, i) => `<text class="td-chart-axis-label" x="${x(i)}" y="207" text-anchor="middle">${label}</text>`).join('');
   return `<svg class="td-activity-chart" viewBox="0 0 680 220" role="img" aria-label="Lượt nộp bài theo ngày trong 7 ngày qua. Bài tập: ${trend.assignments.join(', ')}. Bài kiểm tra: ${trend.assessments.join(', ')}.">
     <defs>
-      <linearGradient id="td-assignment-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#2563eb" stop-opacity=".28"></stop><stop offset="1" stop-color="#2563eb" stop-opacity="0"></stop></linearGradient>
-      <linearGradient id="td-assessment-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#0ea5e9" stop-opacity=".24"></stop><stop offset="1" stop-color="#0ea5e9" stop-opacity="0"></stop></linearGradient>
+      <linearGradient id="td-assignment-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#1f6f6b" stop-opacity=".28"></stop><stop offset="1" stop-color="#1f6f6b" stop-opacity="0"></stop></linearGradient>
+      <linearGradient id="td-assessment-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#3b7d8c" stop-opacity=".24"></stop><stop offset="1" stop-color="#3b7d8c" stop-opacity="0"></stop></linearGradient>
     </defs>
     ${grid}
     <path class="td-chart-area td-chart-area-assignment" d="${area(trend.assignments)}"></path>
@@ -136,6 +136,201 @@ function dbHomeTrendChart(d) {
     ${dayLabels}
   </svg>`;
 }
+
+function dbHomeWorkItems(d, T) {
+  const subsBy = dbGroup(d.submissions || [], 'assignment_id');
+  const attBy = dbGroup(d.attempts || [], 'assessment_id');
+  const totalStudents = (d.members || []).length;
+  const rows = [];
+
+  (d.assignments || []).forEach((a, idx) => {
+    const subs = subsBy[a.id] || [];
+    const mine = subs[0] || null;
+    if (T) {
+      const pending = subs.filter((s) => s.score == null).length;
+      const win = dbAssignmentWindow(a);
+      const statusKey = pending > 0 ? 'PENDING' : a.status === 'PUBLISHED' && win !== 'CLOSED' ? 'OPEN' : 'DONE';
+      const statusLabel = pending > 0 ? 'Chờ chấm' : a.status === 'DRAFT' ? 'Bản nháp' : win === 'CLOSED' ? 'Đã đóng' : 'Đang mở';
+      const statusTone = pending > 0 ? 'need' : a.status === 'DRAFT' ? 'plain' : win === 'CLOSED' ? 'good' : 'prog';
+      rows.push({
+        code: `BT-${String(idx + 1).padStart(2, '0')}`,
+        kindLabel: 'Bài tập',
+        avatarText: 'BT',
+        avatarTone: 'teal',
+        title: a.title || 'Bài tập',
+        sub: a.max_score ? `Tối đa ${dbNum(a.max_score)} điểm` : 'Bài luyện tập',
+        when: a.created_at ? dbDateTime(a.created_at) : '—',
+        due: a.due_at ? dbDateTime(a.due_at) : 'Không giới hạn',
+        metric: totalStudents ? `${subs.length}/${totalStudents} nộp` : `${subs.length} nộp`,
+        statusKey,
+        statusLabel,
+        statusTone,
+        actionLabel: pending > 0 ? 'Chấm bài' : 'Mở',
+        page: 'assignments',
+        arg: { id: a.id },
+        ts: new Date(a.due_at || a.created_at || 0).getTime() || 0,
+      });
+    } else if (a.status === 'PUBLISHED') {
+      const win = dbAssignmentWindow(a);
+      const graded = mine && mine.score != null;
+      const statusKey = !mine ? (win === 'CLOSED' ? 'DONE' : 'TODO') : graded ? 'DONE' : 'WAITING';
+      const statusLabel = !mine ? (win === 'CLOSED' ? 'Quá hạn' : 'Cần làm') : graded ? 'Đã chấm' : 'Chờ chấm';
+      const statusTone = !mine ? (win === 'CLOSED' ? 'need' : 'prog') : graded ? 'good' : 'need';
+      rows.push({
+        code: `BT-${String(idx + 1).padStart(2, '0')}`,
+        kindLabel: 'Bài tập',
+        avatarText: 'BT',
+        avatarTone: 'teal',
+        title: a.title || 'Bài tập',
+        sub: mine ? 'Đã nộp bài' : 'Chưa nộp bài',
+        when: a.created_at ? dbDateTime(a.created_at) : '—',
+        due: a.due_at ? dbDateTime(a.due_at) : 'Không giới hạn',
+        metric: graded ? `${dbNum(mine.score)} / ${dbNum(a.max_score || 10)}` : mine ? 'Đã nộp' : '—',
+        statusKey,
+        statusLabel,
+        statusTone,
+        actionLabel: mine ? 'Xem lại' : 'Làm bài',
+        page: 'assignments',
+        arg: { id: a.id },
+        ts: new Date(a.due_at || a.created_at || 0).getTime() || 0,
+      });
+    }
+  });
+
+  (d.assessments || []).forEach((e, idx) => {
+    const atts = attBy[e.id] || [];
+    const latest = atts[0] || null;
+    if (T) {
+      const pending = atts.filter((t) => t.status === 'SUBMITTED').length;
+      const win = dbAssessmentWindow(e);
+      const statusKey = pending > 0 ? 'PENDING' : e.status === 'PUBLISHED' && win === 'OPEN' ? 'OPEN' : 'DONE';
+      const statusLabel = pending > 0 ? 'Chờ chấm' : e.status === 'DRAFT' ? 'Bản nháp' : win === 'OPEN' ? 'Đang mở' : win === 'SOON' ? 'Sắp mở' : 'Đã đóng';
+      const statusTone = pending > 0 ? 'need' : e.status === 'DRAFT' ? 'plain' : win === 'OPEN' ? 'prog' : 'good';
+      rows.push({
+        code: `KT-${String(idx + 1).padStart(2, '0')}`,
+        kindLabel: 'Kiểm tra',
+        avatarText: 'KT',
+        avatarTone: 'sky',
+        title: e.title || 'Bài kiểm tra',
+        sub: `${e.duration_minutes || 15} phút`,
+        when: e.open_at ? dbDateTime(e.open_at) : '—',
+        due: e.close_at ? dbDateTime(e.close_at) : '—',
+        metric: `${atts.length} lượt`,
+        statusKey,
+        statusLabel,
+        statusTone,
+        actionLabel: pending > 0 ? 'Chấm bài' : 'Mở',
+        page: 'assessments',
+        arg: { id: e.id, tab: 'attempts' },
+        ts: new Date(e.close_at || e.open_at || 0).getTime() || 0,
+      });
+    } else if (e.status === 'PUBLISHED') {
+      const win = dbAssessmentWindow(e);
+      const hasInProg = atts.some((t) => t.status === 'IN_PROGRESS');
+      const hasSubmitted = atts.some((t) => t.status === 'SUBMITTED');
+      const graded = atts.find((t) => t.status === 'GRADED');
+      const statusKey = hasInProg || (win === 'OPEN' && !atts.length) ? 'TODO' : hasSubmitted ? 'WAITING' : 'DONE';
+      const statusLabel = hasInProg ? 'Đang làm' : hasSubmitted ? 'Chờ chấm' : graded ? 'Đã chấm' : win === 'OPEN' ? 'Đang mở' : win === 'SOON' ? 'Sắp mở' : 'Đã đóng';
+      const statusTone = hasInProg || win === 'OPEN' ? 'prog' : hasSubmitted ? 'need' : graded ? 'good' : 'plain';
+      rows.push({
+        code: `KT-${String(idx + 1).padStart(2, '0')}`,
+        kindLabel: 'Kiểm tra',
+        avatarText: 'KT',
+        avatarTone: 'sky',
+        title: e.title || 'Bài kiểm tra',
+        sub: `${e.duration_minutes || 15} phút`,
+        when: e.open_at ? dbDateTime(e.open_at) : '—',
+        due: e.close_at ? dbDateTime(e.close_at) : '—',
+        metric: graded && graded.total_score != null ? `${dbNum(graded.total_score)} điểm` : atts.length ? `${atts.length} lượt` : '—',
+        statusKey,
+        statusLabel,
+        statusTone,
+        actionLabel: hasInProg || (win === 'OPEN' && !atts.length) ? 'Làm bài' : 'Chi tiết',
+        page: 'assessments',
+        arg: { id: e.id },
+        ts: new Date(e.close_at || e.open_at || 0).getTime() || 0,
+      });
+    }
+  });
+
+  return rows.sort((a, b) => b.ts - a.ts);
+}
+
+function dbHomeWorkTabs(T) {
+  return T
+    ? [['ALL', 'Tất cả'], ['PENDING', 'Chờ chấm'], ['OPEN', 'Đang mở'], ['DONE', 'Hoàn thành']]
+    : [['ALL', 'Tất cả'], ['TODO', 'Cần làm'], ['WAITING', 'Chờ chấm'], ['DONE', 'Hoàn thành']];
+}
+
+function dbHomeWorkRowsHtml(rows, activeTab, query) {
+  const q = dbFoldSearch(query);
+  const filtered = rows.filter((r) => {
+    const tabOk = activeTab === 'ALL' || r.statusKey === activeTab;
+    const textOk = !q || dbFoldSearch(`${r.code} ${r.kindLabel} ${r.title} ${r.sub} ${r.statusLabel}`).includes(q);
+    return tabOk && textOk;
+  });
+  if (!filtered.length) {
+    return `<tr><td colspan="6" class="td-work-empty">Không có hoạt động nào khớp bộ lọc hiện tại.</td></tr>`;
+  }
+  return filtered.slice(0, 12).map((r) => `<tr>
+    <td><div class="td-work-code"><b>${h(r.code)}</b><small>${h(r.kindLabel)}</small></div></td>
+    <td><div class="td-work-main"><span class="td-work-avatar is-${h(r.avatarTone)}" aria-hidden="true">${h(r.avatarText)}</span><span><b>${h(r.title)}</b><small>${h(r.sub)}</small></span></div></td>
+    <td class="td-work-num">${h(r.due)}</td>
+    <td class="td-work-num"><b>${h(r.metric)}</b></td>
+    <td><span class="td-status-tag is-${h(r.statusTone)}">${h(r.statusLabel)}</span></td>
+    <td class="td-work-act">${dbBtn(r.actionLabel, 'go', { page: r.page, ...r.arg }, 'light mini')}</td>
+  </tr>`).join('');
+}
+
+function dbHomeWorkTableHtml(d, T) {
+  const rows = dbHomeWorkItems(d, T);
+  const tabs = dbHomeWorkTabs(T);
+  if (!tabs.some(([k]) => k === DB_UI.homeTab)) DB_UI.homeTab = 'ALL';
+  const counts = Object.fromEntries(tabs.map(([k]) => [k, k === 'ALL' ? rows.length : rows.filter((r) => r.statusKey === k).length]));
+  const tabHtml = tabs.map(([k, label]) => {
+    const on = DB_UI.homeTab === k;
+    return `<button type="button" class="td-seg-tab${on ? ' is-active' : ''}" data-act="homeFilterTab" data-tab="${k}" aria-pressed="${on ? 'true' : 'false'}"><span>${label}</span><span class="td-seg-cnt">${counts[k]}</span></button>`;
+  }).join('');
+  return `<section class="panel td-work-panel" id="db-home-work-panel" aria-labelledby="db-home-work-h">
+    <div class="td-work-head">
+      <div><h3 id="db-home-work-h">${T ? 'Danh sách bài tập & kiểm tra' : 'Bài tập & kiểm tra của em'}</h3><p>${T ? 'Lọc nhanh bài chờ chấm, đang mở và đã đóng trong lớp.' : 'Theo dõi hạn nộp, điểm số và bắt đầu làm bài ngay.'}</p></div>
+      <div class="td-work-tools">
+        <div class="td-seg-bar" role="tablist" aria-label="Lọc trạng thái">${tabHtml}</div>
+        <div class="td-work-search">
+          ${ic('search', 14)}
+          <input id="db-home-table-search" type="search" value="${h(DB_UI.homeQuery)}" placeholder="Tìm trong bảng…" aria-label="Tìm hoạt động trong bảng" data-input="homeFilterTable" autocomplete="off">
+        </div>
+      </div>
+    </div>
+    <div class="tablewrap td-work-tablewrap">
+      <table class="td-work-table">
+        <thead><tr><th>Mã</th><th>Hoạt động</th><th>Hạn nộp / Đóng</th><th>Tiến độ / Điểm</th><th>Trạng thái</th><th class="td-work-act">Thao tác</th></tr></thead>
+        <tbody id="db-home-work-tbody">${dbHomeWorkRowsHtml(rows, DB_UI.homeTab, DB_UI.homeQuery)}</tbody>
+      </table>
+    </div>
+  </section>`;
+}
+
+DB_ACT.homeFilterTab = (el) => {
+  DB_UI.homeTab = el.dataset.tab || 'ALL';
+  const panel = document.getElementById('db-home-work-panel');
+  if (!panel || !DB.data) return;
+  panel.querySelectorAll('.td-seg-tab').forEach((btn) => {
+    const on = btn.dataset.tab === DB_UI.homeTab;
+    btn.classList.toggle('is-active', on);
+    btn.setAttribute('aria-pressed', String(on));
+  });
+  const tbody = document.getElementById('db-home-work-tbody');
+  if (tbody) tbody.innerHTML = dbHomeWorkRowsHtml(dbHomeWorkItems(DB.data, dbIsTeacher()), DB_UI.homeTab, DB_UI.homeQuery);
+  DB_UI.dockSub = '';
+  if (typeof dbSyncDockActive === 'function') dbSyncDockActive();
+};
+DB_ACT.homeFilterTable = (el) => {
+  DB_UI.homeQuery = String((el && el.value) || '');
+  const tbody = document.getElementById('db-home-work-tbody');
+  if (!tbody || !DB.data) return;
+  tbody.innerHTML = dbHomeWorkRowsHtml(dbHomeWorkItems(DB.data, dbIsTeacher()), DB_UI.homeTab, DB_UI.homeQuery);
+};
 
 function dbHomeTeacher(d) {
   d = { assignments: [], assessments: [], submissions: [], attempts: [], mastery: [], gaps: [], members: [], profiles: {}, objectives: [], topics: [], lessons: [], ...d };
@@ -158,7 +353,7 @@ function dbHomeTeacher(d) {
   const openExams = d.assessments.filter((e) => e.status === 'PUBLISHED' && dbAssessmentWindow(e) === 'OPEN');
   const drafts = d.assignments.filter((a) => a.status === 'DRAFT').length + d.assessments.filter((e) => e.status === 'DRAFT').length + d.lessons.filter((l) => l.status === 'DRAFT').length;
   const taskRows = toGrade.map((x) => `<div class="td-task"><span class="td-task-icon">${ic('assignments', 18)}</span><span class="td-task-copy"><b>${h(x.a.title)}</b><small>Bài tập · ${x.n} bài nộp chờ chấm</small></span>${dbBtn('Chấm bài', 'go', { page: 'assignments', id: x.a.id }, 'light mini')}</div>`).join('')
-    + toMark.map((x) => `<div class="td-task"><span class="td-task-icon is-violet">${ic('assessments', 18)}</span><span class="td-task-copy"><b>${h(x.e.title)}</b><small>Bài kiểm tra · ${x.n} lượt chờ đánh giá</small></span>${dbBtn('Chấm bài', 'go', { page: 'assessments', id: x.e.id, tab: 'attempts' }, 'light mini')}</div>`).join('');
+    + toMark.map((x) => `<div class="td-task"><span class="td-task-icon is-sky">${ic('assessments', 18)}</span><span class="td-task-copy"><b>${h(x.e.title)}</b><small>Bài kiểm tra · ${x.n} lượt chờ đánh giá</small></span>${dbBtn('Chấm bài', 'go', { page: 'assessments', id: x.e.id, tab: 'attempts' }, 'light mini')}</div>`).join('');
   const completionRows = activeAssignments.slice(0, 5).map((a) => {
     const submitted = (subsBy[a.id] || []).length, total = d.members.length, rate = total ? Math.min(100, Math.round(submitted / total * 100)) : null;
     return `<div class="td-chart-row"><span class="td-chart-label" title="${h(a.title)}">${h(a.title)}</span><span class="td-chart-track" role="img" aria-label="${rate == null ? 'Chưa có học sinh trong lớp' : submitted + ' trên ' + total + ' học sinh đã nộp'}"><i style="width:${rate || 0}%"></i></span><b>${rate == null ? '—' : rate + '%'}</b><small>${submitted}/${total} đã nộp</small></div>`;
@@ -172,20 +367,21 @@ function dbHomeTeacher(d) {
     .filter((x) => x.submitted > 0).sort((a, b) => b.submitted - a.submitted)[0];
   const highlightRows = [
     strongestObjective ? `<div class="td-highlight-row"><span class="td-highlight-icon is-amber">${ic('spark', 18)}</span><span><b>Mục tiêu nắm vững nhất</b><small>${h(strongestObjective.code)} · ${h(strongestObjective.description)}</small></span><strong>${dbPct(strongest.score)}</strong></div>` : '',
-    topAssignment ? `<div class="td-highlight-row"><span class="td-highlight-icon is-violet">${ic('assignments', 18)}</span><span><b>Bài tập có nhiều lượt nộp</b><small>${h(topAssignment.a.title)} · ${topAssignment.submitted}/${d.members.length} học sinh</small></span><strong>${d.members.length ? Math.round(topAssignment.submitted / d.members.length * 100) + '%' : '—'}</strong></div>` : '',
+    topAssignment ? `<div class="td-highlight-row"><span class="td-highlight-icon is-sky">${ic('assignments', 18)}</span><span><b>Bài tập có nhiều lượt nộp</b><small>${h(topAssignment.a.title)} · ${topAssignment.submitted}/${d.members.length} học sinh</small></span><strong>${d.members.length ? Math.round(topAssignment.submitted / d.members.length * 100) + '%' : '—'}</strong></div>` : '',
     `<div class="td-highlight-row"><span class="td-highlight-icon is-good">${ic('students', 18)}</span><span><b>Học sinh cần đồng hành</b><small>Theo các mục tiêu đang mở</small></span><strong>${studentsToSupport}</strong></div>`,
   ].filter(Boolean).join('');
   const dueRows = upcoming.slice(0, 3).map((a) => `<div class="td-deadline-row"><span class="td-deadline-icon">${ic('calendar', 16)}</span><span><b>${h(a.title)}</b><small>Hạn ${dbDateTime(a.due_at)} · ${(subsBy[a.id] || []).length}/${d.members.length} đã nộp</small></span>${dbBtn('Mở', 'go', { page: 'assignments', id: a.id }, 'light mini')}</div>`).join('')
-    + openExams.slice(0, 2).map((e) => `<div class="td-deadline-row"><span class="td-deadline-icon is-violet">${ic('assessments', 16)}</span><span><b>${h(e.title)}</b><small>Đang mở · đóng ${dbDateTime(e.close_at)}</small></span>${dbBtn('Mở', 'go', { page: 'assessments', id: e.id, tab: 'attempts' }, 'light mini')}</div>`).join('');
+    + openExams.slice(0, 2).map((e) => `<div class="td-deadline-row"><span class="td-deadline-icon is-sky">${ic('assessments', 16)}</span><span><b>${h(e.title)}</b><small>Đang mở · đóng ${dbDateTime(e.close_at)}</small></span>${dbBtn('Mở', 'go', { page: 'assessments', id: e.id, tab: 'attempts' }, 'light mini')}</div>`).join('');
   return `<div class="teacher-dashboard">
     <section class="td-welcome"><div class="td-welcome-copy"><span class="td-eyebrow">TRUNG TÂM QUẢN LÝ GIẢNG DẠY · ${h(dbClass()?.name || 'LỚP ĐANG CHỌN')}</span><h2>${dashboardGreeting()}, ${h(dbName(DB.me))}</h2><p>Toàn cảnh hoạt động dạy học và những việc cần ưu tiên trong lớp của thầy/cô.</p>
       <div class="td-welcome-actions">${dbBtn(ic('assignments', 17) + 'Tạo bài tập', 'go', { page: 'assignments', edit: 'new' })}${dbBtn(ic('lessons', 17) + 'Soạn bài', 'go', { page: 'content' }, 'light')}</div></div><span class="td-welcome-art" aria-hidden="true"><img src="assets/student-characters.webp" alt="" width="1400" height="665" decoding="async"></span></section>
     <section class="td-metrics" aria-label="Tổng quan giảng dạy">
       <article class="td-metric"><span class="td-metric-icon">${ic('classes', 19)}</span><span class="td-metric-label">Lớp phụ trách</span><b>${DB.classes.length}</b><small>${h(dbClass()?.name || 'Chưa chọn lớp')}</small></article>
-      <article class="td-metric"><span class="td-metric-icon is-violet">${ic('assignments', 19)}</span><span class="td-metric-label">Bài tập đang hoạt động</span><b>${activeAssignments.length}</b><small>Trong lớp đang chọn</small></article>
+      <article class="td-metric"><span class="td-metric-icon is-sky">${ic('assignments', 19)}</span><span class="td-metric-label">Bài tập đang hoạt động</span><b>${activeAssignments.length}</b><small>Trong lớp đang chọn</small></article>
       <article class="td-metric"><span class="td-metric-icon is-good">${ic('trend', 19)}</span><span class="td-metric-label">Tỷ lệ hoàn thành</span><b>${completion == null ? '—' : completion + '%'}</b><small>${completion == null ? 'Chưa có bài tập hoặc học sinh' : completedPairs.size + ' / ' + completionTotal + ' lượt nộp'}</small></article>
       <article class="td-metric"><span class="td-metric-icon is-warn">${ic('students', 19)}</span><span class="td-metric-label">Học sinh cần hỗ trợ</span><b>${studentsToSupport}</b><small>Theo các mục tiêu đang mở</small></article>
     </section>
+    ${dbHomeWorkTableHtml(d, true)}
     <div class="td-dashboard-grid">
       <section class="panel td-panel td-analytics"><header class="td-section-head"><div><span class="td-eyebrow">PHÂN TÍCH HỌC TẬP</span><h3>Tiến độ và kết quả lớp học</h3></div>${dbBtn('Báo cáo chi tiết', 'go', { page: 'report' }, 'light mini')}</header>
         <div class="td-analytics-summary"><div><span>Bài tập đã giao</span><b>${activeAssignments.length}</b></div><div><span>Tổng lượt đã nộp</span><b>${completedPairs.size}</b></div><div><span>Mức nắm vững TB</span><b>${d.mastery.length ? dbPct(avg) : '—'}</b></div><div><span>Lượt kiểm tra đã chấm</span><b>${gradedTests.length}</b></div></div>
@@ -254,15 +450,16 @@ function dbHomeStudent(d) {
     const o = goalsById[g.objective_id];
     return `<div class="td-insight"><span class="td-insight-mark is-warn">${ic('alert', 16)}</span><span><b>${h(o ? `${o.code} · ${o.description}` : 'Mục tiêu cần củng cố')}</b><small>${h(g.reason || 'Ôn tập thêm nội dung này')}</small></span>${dbBtn('Ôn tập', 'go', { page: 'gaps' }, 'light mini')}</div>`;
   }).join('');
-  const tasks = todoEx.map((e) => `<div class="td-task"><span class="td-task-icon is-violet">${ic('assessments', 18)}</span><span class="td-task-copy"><b>${h(e.title)}</b><small>Bài kiểm tra · ${e.duration_minutes} phút · đóng lúc ${dbDateTime(e.close_at)}</small></span>${dbBtn('Bắt đầu', 'go', { page: 'assessments', id: e.id }, 'light mini')}</div>`).join('')
+  const tasks = todoEx.map((e) => `<div class="td-task"><span class="td-task-icon is-sky">${ic('assessments', 18)}</span><span class="td-task-copy"><b>${h(e.title)}</b><small>Bài kiểm tra · ${e.duration_minutes} phút · đóng lúc ${dbDateTime(e.close_at)}</small></span>${dbBtn('Bắt đầu', 'go', { page: 'assessments', id: e.id }, 'light mini')}</div>`).join('')
     + todoAsg.map((a) => `<div class="td-task"><span class="td-task-icon">${ic('assignments', 18)}</span><span class="td-task-copy"><b>${h(a.title)}</b><small>Bài tập · ${dbDueText(a)}</small></span>${dbBtn('Làm bài', 'go', { page: 'assignments', id: a.id }, 'light mini')}</div>`).join('');
   return `<div class="student-dashboard sd-db-dashboard">
     <section class="sd-metrics" aria-label="Tóm tắt tiến độ học tập">
       <article class="sd-metric"><span class="sd-metric-icon">${ic('check', 18)}</span><b>${completedTotal}<small> / ${assignedTotal}</small></b><span>Bài đã hoàn thành</span>${completionPercent == null ? '' : `<span class="sd-metric-progress" role="progressbar" aria-label="Tỷ lệ hoàn thành" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${completionPercent}"><i style="width:${completionPercent}%"></i></span>`}</article>
       <article class="sd-metric"><span class="sd-metric-icon is-good">${ic('trend', 18)}</span><b>${averageScore == null ? '—' : averageScore + '%'}</b><span>${averageScore == null ? 'Chưa có điểm đã chấm' : 'Điểm trung bình bài tập'}</span></article>
-      <article class="sd-metric"><span class="sd-metric-icon is-violet">${ic('classes', 18)}</span><b>—</b><span>Thứ hạng chưa có dữ liệu</span></article>
+      <article class="sd-metric"><span class="sd-metric-icon is-sky">${ic('classes', 18)}</span><b>—</b><span>Thứ hạng chưa có dữ liệu</span></article>
       <article class="sd-metric"><span class="sd-metric-icon is-cyan">${ic('clock', 18)}</span><b>—</b><span>Chưa có dữ liệu thời gian học</span></article>
     </section>
+    ${dbHomeWorkTableHtml(d, false)}
     <section class="sd-dashboard-grid db-student-grid">
       <section class="panel sd-db-panel sd-db-overview"><header class="td-section-head"><div><span class="td-eyebrow">TIẾN ĐỘ CÁ NHÂN</span><h3>Tiến độ học tập</h3></div><span class="sd-chart-period">7 ngày</span></header>
         <div class="sd-chart-legend"><span><i></i>Điểm bài tập đã chấm</span></div>${progressChart}

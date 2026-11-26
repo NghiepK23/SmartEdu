@@ -92,6 +92,9 @@
         "invite_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "class_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "teacher_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "class_name": { "type": "string", "maxLength": 100 },
+        "class_grade": { "type": "integer" },
+        "subject": { "type": "string", "maxLength": 120 },
         "revoked_at": { "type": "string", "format": "date-time" },
         "expires_at": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" },
@@ -126,6 +129,16 @@
         "description": { "type": "string", "maxLength": 4000 },
         "sequential_unlock": { "type": "boolean" },
         "student_ai_enabled": { "type": "boolean" },
+        "practice_weight": { "type": "number" },
+        "practice_unlock_min_official": { "type": "integer" },
+        "practice_session_length": { "type": "integer" },
+        "practice_daily_scored_sessions": { "type": "integer" },
+        "practice_max_share": { "type": "number" },
+        "dash_reteach_share": { "type": "number" },
+        "dash_min_students": { "type": "integer" },
+        "dash_advanced_threshold": { "type": "number" },
+        "dash_inactive_days": { "type": "integer" },
+        "dash_question_min_answers": { "type": "integer" },
         "created_at": { "type": "string", "format": "date-time" },
         "deleted_at": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" },
@@ -145,6 +158,7 @@
         "lesson_ids": { "type": "array" },
         "objective_ids": { "type": "array" },
         "resource_ids": { "type": "array" },
+        "resource_objective_link_ids": { "type": "array" },
         "assignment_ids": { "type": "array" },
         "assessment_ids": { "type": "array" },
         "question_ids": { "type": "array" },
@@ -235,6 +249,23 @@
       },
       "required": ["id", "class_id", "teacher_id", "course_id", "lesson_id", "kind", "createdAt", "updatedAt"]
     },
+    "ResourceObjectiveLink": {
+      "title": "ResourceObjectiveLink",
+      "description": "Link mapping a learning resource to a learning objective with a pedagogical purpose (LEARN, PRACTICE, EXTEND).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "class_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "teacher_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "course_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "resource_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "objective_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "purpose": { "type": "string", "enum": ["LEARN", "PRACTICE", "EXTEND"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "class_id", "teacher_id", "course_id", "resource_id", "objective_id", "purpose", "createdAt", "updatedAt"]
+    },
     "Question": {
       "title": "Question",
       "description": "Course question bank item supporting 7 question kinds.",
@@ -296,12 +327,31 @@
         "status": { "type": "string", "enum": ["DRAFT", "PUBLISHED"] },
         "objective_ids": { "type": "array" },
         "question_ids": { "type": "array" },
+        "target_mode": { "type": "string", "enum": ["ALL", "TARGETED"] },
+        "target_group": { "type": "string", "maxLength": 40 },
+        "target_student_ids": { "type": "array" },
         "created_at": { "type": "string", "format": "date-time" },
         "deleted_at": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "class_id", "teacher_id", "created_by", "course_id", "title", "status", "createdAt", "updatedAt"]
+    },
+    "AssignmentTarget": {
+      "title": "AssignmentTarget",
+      "description": "Explicit student target record when an assignment is scoped to a subset or group.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "class_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "teacher_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "assignment_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "student_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "target_group": { "type": "string", "maxLength": 40 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "class_id", "teacher_id", "assignment_id", "student_id", "createdAt", "updatedAt"]
     },
     "AssignmentObjectiveLink": {
       "title": "AssignmentObjectiveLink",
@@ -556,11 +606,81 @@
         "source_type": { "type": "string", "maxLength": 40 },
         "source_id": { "type": "string", "maxLength": 128 },
         "score": { "type": "number" },
+        "weight": { "type": "number" },
         "observed_at": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "class_id", "teacher_id", "student_id", "objective_id", "source_type", "source_id", "score", "observed_at", "createdAt", "updatedAt"]
+    },
+    "MasterySnapshot": {
+      "title": "MasterySnapshot",
+      "description": "Historical snapshot of a student's mastery score on an objective for trend tracking.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "class_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "teacher_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "student_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "objective_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "mastery_score": { "type": "number" },
+        "evidence_count": { "type": "integer" },
+        "recorded_at": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "class_id", "teacher_id", "student_id", "objective_id", "mastery_score", "evidence_count", "recorded_at", "createdAt", "updatedAt"]
+    },
+    "PracticeSession": {
+      "title": "PracticeSession",
+      "description": "Adaptive staircase practice session targeting a specific learning objective.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "class_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "teacher_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "course_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "student_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "objective_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "recommendation_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "status": { "type": "string", "enum": ["ACTIVE", "COMPLETED", "ABANDONED"] },
+        "start_level": { "type": "string", "enum": ["EASY", "MEDIUM", "HARD"] },
+        "current_level": { "type": "string", "enum": ["EASY", "MEDIUM", "HARD"] },
+        "consecutive_correct": { "type": "integer" },
+        "target_count": { "type": "integer" },
+        "answered_count": { "type": "integer" },
+        "weighted_score": { "type": "number" },
+        "evidence_recorded": { "type": "boolean" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "completed_at": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "class_id", "teacher_id", "course_id", "student_id", "objective_id", "status", "start_level", "current_level", "consecutive_correct", "target_count", "answered_count", "started_at", "createdAt", "updatedAt"]
+    },
+    "PracticeAnswer": {
+      "title": "PracticeAnswer",
+      "description": "Server-served question slot and graded student response inside a practice session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "class_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "teacher_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "session_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "student_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "objective_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "seq": { "type": "integer" },
+        "question_id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "level": { "type": "string", "enum": ["EASY", "MEDIUM", "HARD"] },
+        "served_at": { "type": "string", "format": "date-time" },
+        "answer": { "type": "string" },
+        "is_correct": { "type": "boolean" },
+        "score": { "type": "number" },
+        "answered_at": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "class_id", "teacher_id", "session_id", "student_id", "objective_id", "seq", "question_id", "level", "served_at", "createdAt", "updatedAt"]
     },
     "KnowledgeGap": {
       "title": "KnowledgeGap",
@@ -827,6 +947,10 @@
       "schema": { "$ref": "#/entities/Resource" },
       "description": "Lesson attachments and links."
     },
+    "/resource_objective_links/{linkId}": {
+      "schema": { "$ref": "#/entities/ResourceObjectiveLink" },
+      "description": "Links connecting learning resources to objectives and pedagogical purposes."
+    },
     "/questions/{questionId}": {
       "schema": { "$ref": "#/entities/Question" },
       "description": "Course question bank entries."
@@ -838,6 +962,10 @@
     "/assignments/{assignmentId}": {
       "schema": { "$ref": "#/entities/Assignment" },
       "description": "Assignments created by teachers."
+    },
+    "/assignment_targets/{targetId}": {
+      "schema": { "$ref": "#/entities/AssignmentTarget" },
+      "description": "Student targeting entries for differentiated assignments."
     },
     "/assignment_objectives/{linkId}": {
       "schema": { "$ref": "#/entities/AssignmentObjectiveLink" },
@@ -890,6 +1018,18 @@
     "/learning_evidence/{evidenceId}": {
       "schema": { "$ref": "#/entities/LearningEvidence" },
       "description": "Graded evidence items feeding mastery calculations."
+    },
+    "/mastery_snapshots/{snapshotId}": {
+      "schema": { "$ref": "#/entities/MasterySnapshot" },
+      "description": "Historical mastery progression snapshots."
+    },
+    "/practice_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/PracticeSession" },
+      "description": "Adaptive staircase practice sessions."
+    },
+    "/practice_answers/{answerId}": {
+      "schema": { "$ref": "#/entities/PracticeAnswer" },
+      "description": "Individual answers served and graded inside adaptive practice sessions."
     },
     "/knowledge_gaps/{gapId}": {
       "schema": { "$ref": "#/entities/KnowledgeGap" },

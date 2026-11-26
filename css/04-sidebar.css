@@ -79,7 +79,7 @@ button.notif-btn .nb{position:absolute;top:-5px;right:-5px;min-width:18px;height
 /* Sidebar theo vai trò: giáo viên và học sinh đặt bên trái màn hình rộng,
    chuyển thành thanh điều hướng phía trên ở màn hình hẹp. */
 @media(min-width:901px){
-  .teacher-layout{grid-template-columns:236px minmax(0,1fr)!important;gap:clamp(20px,3vw,40px)}
+  .teacher-layout{grid-template-columns:196px minmax(0,1fr)!important;gap:clamp(20px,3vw,40px)}
   .teacher-layout .side{position:sticky;top:80px;width:auto;align-self:start;padding:12px!important;border-radius:18px;background:var(--surface);box-shadow:var(--shadow);overflow:visible}
   .teacher-navgrid{grid-template-columns:minmax(0,1fr);gap:4px}
   .teacher-navgrid .nav{flex-direction:row;justify-content:flex-start;align-items:center;height:auto;min-height:42px;padding:9px 12px!important;gap:11px;text-align:left;white-space:normal;font-size:.9rem!important;line-height:1.3}
@@ -108,25 +108,25 @@ button.notif-btn .nb{position:absolute;top:-5px;right:-5px;min-width:18px;height
 /* Sidebar thành một dải điều hướng riêng, không còn là thẻ nổi */
 @media(min-width:901px){
   .layout,.layout.teacher-layout{max-width:none;width:100%;margin:0;padding:0;grid-template-columns:260px minmax(0,1fr)!important;gap:0;min-height:calc(100vh - 56px)}
-  .layout>.side{position:sticky;top:56px;align-self:start;width:auto;height:calc(100vh - 56px);min-height:calc(100vh - 56px);overflow-y:auto;padding:24px 14px!important;border-radius:0;background:#1e2f53;color:#f5f7ff;box-shadow:none;border-right:1px solid rgba(255,255,255,.08)}
-  .layout>.side .grp h2{color:rgba(245,247,255,.62)}
-  .layout>.side .nav{color:rgba(245,247,255,.88)}
-  .layout>.side .nav .ic{color:rgba(245,247,255,.72)}
-  .layout>.side .nav:hover{background:rgba(255,255,255,.09)}
-  .layout>.side .nav[aria-current="page"]{background:rgba(255,255,255,.17);color:#fff}
-  .layout>.side .nav[aria-current="page"] .ic{color:#fff}
-  .layout>.side .side-note{color:rgba(245,247,255,.58)}
+  .layout>.side{position:sticky;top:56px;align-self:start;width:auto;height:calc(100vh - 56px);min-height:calc(100vh - 56px);overflow-y:auto;padding:24px 14px!important;border-radius:0;background:#1a4f4c;color:#f2faf8;box-shadow:none;border-right:1px solid rgba(255,255,255,.10)}
+  .layout>.side .grp h2{color:rgba(242,250,248,.66)}
+  .layout>.side .nav{color:rgba(242,250,248,.90)}
+  .layout>.side .nav .ic{color:rgba(242,250,248,.76)}
+  .layout>.side .nav:hover{background:rgba(255,255,255,.10)}
+  .layout>.side .nav[aria-current="page"]{background:#ffffff;color:#154946}
+  .layout>.side .nav[aria-current="page"] .ic{color:#154946}
+  .layout>.side .side-note{color:rgba(242,250,248,.62)}
   .layout>.side .side-note b{color:#fff}
   .layout>.main{min-width:0;padding:28px clamp(20px,3vw,44px)}
 }
 @media(max-width:900px){
   .layout,.layout.teacher-layout{max-width:none;width:100%;margin:0;padding:0 0 18px;gap:12px}
-  .layout>.side{margin:0;top:56px;border-radius:0;background:#1e2f53;color:#f5f7ff;box-shadow:none;border-bottom:1px solid rgba(255,255,255,.08);-webkit-backdrop-filter:none;backdrop-filter:none}
-  .layout>.side .nav{color:rgba(245,247,255,.88)}
-  .layout>.side .nav .ic{color:rgba(245,247,255,.72)}
-  .layout>.side .nav:hover{background:rgba(255,255,255,.09)}
-  .layout>.side .nav[aria-current="page"]{background:rgba(255,255,255,.17);color:#fff}
-  .layout>.side .nav[aria-current="page"] .ic{color:#fff}
+  .layout>.side{margin:0;top:56px;border-radius:0;background:#1a4f4c;color:#f2faf8;box-shadow:none;border-bottom:1px solid rgba(255,255,255,.10);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .layout>.side .nav{color:rgba(242,250,248,.90)}
+  .layout>.side .nav .ic{color:rgba(242,250,248,.76)}
+  .layout>.side .nav:hover{background:rgba(255,255,255,.10)}
+  .layout>.side .nav[aria-current="page"]{background:#ffffff;color:#154946}
+  .layout>.side .nav[aria-current="page"] .ic{color:#154946}
   .layout>.main{min-width:0;padding:0 14px 16px}
 }
 
@@ -161,14 +161,14 @@ button.notif-btn .nb{position:absolute;top:-5px;right:-5px;min-width:18px;height
   .layout.sidebar-collapsed>.side .side-note{display:none!important}
   .layout.sidebar-collapsed>.side .nav{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:none;width:42px;min-width:42px;height:42px;min-height:42px;padding:8px!important;margin:0;gap:0}
   .layout.sidebar-collapsed>.side .nav .ic{width:19px;height:19px}
-  .layout.sidebar-collapsed>.side .side-toggle{margin:0 0 0 auto;position:sticky;right:0;align-self:center;background:#263b63}
+  .layout.sidebar-collapsed>.side .side-toggle{margin:0 0 0 auto;position:sticky;right:0;align-self:center;background:#1f5e5a}
 }
 
 
 
 /* Nhóm chức năng học sinh phân cấp rõ ràng hơn các mục con */
 @media(min-width:901px){
-  .layout:not(.teacher-layout)>.side .grp h2{font:700 .88rem/1.25 var(--font-head);letter-spacing:.025em;color:#c9ddff;padding:9px 12px;margin:0 0 6px;border-left:3px solid #63a8ff;background:rgba(255,255,255,.055);border-radius:0 9px 9px 0}
+  .layout:not(.teacher-layout)>.side .grp h2{font:700 .72rem/1.25 var(--font-head);letter-spacing:.06em;text-transform:uppercase;color:rgba(242,250,248,.72);padding:6px 10px 2px;margin:0 0 4px;background:none;border-radius:8px}
 }
 
 
@@ -202,7 +202,7 @@ button.notif-btn .nb{position:absolute;top:-5px;right:-5px;min-width:18px;height
 
 /* Giá viên dùng cùng cấu trúc sidebar nhóm + hàng điều hướng như học sinh */
 @media(min-width:901px){
-  .teacher-layout>.side .grp h2{font:700 .88rem/1.25 var(--font-head);letter-spacing:.025em;color:#c9ddff;padding:9px 12px;margin:0 0 6px;border-left:3px solid #63a8ff;background:rgba(255,255,255,.055);border-radius:0 9px 9px 0}
+  .teacher-layout>.side .grp h2{font:700 .72rem/1.25 var(--font-head);letter-spacing:.06em;text-transform:uppercase;color:rgba(242,250,248,.72);padding:6px 10px 2px;margin:0 0 4px;background:none;border-radius:8px}
   .teacher-layout>.side .grp{margin-top:14px}
   .teacher-layout>.side .grp:first-child{margin-top:0}
   .teacher-layout>.side .items{display:grid;grid-template-columns:minmax(0,1fr);gap:4px}
@@ -226,7 +226,7 @@ button.notif-btn .nb{position:absolute;top:-5px;right:-5px;min-width:18px;height
 @media(min-width:901px){
   .teacher-layout>.side .items .nav{justify-content:flex-start;text-align:left;padding-left:24px!important}
   .teacher-layout>.side .items .nav .ic{width:18px;height:18px;flex:none}
-  .layout:not(.sidebar-collapsed){grid-template-columns:var(--sidebar-width,268px) minmax(0,1fr)!important}
+  .layout:not(.sidebar-collapsed){grid-template-columns:var(--sidebar-width,196px) minmax(0,1fr)!important}
   .side{position:relative}
 }
 

@@ -4,7 +4,7 @@
 DB_PAGES.classes = {
   noClass: true,
   title: () => (dbIsTeacher() ? 'Lớp học phụ trách' : 'Lớp của em'),
-  sub: () => (dbIsTeacher() ? 'Mỗi lớp có một mã lớp. Học sinh dùng mã này để tự vào lớp.' : 'Vào lớp bằng mã do giáo viên cung cấp.'),
+  sub: () => (dbIsTeacher() ? 'Mỗi lớp có một mã lớp. Học sinh dùng mã này để tự vào lớp.' : (DB.classes.length ? 'Mỗi môn học là một hồ sơ lớp riêng cùng khối. Bấm vào tên lớp để chuyển giữa các môn đang học.' : 'Vào lớp bằng mã do giáo viên cung cấp.')),
   async load() {
     await dbLoadClasses();
     if (DB.classId && (!DB.course || DB.course.class_id !== DB.classId)) await dbLoadCourse();
@@ -112,16 +112,29 @@ function dbClassMembersPanel(c, d) {
 
 function dbClassesStudent(d) {
   const joined = Object.fromEntries((d.members || []).map((m) => [m.class_id, m.joined_at]));
-  const cards = DB.classes.map((c) => `<div class="classcard${c.id === DB.classId ? ' selected' : ''}">
-      <div class="classcard-top"><button type="button" class="classcard-name" data-act="selectClass" data-id="${h(c.id)}" ${c.id === DB.classId ? 'aria-current="true"' : ''}><b>${h(c.name)}</b></button></div>
+  const canSwitch = DB.classes.length > 1;
+  const cards = DB.classes.map((c) => {
+    const isCurrent = c.id === DB.classId;
+    const subj = ((d.courses || {})[c.id] || {}).title || 'Chưa thiết lập';
+    const titleMarkup = canSwitch
+      ? `<button type="button" class="classcard-name" data-act="selectClass" data-id="${h(c.id)}" ${isCurrent ? 'aria-current="true"' : ''}><b>${h(c.name)}</b></button>`
+      : `<div class="classcard-name"><b>${h(c.name)}</b></div>`;
+    const badge = isCurrent ? '<span class="pill good">Đang học</span>' : '<span class="pill">Bấm để mở</span>';
+    return `<div class="classcard${isCurrent ? ' selected' : ''}">
+      <div class="classcard-top">${titleMarkup}${badge}</div>
+      <div class="meta">Môn học: <b>${h(subj)}</b></div>
       <div class="meta">${dbClassMeta(c)}</div>
-      <div class="meta">Môn học: <b>${h(((d.courses || {})[c.id] || {}).title || 'Chưa thiết lập')}</b></div>
       <div class="meta">Giáo viên: <b>${h(dbName(d.profiles[c.owner_teacher_id]))}</b></div>
       ${joined[c.id] ? `<div class="meta">Vào lớp lúc ${dbDateTime(joined[c.id])}</div>` : ''}
-    </div>`).join('');
+    </div>`;
+  }).join('');
+  const joinHint = DB.classes.length
+    ? '<p class="lead">Em có thể nhập mã lớp để tham gia thêm các môn học khác trong cùng khối lớp do giáo viên bộ môn khác phụ trách (không thể vào lớp khác cùng môn học, cùng giáo viên, hoặc khác khối lớp).</p>'
+    : '<p class="lead">Nhập mã lớp do giáo viên cung cấp để tham gia lớp học.</p>';
   return `
   <section class="panel" aria-labelledby="db-h-join">
     <h2 id="db-h-join">Vào lớp bằng mã</h2>
+    ${joinHint}
     <form data-act="joinClass" class="db-form-row" novalidate>
       ${dbField('Mã lớp', 'db-join-code-input', `<input id="db-join-code-input" name="code" maxlength="12" placeholder="Ví dụ: 3FA9C2D1" autocomplete="off" autocapitalize="characters" required>`)}
       <button type="submit" class="btn">Vào lớp</button>
@@ -130,12 +143,18 @@ function dbClassesStudent(d) {
   </section>
   <section class="panel" aria-labelledby="db-h-classes">
     <h2 id="db-h-classes">Lớp đang học</h2>
-    ${cards ? `<p class="lead">Bấm vào tên lớp để chọn lớp đang xem.</p><div class="grid db-class-grid">${cards}</div>` : dbEmpty('Em chưa vào lớp nào.')}
+    ${cards ? `<div class="grid db-class-grid">${cards}</div>` : dbEmpty('Em chưa vào lớp nào.')}
   </section>`;
 }
 
 /* ===== Thao tác ===== */
-DB_ACT.selectClass = (el) => dbSetClass(el.dataset.id, 'classes');
+DB_ACT.selectClass = (el) => {
+  if (!DB.classes.some((c) => c.id === el.dataset.id)) {
+    toast(dbIsTeacher() ? 'Không tìm thấy lớp thuộc quyền quản lý của bạn.' : 'Em chưa tham gia lớp học này.');
+    return;
+  }
+  dbSetClass(el.dataset.id, 'classes');
+};
 DB_ACT.copyCode = async (el) => {
   try { await navigator.clipboard.writeText(el.dataset.code); toast('Đã sao chép mã lớp ' + el.dataset.code + '.'); }
   catch (_) { toast('Không sao chép tự động được. Mã lớp: ' + el.dataset.code); }
@@ -211,6 +230,7 @@ DB_ACT.addStudent = (form) => dbRun(form, async (v) => {
   if (r === 'ADDED') return void toast('Đã thêm ' + email + ' vào lớp.');
   throw new Error({
     ALREADY_MEMBER: 'Học sinh này đã ở trong lớp.',
+    ALREADY_IN_OTHER_CLASS: 'Học sinh này đã thuộc một lớp khác của bạn. Hãy gỡ khỏi lớp cũ trước khi thêm vào lớp mới.',
     NOT_FOUND: 'Chưa có tài khoản nào dùng email này. Học sinh cần đăng ký tài khoản trước, hoặc tự vào lớp bằng mã lớp.',
     NOT_A_STUDENT: 'Email này thuộc tài khoản giáo viên nên không thêm vào lớp như học sinh được.',
   }[r] || 'Không thêm được học sinh (' + r + ').');
@@ -271,6 +291,7 @@ DB_ACT.importClassStudents = async (el) => {
         if (result === 'ADDED') report.added.push(student);
         else if (result === 'NOT_FOUND') report.notFound.push(student);
         else if (result === 'ALREADY_MEMBER') report.alreadyMember.push(student);
+        else if (result === 'ALREADY_IN_OTHER_CLASS') report.failed.push({ ...student, reason: 'Học sinh đã thuộc lớp khác của bạn.' });
         else if (result === 'NOT_A_STUDENT') report.notStudent.push(student);
         else report.failed.push({ ...student, reason: 'Máy chủ trả về kết quả không xác định (' + String(result) + ').' });
       } catch (error) {
@@ -330,9 +351,11 @@ DB_ACT.removeMember = (el) => {
   }, true);
 };
 DB_ACT.joinClass = (form) => dbRun(form, async (v) => {
+  if (dbIsTeacher()) throw new Error('Chỉ tài khoản học sinh mới dùng mã để vào lớp.');
   const code = (v.code || '').trim().toUpperCase();
   if (!code) throw new Error('Nhập mã lớp.');
   const classId = await dbCall(EducMindDB.joinClass(code));
+  await dbLoadClasses(classId);
   DB.classId = classId; DB.course = null;
   try { localStorage.setItem('educmind.db.class', DB.classId); } catch (_) {}
   toast('Đã vào lớp.');

@@ -115,8 +115,7 @@ DB_PAGES.questions = {
       </tr>`;
     });
     return `<section class="panel" aria-labelledby="db-h-q">
-      <div class="row between"><div><h2 id="db-h-q">Câu hỏi của lớp</h2><p class="lead">${d.questions.length} câu hỏi</p></div>
-        <div class="row">${dbBtn('Xuất Excel', 'exportQuestions', {}, 'light')}</div></div>
+      <div class="row between"><div><h2 id="db-h-q">Câu hỏi của lớp</h2><p class="lead">${d.questions.length} câu hỏi</p></div></div>
       <div class="db-create-source" aria-label="Chọn cách tạo câu hỏi">
         <article class="db-create-source-card">
           <h3>Nhập từ Excel hoặc Word</h3>

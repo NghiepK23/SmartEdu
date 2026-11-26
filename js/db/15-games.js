@@ -550,7 +550,7 @@ function dbGameResult() {
   const best = !r.asked ? '' : r.isBest
     ? (r.hadBefore ? `🏆 Kỷ lục mới! (kỷ lục cũ: ${dbNum(r.prevBest)})` : '🏆 Ván đầu tiên ở chế độ này — kỷ lục của em đã được ghi!')
     : (r.hadBefore ? `Kỷ lục của em ở chế độ này: ${dbNum(r.prevBest)}` : '');
-  const confetti = r.isBest ? `<div class="db-game-confetti" aria-hidden="true">${Array.from({ length: 28 }, (_, i) => `<i style="left:${Math.round(Math.random() * 100)}%;animation-delay:${(Math.random() * 0.6).toFixed(2)}s;background:${['#f4b942', '#3978f6', '#e45c56', '#21a16b', '#9b59d0'][i % 5]}"></i>`).join('')}</div>` : '';
+  const confetti = r.isBest ? `<div class="db-game-confetti" aria-hidden="true">${Array.from({ length: 28 }, (_, i) => `<i style="left:${Math.round(Math.random() * 100)}%;animation-delay:${(Math.random() * 0.6).toFixed(2)}s;background:${['#d99b43', '#3b7d8c', '#c85a53', '#218b6e', '#2f8f85'][i % 5]}"></i>`).join('')}</div>` : '';
   const review = r.wrong.length
     ? `<h3 class="db-game-review-title">Xem lại ${r.wrong.length} câu chưa đúng</h3><ol class="db-game-review">${r.wrong.map((w) => {
         const mine = dbGameAnswerText(w.q, w.chosen) || 'Hết giờ — chưa trả lời';

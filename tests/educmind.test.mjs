@@ -326,10 +326,16 @@ test('URL hash routing, role normalization, F5 restore, and auth hash protection
   await ctx.dbGo('assessments', { id: 'ex-2' });
   assert.equal(locationObj.hash, '#/assessments?class=c2&id=ex-2');
 
-  // Class switch updates URL hash
+  // Class switch updates URL hash when switching among enrolled classes, and blocks unknown classes
   await ctx.dbSetClass('c1', 'home', {});
   assert.equal(evalExpr('DB.classId'), 'c1');
   assert.equal(locationObj.hash, '#/home?class=c1');
+  await ctx.dbSetClass('c-not-enrolled', 'home', {});
+  assert.equal(evalExpr('DB.classId'), 'c1');
+  assert.equal(locationObj.hash, '#/home?class=c1');
+  await ctx.dbSetClass('c2', 'assessments', { id: 'ex-2' });
+  assert.equal(evalExpr('DB.classId'), 'c2');
+  assert.equal(locationObj.hash, '#/assessments?class=c2&id=ex-2');
 
   // Browser Back (hashchange) should restore route via history:'pop' without pushing another entry
   locationObj.hash = '#/assignments?class=c2&id=asg-9';
@@ -346,6 +352,22 @@ test('URL hash routing, role normalization, F5 restore, and auth hash protection
   locationObj.hash = '#access_token=tok&type=recovery';
   ctx.dbClearRouteHash();
   assert.equal(locationObj.hash, '#access_token=tok&type=recovery');
+});
+
+test('Course config thresholds are persisted and clamped (js/03-firebase.js)', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'js/03-firebase.js'), 'utf8');
+  assert.ok(src.includes('COURSE_CONFIG_NUMERIC'), 'updateCourse whitelists config thresholds');
+  for (const key of ['practice_weight', 'practice_session_length', 'dash_reteach_share', 'dash_inactive_days']) {
+    assert.ok(src.includes(`'${key}'`), `threshold ${key} can be saved`);
+  }
+  assert.ok(/COURSE_CONFIG_RANGE\[k\]/.test(src), 'values are clamped to a valid range');
+  // saveDashSettings đọc input theo data-field, nên mọi ô cài đặt phải có thuộc tính này.
+  const content = fs.readFileSync(path.join(ROOT, 'js/db/04-content.js'), 'utf8');
+  const overview = fs.readFileSync(path.join(ROOT, 'js/db/18-class-overview.js'), 'utf8');
+  for (const key of ['dash_reteach_share', 'dash_min_students', 'dash_advanced_threshold', 'dash_inactive_days']) {
+    assert.ok(overview.includes(`data-field="${key}"`), `class overview input exposes ${key}`);
+  }
+  assert.ok(content.includes("data-field=\"dash_reteach_share\""), 'content page exposes the same thresholds');
 });
 
 test('Exam F5 auto-resume guard and timer formatting (js/db/08-exam.js)', async () => {
@@ -691,8 +713,110 @@ test('OOXML Excel/Word builders and vendored xlsx/mammoth browser bundles', asyn
   // Confirm index.html has no third-party CDN script tags left and vendored libs exist for lazy load
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   assert.doesNotMatch(html, /cdnjs\.cloudflare\.com/);
-  assert.match(html, /src="js\/vendor\/supabase-js\.min\.js"/);
+  assert.match(html, /src="js\/vendor\/firebase-sdk\.min\.js"/);
   assert.ok(fs.existsSync(path.join(ROOT, 'js/vendor/xlsx.full.min.js')));
   assert.ok(fs.existsSync(path.join(ROOT, 'js/vendor/mammoth.browser.min.js')));
 });
+
+test('Student multi-subject same-grade enrollment rules (js/03-firebase.js)', () => {
+  const fbSandbox = {
+    console,
+    Date,
+    Math,
+    JSON,
+    Number,
+    String,
+    Boolean,
+    Array,
+    Object,
+    Set,
+    Map,
+    RegExp,
+    Error,
+    TextEncoder,
+    crypto: globalThis.crypto,
+    window: {},
+  };
+  fbSandbox.window = fbSandbox;
+  fbSandbox.globalThis = fbSandbox;
+  const fbCtx = vm.createContext(fbSandbox);
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/03-firebase.js'), 'utf8'), fbCtx, { filename: 'js/03-firebase.js' });
+
+  // Subject normalization collapses grade suffixes and common Vietnamese abbreviations
+  assert.equal(fbCtx.educMindNormalizeSubject('Tin học'), 'tin hoc');
+  assert.equal(fbCtx.educMindNormalizeSubject('Tin học 10'), 'tin hoc');
+  assert.equal(fbCtx.educMindNormalizeSubject('Tin'), 'tin hoc');
+  assert.equal(fbCtx.educMindNormalizeSubject('Toán'), 'toan');
+  assert.equal(fbCtx.educMindNormalizeSubject('Ngữ văn 10'), 'ngu van');
+  assert.equal(fbCtx.educMindNormalizeSubject('Vật lí'), 'vat ly');
+  assert.equal(fbCtx.educMindNormalizeSubject('Lý'), 'vat ly');
+  assert.equal(fbCtx.educMindNormalizeSubject('Hóa học 10'), 'hoa hoc');
+
+  // Grade inference handles explicit grade, class name prefix, and subject suffix without false positives on years
+  assert.equal(fbCtx.educMindInferClassGrade(10, 'Tin nâng cao', 'Tin học'), 10);
+  assert.equal(fbCtx.educMindInferClassGrade(null, '10A1', 'Tin học'), 10);
+  assert.equal(fbCtx.educMindInferClassGrade(null, 'Lớp 9B', 'Toán'), 9);
+  assert.equal(fbCtx.educMindInferClassGrade(null, 'Chuyên Toán', 'Toán 11'), 11);
+  assert.equal(fbCtx.educMindInferClassGrade(null, '2026-2027', 'Tin học'), null);
+
+  // Student H enrolled in Thầy A's Tin học 10 (10A1)
+  const activeClasses = [{ id: 'c-tin-a', name: '10A1', grade: 10, owner_teacher_id: 'teacher-A' }];
+  const coursesByClass = { 'c-tin-a': { id: 'c-tin-a', class_id: 'c-tin-a', title: 'Tin học' } };
+
+  // 1. Blocked: another class of the SAME teacher (Thầy A)
+  assert.throws(
+    () => fbCtx.educMindValidateStudentJoin({
+      activeClasses,
+      coursesByClass,
+      target: { classId: 'c-other-a', teacherId: 'teacher-A', className: '10A2', grade: 10, subject: 'Toán' },
+    }),
+    /cùng giáo viên/,
+  );
+
+  // 2. Blocked: another class of the SAME subject (Cô B teaching Tin 10)
+  assert.throws(
+    () => fbCtx.educMindValidateStudentJoin({
+      activeClasses,
+      coursesByClass,
+      target: { classId: 'c-tin-b', teacherId: 'teacher-B', className: '10A2', grade: 10, subject: 'Tin học 10' },
+    }),
+    /cùng môn/,
+  );
+
+  // 3. Blocked: smaller or larger grade levels (Khối 9 or Khối 11)
+  assert.throws(
+    () => fbCtx.educMindValidateStudentJoin({
+      activeClasses,
+      coursesByClass,
+      target: { classId: 'c-toan-9', teacherId: 'teacher-C', className: '9A1', grade: 9, subject: 'Toán' },
+    }),
+    /Khối 9/,
+  );
+  assert.throws(
+    () => fbCtx.educMindValidateStudentJoin({
+      activeClasses,
+      coursesByClass,
+      target: { classId: 'c-toan-11', teacherId: 'teacher-C', className: '11A1', grade: 11, subject: 'Toán' },
+    }),
+    /Khối 11/,
+  );
+
+  // 4. Allowed: different teachers & different subjects in the SAME grade (Toán, Văn, Lý, Hóa lớp 10)
+  for (const [id, tId, subj] of [
+    ['c-toan-10', 'teacher-C', 'Toán'],
+    ['c-van-10', 'teacher-D', 'Ngữ văn'],
+    ['c-ly-10', 'teacher-E', 'Vật lí'],
+    ['c-hoa-10', 'teacher-F', 'Hóa học'],
+  ]) {
+    assert.equal(
+      fbCtx.educMindValidateStudentJoin({
+        activeClasses,
+        coursesByClass,
+        target: { classId: id, teacherId: tId, className: '10A1', grade: 10, subject: subj },
+      }).ok,
+      true,
+    );
+  }
+});
+
 

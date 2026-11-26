@@ -69,7 +69,7 @@ function dbAssessmentTeacherList(d) {
     </details>`;
   });
   return `<section class="panel" aria-labelledby="db-h-ex">
-    <div class="row between"><div><h2 id="db-h-ex">Bài kiểm tra của lớp</h2><p class="lead">${d.assessments.length} bài kiểm tra · mở từng thẻ để soạn đề, xem lượt làm và chấm điểm.</p></div>${dbBtn(ic('plus', 16) + 'Tạo bài kiểm tra', 'go', { page: 'assessments', edit: 'new' })}</div>
+    <div class="row between"><div><h2 id="db-h-ex">Bài kiểm tra của lớp</h2><p class="lead">${d.assessments.length} bài kiểm tra · mở từng thẻ để soạn đề, xem lượt làm và chấm điểm.</p></div></div>
     ${cards.length ? cards.join('') : dbEmpty('Chưa có bài kiểm tra nào.')}
   </section>`;
 }
@@ -105,6 +105,7 @@ function dbAssessmentForm(d, e) {
         ${dbField('Mở lúc', 'db-ef-open', dbDatetimeField('db-ef-open', 'open', open, lockAttr, minimum))}
         ${dbField('Đóng lúc', 'db-ef-close', dbDatetimeField('db-ef-close', 'close', close, lockAttr, minimum), 'Lượt làm kết thúc theo mốc đến trước: hết thời lượng hoặc đến giờ đóng bài.')}
       </div>
+      ${dbAiSwitchHtml('assessment', e ? e.student_ai_enabled !== false : true, 'Học sinh được dùng Trợ lý AI khi làm bài kiểm tra này', 'Trong lúc đang làm bài, Trợ lý AI luôn bị khoá cho tới khi nộp bài.')}
       ${dbFormError()}
       <div class="row db-form-actions">${dbBtn('Hủy', 'go', e ? { page: 'assessments', id: e.id } : { page: 'assessments' }, 'light')}<button type="submit" class="btn">${e ? 'Lưu thiết lập' : 'Tạo bản nháp và tiếp tục'}</button></div>
     </form>
@@ -127,7 +128,7 @@ DB_ACT.saveAssessment = (form) => dbRun(form, async (v) => {
   }
   if (new Date(close) <= new Date(open)) throw new Error('Thời điểm đóng phải sau thời điểm mở.');
   const course = await dbEnsureCourse();
-  const row = { title: String(v.title).trim(), lesson_id: settingsLocked ? current.lesson_id : (v.lesson_id || null), duration_minutes: duration, max_attempts: attempts, open_at: open, close_at: close };
+  const row = { title: String(v.title).trim(), lesson_id: settingsLocked ? current.lesson_id : (v.lesson_id || null), duration_minutes: duration, max_attempts: attempts, open_at: open, close_at: close, student_ai_enabled: v.student_ai_enabled !== false };
   const e = id ? await dbCall(EducMindDB.updateAssessment(id, { ...row, topic_id: null })) : await dbCall(EducMindDB.createAssessment({ ...row, course_id: course.id }));
   toast(id ? 'Đã lưu thiết lập bài kiểm tra.' : 'Đã tạo bản nháp. Tiếp tục thêm câu hỏi từ các nguồn bạn muốn.');
   await dbGo('assessments', { id: e.id, tab: 'questions' });
@@ -173,6 +174,7 @@ function dbAssessmentTeacherDetail(d, e) {
       <div class="db-fact-time"><span>Mở bài</span><b>${dbDateTime(e.open_at)}</b></div><div class="db-fact-time"><span>Đóng bài</span><b>${dbDateTime(e.close_at)}</b></div>
       <div><span>Thời lượng mỗi lượt</span><b>${h(e.duration_minutes)} phút</b></div><div><span>Số lượt tối đa</span><b>${h(e.max_attempts)}</b></div>
       <div class="db-fact-score"><span>Điểm tối đa</span><b>${dbNum(total)} điểm · ${aq.length} câu</b></div><div class="db-fact-lesson"><span>Bài học</span><b>${dbLessonTitle(d, e.lesson_id) || 'Chưa gắn bài học'}</b></div>
+      <div><span>Trợ lý AI khi làm bài</span><b>${e.student_ai_enabled === false ? 'Học sinh không được dùng' : 'Học sinh được dùng (khoá trong lúc làm)'}</b></div>
     </div>
   </section>
   <div class="seg" role="tablist" aria-label="Phần của bài kiểm tra">

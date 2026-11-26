@@ -4,36 +4,47 @@
    Chuyển động không khóa thao tác · giảm chuyển động / giảm trong suốt / tương phản cao · sáng và tối */
 :root{
   color-scheme:light dark;
-  --bg:#f1f6fd;--surface:#ffffff;--fill:#eef4fc;--fill-2:#e2ecfa;
-  --ink:#0f172a;--muted:#475569;--subtle:#64748b;
-  --line:rgba(15,42,86,.09);--line-strong:rgba(15,42,86,.18);--track:rgba(15,42,86,.10);
-  --brand:#2563eb;--brand-ink:#1d4ed8;--brand-soft:rgba(37,99,235,.12);
-  --good:#059669;--good-soft:#d1fae5;--good-bar:#10b981;
-  --prog:#0284c7;--prog-soft:#e0f2fe;--prog-bar:#0ea5e9;
-  --need:#d97706;--need-soft:#fef3c7;--need-bar:#f59e0b;
-  --err-bg:#fee2e2;--err-ink:#b91c1c;
-  --glass:rgba(255,255,255,.82);--glass-line:rgba(15,42,86,.09);
-  --btn-light:rgba(37,99,235,.07);--btn-light-hover:rgba(37,99,235,.12);
-  --shadow:0 0 0 .5px var(--line),0 1px 2px rgba(15,35,70,.04),0 10px 26px -14px rgba(15,35,70,.10);
-  --shadow-lg:0 0 0 .5px rgba(15,35,70,.10),0 24px 64px -16px rgba(15,35,70,.24);
+  --bg:#eef2f1;--surface:#ffffff;--fill:#eef4f2;--fill-2:#e1ece8;
+  --ink:#132226;--muted:#526468;--subtle:#6b7d81;
+  --line:rgba(19,34,38,.09);--line-strong:rgba(19,34,38,.18);--track:rgba(19,34,38,.10);
+  --brand:#1f6f6b;--brand-ink:#165451;--brand-soft:rgba(31,111,107,.12);
+  /* Logo EducMind: một gradient xanh dương → tím, dùng cho mọi vị trí (màn hình đăng nhập,
+     thanh trên, đầu thanh điều hướng). Đổi ở đây là đổi đồng loạt. */
+  --brand-logo-grad:linear-gradient(145deg,#4f8ef7 0%,#6f5bd6 52%,#8b4bc4 100%);
+  --brand-logo-shadow:rgba(79,110,220,.42);
+  --brand-logo-accent:#6f5bd6;
+  --cta-bg:#1f6f6b;--cta-bg-hover:#175754;--cta-ink:#ffffff;
+  --good:#1d8358;--good-soft:#daf3e7;--good-bar:#218b6e;
+  --prog:#2e6f8e;--prog-soft:#e1f0f6;--prog-bar:#3b7d8c;
+  --need:#b97319;--need-soft:#fbf0da;--need-bar:#d99b43;
+  --err-bg:#fbe8e7;--err-ink:#a83832;
+  --glass:rgba(255,255,255,.86);--glass-line:rgba(19,34,38,.09);
+  --btn-light:rgba(31,111,107,.07);--btn-light-hover:rgba(31,111,107,.13);
+  --shadow:0 0 0 .5px var(--line),0 1px 2px rgba(19,34,38,.04),0 10px 26px -14px rgba(19,34,38,.09);
+  --shadow-lg:0 0 0 .5px rgba(19,34,38,.10),0 24px 64px -16px rgba(19,34,38,.22);
   --radius:22px;--radius-sm:14px;
   --ease:cubic-bezier(.2,.9,.25,1);
   --font-head:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI Variable Display","Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif;
   --font-body:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif;
 }
 :root[data-theme="dark"]{
-  --bg:#0b1120;--surface:#131c31;--fill:#1b2742;--fill-2:#243354;
-  --ink:#f8fafc;--muted:#94a3b8;--subtle:#94a3b8;
-  --line:rgba(226,238,255,.10);--line-strong:rgba(226,238,255,.22);--track:rgba(226,238,255,.14);
-  --brand:#38bdf8;--brand-ink:#7dd3fc;--brand-soft:rgba(56,189,248,.18);
-  --good:#34d399;--good-soft:rgba(16,185,129,.18);--good-bar:#10b981;
-  --prog:#60a5fa;--prog-soft:rgba(59,130,246,.20);--prog-bar:#3b82f6;
-  --need:#fbbf24;--need-soft:rgba(245,158,11,.18);--need-bar:#f59e0b;
-  --err-bg:rgba(239,68,68,.18);--err-ink:#fca5a5;
-  --glass:rgba(19,28,49,.80);--glass-line:rgba(226,238,255,.12);
-  --btn-light:rgba(226,238,255,.10);--btn-light-hover:rgba(226,238,255,.16);
+  --bg:#0d1316;--surface:#141d21;--fill:#1b262b;--fill-2:#233138;
+  --ink:#edf4f2;--muted:#98acab;--subtle:#8ca1a0;
+  --line:rgba(220,238,234,.10);--line-strong:rgba(220,238,234,.22);--track:rgba(220,238,234,.14);
+  --brand:#48b8ae;--brand-ink:#7be0d7;--brand-soft:rgba(72,184,174,.18);
+  /* Bản tối: sáng hơn một nhịp để gradient nổi trên nền than. */
+  --brand-logo-grad:linear-gradient(145deg,#6ba4ff 0%,#8f7bf0 52%,#b06ce0 100%);
+  --brand-logo-shadow:rgba(8,16,34,.62);
+  --brand-logo-accent:#a58cf0;
+  --cta-bg:#36988f;--cta-bg-hover:#48b8ae;--cta-ink:#081c1b;
+  --good:#4cc38a;--good-soft:rgba(33,139,110,.20);--good-bar:#2ea47e;
+  --prog:#63b3cb;--prog-soft:rgba(59,125,140,.22);--prog-bar:#4c9eb5;
+  --need:#eab354;--need-soft:rgba(217,155,67,.20);--need-bar:#d99b43;
+  --err-bg:rgba(200,90,83,.20);--err-ink:#f5a9a4;
+  --glass:rgba(20,29,33,.84);--glass-line:rgba(220,238,234,.12);
+  --btn-light:rgba(220,238,234,.09);--btn-light-hover:rgba(220,238,234,.15);
   --shadow:0 0 0 .5px var(--line);
-  --shadow-lg:0 0 0 .5px rgba(226,238,255,.12),0 24px 64px -16px rgba(2,6,23,.78);
+  --shadow-lg:0 0 0 .5px rgba(220,238,234,.12),0 24px 64px -16px rgba(4,10,12,.78);
 }
 *{box-sizing:border-box}
 html{scroll-padding-top:92px;-webkit-text-size-adjust:100%;color-scheme:light}
@@ -78,10 +89,10 @@ button{font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;touch
   background:var(--glass);-webkit-backdrop-filter:saturate(180%) blur(22px);backdrop-filter:saturate(180%) blur(22px);
   box-shadow:inset 0 -.5px 0 var(--glass-line)}
 .logo{display:flex;align-items:center;gap:10px;font:750 1.1875rem/1 var(--font-head);letter-spacing:-.035em;color:var(--ink);white-space:nowrap}
-.logo-mark{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:11px;background:linear-gradient(145deg,#3b82f6 0%,#1d4ed8 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.38),0 4px 10px -4px rgba(29,78,216,.45);overflow:hidden}
+.logo-mark{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:11px;background:var(--brand-logo-grad);box-shadow:inset 0 1px 0 rgba(255,255,255,.38),0 4px 12px -4px var(--brand-logo-shadow);overflow:hidden}
 .logo-mark svg{display:block;width:28px;height:28px}
 .logo-word{display:inline-flex;align-items:baseline;gap:0;font-size:1.02em;letter-spacing:-.04em}
-.logo-word strong{font-weight:760}.logo-word i{color:var(--brand-ink);font-style:normal;font-weight:620}
+.logo-word strong{font-weight:760}.logo-word i{color:var(--brand-logo-accent,var(--brand-ink));font-style:normal;font-weight:620}
 .login .logo{justify-content:center;gap:14px;width:100%;margin:0 auto 8px;padding-top:20px}.login .logo-mark{width:54px;height:54px;border-radius:16px}.login .logo-mark svg{width:43px;height:43px}.login .logo-word{font-size:1.55rem;letter-spacing:-.045em}.login h1{margin-top:18px}
 .spacer{flex:1}
 .user{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.8125rem;letter-spacing:.005em}
@@ -89,14 +100,14 @@ button{font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;touch
 .avatar>img{width:100%;height:100%;object-fit:cover;display:block}
 .avatar-pick{display:grid;place-items:center;flex:none;padding:0;border:0;border-radius:50%;background:transparent;cursor:pointer}
 .avatar-pick:hover{filter:brightness(.92)}.avatar-pick:focus-visible{outline:2px solid var(--brand);outline-offset:3px}
-.avatar.av-blue{background:#DBEAFE;color:#1D4ED8}
-.avatar.av-green{background:#DCFCE7;color:#15803D}
-.avatar.av-violet{background:#EDE9FE;color:#6D28D9}
-.avatar.av-amber{background:#FEF3C7;color:#B45309}
-.avatar.av-rose{background:#FFE4E6;color:#BE123C}
+.avatar.av-blue{background:#d8efe9;color:#165954}
+.avatar.av-green{background:#dff3e4;color:#1b6a46}
+.avatar.av-violet{background:#e0eef5;color:#24566e}
+.avatar.av-amber{background:#fbf0d9;color:#996018}
+.avatar.av-rose{background:#fbe6e6;color:#9e3c3c}
 
 /* ---------- Bố cục ---------- */
-.layout{max-width:1440px;margin:auto;padding:clamp(14px,2.4vw,28px);display:grid;grid-template-columns:236px minmax(0,1fr);gap:clamp(20px,3vw,40px)}
+.layout{max-width:1440px;margin:auto;padding:clamp(14px,2.4vw,28px);display:grid;grid-template-columns:196px minmax(0,1fr);gap:clamp(20px,3vw,40px)}
 .side{padding:0;height:max-content;position:sticky;top:80px}
 .grp{margin-top:22px}
 .grp:first-child{margin-top:0}
@@ -217,12 +228,12 @@ td{font-size:.84375rem}
 .panel .panel .notice,.dlg .notice{background:var(--surface)}
 .notice .ic{color:var(--brand);margin-top:2px}
 .login-wrap{position:relative;isolation:isolate;z-index:0;min-height:100vh;min-height:100svh;display:grid;place-items:center;padding:20px;background-color:var(--bg);background-position:center;background-size:cover;background-repeat:no-repeat}
-.login-wrap::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(135deg,rgba(11,22,40,.10),rgba(11,22,40,.02))}
-.login{position:relative;z-index:2;width:100%;max-width:440px;color-scheme:light;--bg:#f1f6fd;--surface:#ffffff;--fill:#eef4fc;--ink:#0f172a;--muted:#475569;--subtle:#64748b;--line:rgba(15,42,86,.09);--line-strong:rgba(15,42,86,.18);--brand:#2563eb;--brand-ink:#1d4ed8;--brand-soft:rgba(37,99,235,.12);--btn-light:rgba(37,99,235,.07);--btn-light-hover:rgba(37,99,235,.12);--err-bg:#fee2e2;--err-ink:#b91c1c;--shadow:0 0 0 .5px var(--line),0 1px 2px rgba(15,35,70,.05),0 8px 24px -12px rgba(15,35,70,.12);--shadow-lg:0 0 0 .5px rgba(15,35,70,.10),0 24px 64px -16px rgba(15,35,70,.24);background:var(--surface);background:color-mix(in srgb,var(--surface) 92%,transparent);border:1px solid var(--line-strong);padding:36px 32px;border-radius:30px;box-shadow:var(--shadow-lg);-webkit-backdrop-filter:saturate(160%) blur(20px);backdrop-filter:saturate(160%) blur(20px);color:var(--ink)}
-.login.login-dark{color-scheme:dark;--bg:#0b1120;--surface:#131c31;--fill:#1b2742;--ink:#f8fafc;--muted:#94a3b8;--subtle:#94a3b8;--line:rgba(226,240,255,.11);--line-strong:rgba(226,240,255,.22);--brand:#38bdf8;--brand-ink:#7dd3fc;--brand-soft:rgba(56,189,248,.18);--btn-light:rgba(226,240,255,.10);--btn-light-hover:rgba(226,240,255,.16);--err-bg:rgba(248,113,113,.18);--err-ink:#fca5a5;--shadow:0 0 0 .5px var(--line);--shadow-lg:0 24px 64px -16px rgba(2,6,23,.78)}
+.login-wrap::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(135deg,rgba(13,34,33,.10),rgba(13,34,33,.02))}
+.login{position:relative;z-index:2;width:100%;max-width:440px;color-scheme:light;--bg:#eef2f1;--surface:#ffffff;--fill:#eef4f2;--ink:#132226;--muted:#526468;--subtle:#6b7d81;--line:rgba(19,34,38,.09);--line-strong:rgba(19,34,38,.18);--brand:#1f6f6b;--brand-ink:#165451;--brand-soft:rgba(31,111,107,.12);--btn-light:rgba(31,111,107,.07);--btn-light-hover:rgba(31,111,107,.12);--err-bg:#fbe8e7;--err-ink:#a83832;--shadow:0 0 0 .5px var(--line),0 1px 2px rgba(19,34,38,.05),0 8px 24px -12px rgba(19,34,38,.12);--shadow-lg:0 0 0 .5px rgba(19,34,38,.10),0 24px 64px -16px rgba(19,34,38,.22);background:var(--surface);background:color-mix(in srgb,var(--surface) 94%,transparent);border:1px solid var(--line-strong);padding:36px 32px;border-radius:30px;box-shadow:var(--shadow-lg);-webkit-backdrop-filter:saturate(150%) blur(20px);backdrop-filter:saturate(150%) blur(20px);color:var(--ink)}
+.login.login-dark{color-scheme:dark;--bg:#0d1316;--surface:#141d21;--fill:#1b262b;--ink:#edf4f2;--muted:#98acab;--subtle:#8ca1a0;--line:rgba(220,238,234,.11);--line-strong:rgba(220,238,234,.22);--brand:#48b8ae;--brand-ink:#7be0d7;--brand-soft:rgba(72,184,174,.18);--btn-light:rgba(220,238,234,.10);--btn-light-hover:rgba(220,238,234,.16);--err-bg:rgba(200,90,83,.20);--err-ink:#f5a9a4;--shadow:0 0 0 .5px var(--line);--shadow-lg:0 24px 64px -16px rgba(4,10,12,.78)}
 .login-theme-toggle{position:absolute;top:14px;right:14px;z-index:4;display:grid;place-items:center;width:40px;height:40px;padding:0;border:1px solid var(--line-strong);border-radius:13px;background:var(--fill);color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.08);transition:transform .18s ease,background .18s ease}
 .login-theme-toggle:hover{transform:translateY(-1px);background:var(--brand-soft);color:var(--brand-ink)}.login-theme-toggle svg{width:20px;height:20px}
-:root[data-theme="dark"] .login-theme-toggle,:root[data-theme="dark"] .login-theme-toggle:hover{color:#fff}
+:root[data-theme="dark"] .login.login-dark .login-theme-toggle,:root[data-theme="dark"] .login.login-dark .login-theme-toggle:hover{color:#fff}
 .login-bg-controls,.app-bg-controls{position:fixed;right:18px;bottom:18px;z-index:30;font:400 14px/1.45 var(--font-body)}
 .login-bg-trigger,.app-bg-trigger{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 15px;border:1px solid var(--line-strong);border-radius:999px;background:var(--surface);color:var(--ink);font:650 13px/1.2 var(--font-body);box-shadow:var(--shadow-lg);cursor:pointer}
 .login-bg-trigger:hover,.app-bg-trigger:hover{transform:translateY(-1px)}

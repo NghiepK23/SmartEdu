@@ -4,9 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EducMind</title>
+<meta name="description" content="Hệ thống quản lý dạy học số phổ thông: quản lý lớp học, bài học, bài tập, kiểm tra tính giờ, phân tích lỗ hổng kiến thức và Trợ lý AI Gemini trên Firebase và Firestore.">
+<meta property="og:title" content="EducMind">
+<meta property="og:description" content="Hệ thống quản lý dạy học số phổ thông: quản lý lớp học, bài học, bài tập, kiểm tra tính giờ, phân tích lỗ hổng kiến thức và Trợ lý AI Gemini trên Firebase và Firestore.">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#f1f6fd" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#eef2f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d1316" media="(prefers-color-scheme: dark)">
 <!-- Giao diện: các tệp CSS phải giữ đúng thứ tự này (tệp sau ghi đè tệp trước). -->
 <link rel="stylesheet" href="css/01-base.css">
 <link rel="stylesheet" href="css/02-assignment-builder.css">
@@ -24,19 +27,22 @@
 <link rel="stylesheet" href="css/12c-db-games.css">
 <link rel="stylesheet" href="css/13-teacher-dashboard.css">
 <link rel="stylesheet" href="css/14-ai-chat.css">
+<link rel="stylesheet" href="css/15-class-overview.css">
+<link rel="stylesheet" href="css/16-practice.css">
+<link rel="stylesheet" href="css/17-progress-report.css">
 </head>
 <body>
 <a class="skip" href="#pageTitle">Bỏ qua điều hướng</a>
 <div id="app"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<!-- Thư viện ngoài (đóng gói cục bộ): Supabase (tải sẵn), SheetJS & Mammoth (tải lười khi nhập tệp). -->
-<script src="js/vendor/supabase-js.min.js"></script>
+<!-- Thư viện ngoài (đóng gói cục bộ): Firebase (tải sẵn), SheetJS & Mammoth (tải lười khi nhập tệp). -->
+<script src="js/vendor/firebase-sdk.min.js"></script>
 <!-- Mã ứng dụng: nạp ĐÚNG THỨ TỰ số ở đầu tên tệp. Tệp sau dùng hàm của tệp trước;
      xem README.md, mục “Cấu trúc mã nguồn”. -->
 <script src="js/00-grade-config.js"></script>
 <script src="js/02-state.js"></script>
 <script src="js/00-environment.local.js"></script>
-<script src="js/03-supabase.js"></script>
+<script src="js/03-firebase.js"></script>
 <script src="js/04-icons.js"></script>
 <script src="js/05-helpers.js"></script>
 <script src="js/06-shell.js"></script>
@@ -44,14 +50,14 @@
 <script src="js/09-render.js"></script>
 <script src="js/18-student-dashboard.js"></script>
 <script src="js/30-auth-session.js"></script>
-<script src="js/31-supabase-screens.js"></script>
+<script src="js/31-firebase-screens.js"></script>
 <script src="js/32-auth-flows.js"></script>
 <script src="js/33-login-screen.js"></script>
 <script src="js/37-avatar-ownership.js"></script>
 <script src="js/45-import-dialog.js"></script>
 <script src="js/46-file-readers.js"></script>
 <script src="js/67-teacher-dashboard.js"></script>
-<!-- Màn hình dữ liệu thật (đăng nhập bằng Supabase). Phải nạp sau các tệp ở trên và trước js/76-main.js. -->
+<!-- Màn hình dữ liệu thật (đăng nhập bằng Firebase). Phải nạp sau các tệp ở trên và trước js/76-main.js. -->
 <script src="js/db/01-core.js"></script>
 <script src="js/db/01b-offline-drafts.js"></script>
 <script src="js/db/02-shell.js"></script>
@@ -71,8 +77,11 @@
 <script src="js/db/13-report.js"></script>
 <script src="js/db/14-ai.js"></script>
 <script src="js/db/14b-ai-chat.js"></script>
+<script src="js/db/14c-ai-key.js"></script>
 <script src="js/db/15-games.js"></script>
 <script src="js/db/16-live.js"></script>
+<script src="js/db/17-practice.js"></script>
+<script src="js/db/18-class-overview.js"></script>
 <script src="js/76-main.js"></script>
 <script src="js/77-liquid-glass.js"></script>
 </body>
