@@ -210,7 +210,7 @@ function dbAssignmentForm(d, a) {
       <h3>Tạo câu hỏi với AI</h3>
       <p class="muted">Mở trình tạo câu hỏi AI để sinh câu hỏi nháp theo bài học, độ khó và cấp độ Bloom rồi duyệt vào ngân hàng câu hỏi.</p>
       <div class="row db-source-actions">
-        ${dbBtn(ic('spark', 16) + 'Mở AI tạo câu hỏi', 'go', { page: 'ai' })}
+        ${dbBtn(ic('spark', 16) + 'Mở AI tạo câu hỏi', 'go', { page: 'ai', return_page: 'assignments', return_edit: 'new' })}
       </div>
     </section>
     ` : '';

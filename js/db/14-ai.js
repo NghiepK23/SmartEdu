@@ -33,7 +33,14 @@ DB_PAGES.ai = {
     const byObj = dbById(d.objectives), byLesson = dbById(d.lessons);
     const pending = d.outputs.filter((o) => o.review_status === 'PENDING_REVIEW');
     const assessment = (d.assessments || []).find((a) => a.id === DB.arg.return_assessment_id);
-    return `${assessment ? `<section class="panel db-ai-return"><div><b>Đang soạn câu cho bài kiểm tra “${h(assessment.title)}”</b><p class="muted">Sau khi duyệt câu hỏi, chúng sẽ có trong ngân hàng. Quay lại bài kiểm tra để chọn câu vào đề.</p></div>${dbBtn('Quay lại bài kiểm tra', 'go', { page: 'assessments', id: assessment.id }, 'light')}</section>` : ''}
+    const returnBanner = assessment
+      ? `<section class="panel db-ai-return"><div><b>Đang soạn câu cho bài kiểm tra “${h(assessment.title)}”</b><p class="muted">Sau khi duyệt câu hỏi, chúng sẽ có trong ngân hàng. Quay lại bài kiểm tra để chọn câu vào đề.</p></div>${dbBtn('← Quay lại bài kiểm tra', 'go', { page: 'assessments', id: assessment.id }, 'light')}</section>`
+      : DB.arg.return_page === 'assignments'
+        ? `<section class="panel db-ai-return"><div><b>Đang tạo câu hỏi cho bài tập</b><p class="muted">Sau khi duyệt câu hỏi, chúng sẽ có trong ngân hàng để bạn chọn vào bài tập.</p></div>${dbBtn('← Quay lại tạo bài tập', 'go', { page: 'assignments', edit: DB.arg.return_edit || 'new' }, 'light')}</section>`
+        : DB.arg.return_page === 'questions'
+          ? `<section class="panel db-ai-return"><div><b>Đang tạo câu hỏi cho Ngân hàng câu hỏi</b><p class="muted">Sau khi duyệt câu hỏi, chúng sẽ được lưu vào ngân hàng câu hỏi của lớp.</p></div>${dbBtn('← Quay lại ngân hàng câu hỏi', 'go', { page: 'questions' }, 'light')}</section>`
+          : '';
+    return `${returnBanner}
     ${dbAiForm(d)}
     <section class="panel" aria-labelledby="db-h-aip">
       <div class="row between"><div><h2 id="db-h-aip">Bản nháp chờ duyệt</h2><p class="lead">${pending.length} bản nháp${pending.length ? ' · duyệt để đưa vào ngân hàng câu hỏi' : ''}</p></div>${pending.length ? `<div class="db-ai-bulk-actions">${dbBtn('Duyệt tất cả', 'aiApproveAll', {}, 'light')}${dbBtn('Từ chối tất cả', 'aiRejectAll', {}, 'light danger-soft')}</div>` : ''}</div>

@@ -134,7 +134,7 @@ DB_PAGES.questions = {
         <article class="db-create-source-card">
           <h3>Tạo câu hỏi với AI</h3>
           <p class="muted">Sinh câu hỏi nháp bằng AI theo bài học, độ khó và cấp độ Bloom rồi duyệt vào ngân hàng.</p>
-          ${dbBtn(ic('spark', 16) + 'Tạo câu hỏi với AI', 'go', { page: 'ai' })}
+          ${dbBtn(ic('spark', 16) + 'Tạo câu hỏi với AI', 'go', { page: 'ai', return_page: 'questions' })}
         </article>
         <article class="db-create-source-card">
           <h3>Soạn câu hỏi thủ công</h3>
