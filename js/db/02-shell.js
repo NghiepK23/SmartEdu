@@ -700,7 +700,7 @@ DB_ACT.openBgSettings = () => {
       </div>
       <div class="field" style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
         <label for="app-bg-opacity">Độ trong suốt hình nền: <span id="app-bg-opacity-val">${Math.round(opacity*100)}%</span></label>
-        <input id="app-bg-opacity" type="range" min="0.1" max="1" step="0.05" value="${opacity}" data-app-input="layer4BgOpacityChanged" style="width:100%;margin-top:6px;accent-color:var(--primary, #1f6f6b)">
+        <input id="app-bg-opacity" type="range" min="0.1" max="1" step="0.01" value="${opacity}" data-app-input="layer4BgOpacityChanged">
       </div>
       <div class="app-bg-status" id="app-bg-status" role="status" style="margin-top:6px;font-size:.78rem;color:var(--muted)"></div>
     </div>`,

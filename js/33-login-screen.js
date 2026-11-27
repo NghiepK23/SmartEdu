@@ -142,18 +142,29 @@ function uploadLayer4Bg(file){
   };img.src=String(reader.result||'')};reader.readAsDataURL(file)
 }
 function layer4BgOpacityKey(){return 'educmind.layer4-bg-opacity:'+String((sess&&sess.email)||'guest').toLowerCase()}
-function layer4BgOpacityData(){try{const v=localStorage.getItem(layer4BgOpacityKey());return v!==null?parseFloat(v):1;}catch(e){return 1;}}
+function layer4BgOpacityData(){
+  try{
+    const v=parseFloat(localStorage.getItem(layer4BgOpacityKey()));
+    return isNaN(v)?1:Math.min(1,Math.max(0.1,v));
+  }catch(e){return 1;}
+}
+let _layer4OpacitySaveTimer=null;
 function layer4BgOpacityChanged(el){
-  const val=parseFloat(el.value);
-  if(isNaN(val))return;
-  try{localStorage.setItem(layer4BgOpacityKey(),String(val));}catch(e){}
+  const raw=parseFloat(el.value);
+  if(isNaN(raw))return;
+  const val=Math.min(1,Math.max(0.1,raw));
   const valEl=document.getElementById('app-bg-opacity-val');
   if(valEl)valEl.textContent=Math.round(val*100)+'%';
-  applyLayer4Background();
+  const layout=document.querySelector('#app .layout');
+  if(layout)layout.style.setProperty('--layer4-bg-opacity',String(val));
+  clearTimeout(_layer4OpacitySaveTimer);
+  _layer4OpacitySaveTimer=setTimeout(()=>{
+    try{localStorage.setItem(layer4BgOpacityKey(),String(val));}catch(e){}
+  },120);
 }
 function layer4BackgroundControls(){
   const opacity=layer4BgOpacityData();
-  return `<div class='app-bg-controls'><button type='button' class='app-bg-trigger' id='app-bg-trigger' aria-expanded='${layer4BgOpen}' aria-controls='app-bg-panel' data-app-act='toggleLayer4BgPanel'><span aria-hidden='true'>▧</span> Đổi ảnh nền</button><section class='app-bg-panel' id='app-bg-panel' aria-labelledby='app-bg-title' ${layer4BgOpen?'':'hidden'}><h2 id='app-bg-title'>Ảnh nền màn hình chính</h2><p>Nền được lưu riêng cho tài khoản này trên thiết bị. Dán URL ảnh trực tiếp hoặc tải ảnh lên.</p><label for='app-bg-url'>Liên kết ảnh</label><input id='app-bg-url' type='url' placeholder='https://images.unsplash.com/photo-…' inputmode='url'><div class='app-bg-links'>Tìm ảnh tại <a href='https://unsplash.com/' target='_blank' rel='noopener noreferrer'>Unsplash</a><a href='https://www.pexels.com/' target='_blank' rel='noopener noreferrer'>Pexels</a></div><div class='app-bg-actions'><button type='button' class='btn' data-app-act='applyLayer4BgUrl'>Dùng liên kết</button><button type='button' class='btn light' data-app-act='clearLayer4Background'>Xóa nền</button></div><label for='app-bg-file'>Hoặc tải ảnh lên</label><input id='app-bg-file' type='file' accept='image/png,image/jpeg,image/webp,image/gif' data-app-change='layer4BgFileChanged'><div style='margin-top:12px'><label for='app-bg-opacity'>Độ trong suốt hình nền: <span id='app-bg-opacity-val'>${Math.round(opacity*100)}%</span></label><input id='app-bg-opacity' type='range' min='0.1' max='1' step='0.05' value='${opacity}' data-app-input='layer4BgOpacityChanged' style='width:100%;margin-top:6px;accent-color:var(--primary, #1f6f6b)'></div><div class='app-bg-status' id='app-bg-status' role='status'></div></section></div>`}
+  return `<div class='app-bg-controls'><button type='button' class='app-bg-trigger' id='app-bg-trigger' aria-expanded='${layer4BgOpen}' aria-controls='app-bg-panel' data-app-act='toggleLayer4BgPanel'><span aria-hidden='true'>▧</span> Đổi ảnh nền</button><section class='app-bg-panel' id='app-bg-panel' aria-labelledby='app-bg-title' ${layer4BgOpen?'':'hidden'}><h2 id='app-bg-title'>Ảnh nền màn hình chính</h2><p>Nền được lưu riêng cho tài khoản này trên thiết bị. Dán URL ảnh trực tiếp hoặc tải ảnh lên.</p><label for='app-bg-url'>Liên kết ảnh</label><input id='app-bg-url' type='url' placeholder='https://images.unsplash.com/photo-…' inputmode='url'><div class='app-bg-links'>Tìm ảnh tại <a href='https://unsplash.com/' target='_blank' rel='noopener noreferrer'>Unsplash</a><a href='https://www.pexels.com/' target='_blank' rel='noopener noreferrer'>Pexels</a></div><div class='app-bg-actions'><button type='button' class='btn' data-app-act='applyLayer4BgUrl'>Dùng liên kết</button><button type='button' class='btn light' data-app-act='clearLayer4Background'>Xóa nền</button></div><label for='app-bg-file'>Hoặc tải ảnh lên</label><input id='app-bg-file' type='file' accept='image/png,image/jpeg,image/webp,image/gif' data-app-change='layer4BgFileChanged'><div style='margin-top:12px'><label for='app-bg-opacity'>Độ trong suốt hình nền: <span id='app-bg-opacity-val'>${Math.round(opacity*100)}%</span></label><input id='app-bg-opacity' type='range' min='0.1' max='1' step='0.01' value='${opacity}' data-app-input='layer4BgOpacityChanged'></div><div class='app-bg-status' id='app-bg-status' role='status'></div></section></div>`}
 function applyLayer4Background(){
   const layout=document.querySelector('#app .layout');
   if(!layout)return;

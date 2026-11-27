@@ -821,6 +821,14 @@ input:focus,select:focus,textarea:focus{
   outline:none;
 }
 input[type="file"]{padding:7px 9px;font-size:.8125rem;color:var(--muted);cursor:pointer}
+input[type="range"]{
+  -webkit-appearance:auto;appearance:auto;
+  width:100%;height:auto;min-height:0;
+  padding:0!important;margin:6px 0 0!important;
+  border:0!important;border-radius:0!important;
+  background:transparent!important;box-shadow:none!important;
+  cursor:pointer;accent-color:var(--primary,#1f6f6b);
+}
 input[type="file"]::file-selector-button{
   margin-right:10px;border:0;padding:7px 13px;border-radius:999px;
   font:600 .78rem/1.2 var(--font-body);color:var(--ink);
