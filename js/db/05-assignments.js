@@ -217,8 +217,8 @@ function dbAssignmentForm(d, a) {
   return `<section class="panel" aria-labelledby="db-h-af">
     <h2 id="db-h-af">${a ? 'Sửa bài tập' : 'Tạo bài tập'}</h2>
     <p class="lead">${a ? 'Sửa thông tin bài tập và câu hỏi. Học sinh chỉ thấy bài sau khi xuất bản.' : 'Thiết lập bài tập, chọn câu hỏi rồi xem lại trước khi tạo bản nháp.'}</p>
-    <form data-act="saveAssignment" data-id="${h(a ? a.id : '')}" data-step="1" novalidate>
-      ${dbAssignmentSteps(a, 1, !a)}
+    <form data-act="saveAssignment" data-id="${h(a ? a.id : '')}" data-step="${!a && Number(DB.arg.step) === 2 ? '2' : '1'}" novalidate>
+      ${dbAssignmentSteps(a, !a && Number(DB.arg.step) === 2 ? 2 : 1, !a)}
       ${!a ? '<section class="db-assignment-step-panel" data-assignment-step-panel="1" aria-label="Thiết lập bài tập">' : ''}
       ${dbField('Tên bài tập', 'db-af-title', `<input id="db-af-title" name="title" maxlength="200" value="${h(a ? a.title : '')}" required>`)}
       ${dbField('Yêu cầu / hướng dẫn (không phải câu hỏi)', 'db-af-desc', `<textarea id="db-af-desc" name="description" rows="5" maxlength="5000">${h(a ? a.description : '')}</textarea>`)}
