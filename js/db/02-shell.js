@@ -5,7 +5,7 @@
 /* Danh mục điều hướng: [tên nhóm, [[khóa trang, nhãn, biểu tượng], …]] */
 const DB_NAV_T = [
   ['', [['home', 'Tổng quan', 'dashboard'], ['schedule', 'Lịch & việc cần làm', 'calendar']]],
-  ['Dạy học', [['content', 'Thư mục học tập', 'lessons'], ['assignments', 'Bài tập', 'navAsg'], ['questions', 'Ngân hàng câu hỏi', 'questionBank'], ['assessments', 'Bài kiểm tra', 'exam'], ['ai', 'AI tạo câu hỏi', 'spark']]],
+  ['Dạy học', [['content', 'Thư mục học tập', 'lessons'], ['assignments', 'Bài tập', 'navAsg'], ['assessments', 'Bài kiểm tra', 'exam'], ['questions', 'Ngân hàng câu hỏi', 'questionBank']]],
   /* 'chat' không nằm trong thanh bên: Trợ lý AI đã có nút riêng trên thanh trên
      (mở khung chat nổi, có nút phóng to sang trang đầy đủ). Giữ mục này ở đây sẽ
      tạo hai lối vào trùng nhau. */

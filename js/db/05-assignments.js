@@ -192,6 +192,7 @@ function dbAssignmentForm(d, a) {
       <div class="db-create-source db-create-source-compact">
         <label class="db-create-source-card"><input type="radio" name="content_source" value="BANK" checked data-change="assignmentSource"><span><b>Ngân hàng câu hỏi</b><small>Chọn câu đã có hoặc tạo thêm câu riêng.</small></span></label>
         <label class="db-create-source-card"><input type="radio" name="content_source" value="FILE" data-change="assignmentSource"><span><b>Excel hoặc Word</b><small>Tải tệp mẫu, nhập câu hỏi rồi xem lại.</small></span></label>
+        <label class="db-create-source-card"><input type="radio" name="content_source" value="AI" data-change="assignmentSource"><span><b>Tạo câu hỏi với AI</b><small>Sinh câu hỏi nháp bằng AI rồi thêm vào bài.</small></span></label>
       </div>
     </fieldset>` : '';
   const fileSource = !a ? `<section class="db-assignment-source" data-assignment-source-panel="FILE" hidden>
@@ -204,6 +205,13 @@ function dbAssignmentForm(d, a) {
         <button type="button" class="btn light" data-act="downloadTemplate" data-kind="questions" data-format="word">Tải mẫu Word</button>
       </div>
       <p class="muted db-hint" id="db-af-file-preview" role="status">Chưa chọn tệp.</p>
+    </section>
+    <section class="db-assignment-source" data-assignment-source-panel="AI" hidden>
+      <h3>Tạo câu hỏi với AI</h3>
+      <p class="muted">Mở trình tạo câu hỏi AI để sinh câu hỏi nháp theo bài học, độ khó và cấp độ Bloom rồi duyệt vào ngân hàng câu hỏi.</p>
+      <div class="row db-source-actions">
+        ${dbBtn(ic('spark', 16) + 'Mở AI tạo câu hỏi', 'go', { page: 'ai' })}
+      </div>
     </section>
     ` : '';
   return `<section class="panel" aria-labelledby="db-h-af">
