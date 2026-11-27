@@ -175,6 +175,8 @@ function dbAssignmentTeacherList(d) {
 
 function dbAssignmentForm(d, a) {
   if (DB.arg.edit !== 'new' && !a) return `<section class="panel">${dbEmpty('Không tìm thấy bài tập cần sửa.')}</section>`;
+  const draft = (!a && DB._asgDraft) ? DB._asgDraft : null;
+  const v0 = a || draft;
   const picked = new Set(a ? d.links.filter((x) => x.assignment_id === a.id).map((x) => x.objective_id) : []);
   const defDue = new Date(dbNow() + 7 * 86400000); defDue.setHours(23, 59, 0, 0);
   const linkedQuestions = new Set(a ? d.assignmentQuestions.filter((x) => x.assignment_id === a.id).map((x) => x.question_id) : []);
@@ -210,7 +212,7 @@ function dbAssignmentForm(d, a) {
       <h3>Tạo câu hỏi với AI</h3>
       <p class="muted">Mở trình tạo câu hỏi AI để sinh câu hỏi nháp theo bài học, độ khó và cấp độ Bloom rồi duyệt vào ngân hàng câu hỏi.</p>
       <div class="row db-source-actions">
-        ${dbBtn(ic('spark', 16) + 'Mở AI tạo câu hỏi', 'go', { page: 'ai', return_page: 'assignments', return_edit: 'new' })}
+        <button type="button" class="btn" data-act="openAiFromAssignment" data-edit="${h(a ? a.id : 'new')}">${ic('spark', 16)}Mở AI tạo câu hỏi</button>
       </div>
     </section>
     ` : '';
@@ -220,16 +222,16 @@ function dbAssignmentForm(d, a) {
     <form data-act="saveAssignment" data-id="${h(a ? a.id : '')}" data-step="${!a && Number(DB.arg.step) === 2 ? '2' : '1'}" novalidate>
       ${dbAssignmentSteps(a, !a && Number(DB.arg.step) === 2 ? 2 : 1, !a)}
       ${!a ? '<section class="db-assignment-step-panel" data-assignment-step-panel="1" aria-label="Thiết lập bài tập">' : ''}
-      ${dbField('Tên bài tập', 'db-af-title', `<input id="db-af-title" name="title" maxlength="200" value="${h(a ? a.title : '')}" required>`)}
-      ${dbField('Yêu cầu / hướng dẫn (không phải câu hỏi)', 'db-af-desc', `<textarea id="db-af-desc" name="description" rows="5" maxlength="5000">${h(a ? a.description : '')}</textarea>`)}
+      ${dbField('Tên bài tập', 'db-af-title', `<input id="db-af-title" name="title" maxlength="200" value="${h(v0 ? v0.title : '')}" required>`)}
+      ${dbField('Yêu cầu / hướng dẫn (không phải câu hỏi)', 'db-af-desc', `<textarea id="db-af-desc" name="description" rows="5" maxlength="5000">${h(v0 ? v0.description : '')}</textarea>`)}
       <div class="db-form-grid">
-        ${dbField('Bài học', 'db-af-lesson', `<select id="db-af-lesson" name="lesson_id" data-change="assignmentLessonPick" data-apply><option value="">Không gắn bài học</option>${d.lessons.map((l) => `<option value="${h(l.id)}" ${a && a.lesson_id === l.id ? 'selected' : ''}>${h(l.title)}</option>`).join('')}</select>`)}
-        ${dbField('Hạn nộp', 'db-af-due', dbDatetimeField('db-af-due', 'due', a ? a.due_at : defDue.toISOString(), '', minimum))}
-        ${dbField('Điểm tối đa', 'db-af-max', `<input id="db-af-max" name="max_score" type="number" min="0.5" step="0.5" value="${h(a ? a.max_score : 10)}" required>`)}
+        ${dbField('Bài học', 'db-af-lesson', `<select id="db-af-lesson" name="lesson_id" data-change="assignmentLessonPick" data-apply><option value="">Không gắn bài học</option>${d.lessons.map((l) => `<option value="${h(l.id)}" ${v0 && v0.lesson_id === l.id ? 'selected' : ''}>${h(l.title)}</option>`).join('')}</select>`)}
+        ${dbField('Hạn nộp', 'db-af-due', dbDatetimeField('db-af-due', 'due', v0 && v0.due_at ? v0.due_at : defDue.toISOString(), '', minimum))}
+        ${dbField('Điểm tối đa', 'db-af-max', `<input id="db-af-max" name="max_score" type="number" min="0.5" step="0.5" value="${h(v0 ? v0.max_score : 10)}" required>`)}
       </div>
       <div class="db-form-grid db-late-grid">
-        <div class="field"><label class="db-check"><input type="checkbox" id="db-af-late" name="allow_late" ${a && a.allow_late ? 'checked' : ''}> Cho phép nộp muộn</label></div>
-        ${dbField('Nhận bài muộn đến', 'db-af-lateclose', dbDatetimeField('db-af-lateclose', 'late_close', a ? a.late_close_at : '', '', minimum), 'Chỉ dùng khi cho phép nộp muộn; phải sau hạn nộp.')}
+        <div class="field"><label class="db-check"><input type="checkbox" id="db-af-late" name="allow_late" ${v0 && v0.allow_late ? 'checked' : ''}> Cho phép nộp muộn</label></div>
+        ${dbField('Nhận bài muộn đến', 'db-af-lateclose', dbDatetimeField('db-af-lateclose', 'late_close', v0 ? v0.late_close_at : '', '', minimum), 'Chỉ dùng khi cho phép nộp muộn; phải sau hạn nộp.')}
       </div>
       ${dbAiSwitchHtml('assignment', a ? a.student_ai_enabled !== false : true, 'Học sinh được dùng Trợ lý AI khi làm bài này', 'Khi học sinh bấm Bắt đầu làm bài, Trợ lý AI tự khoá cho tới khi nộp bài — dù công tắc này đang bật.')}
       ${!a ? '</section><section class="db-assignment-step-panel" data-assignment-step-panel="2" aria-label="Chọn câu hỏi" hidden>' : ''}
@@ -375,6 +377,22 @@ DB_ACT.assignmentPickCount = (el) => {
   pill.textContent = n + ' câu được chọn';
   pill.classList.toggle('prog', n > 0);
   pill.classList.toggle('plain', n === 0);
+};
+DB_ACT.openAiFromAssignment = (el) => {
+  const form = el.closest('form');
+  if (form) {
+    const g = (n) => form.querySelector(`[name="${n}"]`);
+    DB._asgDraft = {
+      title: (g('title') && g('title').value) || '',
+      description: (g('description') && g('description').value) || '',
+      lesson_id: (g('lesson_id') && g('lesson_id').value) || '',
+      due_at: dbReadDatetime(form, 'due') || '',
+      max_score: (g('max_score') && g('max_score').value) || 10,
+      allow_late: !!(g('allow_late') && g('allow_late').checked),
+      late_close_at: dbReadDatetime(form, 'late_close') || '',
+    };
+  }
+  dbGo('ai', { return_page: 'assignments', return_edit: (el && el.dataset && el.dataset.edit) || 'new' });
 };
 DB_ACT.saveAssignment = (form) => dbRun(form, async (v) => {
   const id = form.dataset.id;
