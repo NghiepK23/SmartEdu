@@ -419,16 +419,13 @@ function dbGlobalSearchMatches(rawQuery) {
       out.push({ kind: 'act', act: 'toggleChatDrawer', icon: 'chat', title: 'Trợ lý AI', sub: 'Mở khung chat nổi' });
     }
   }
-  if (T || (DB.classes || []).length > 1) {
-    (DB.classes || []).forEach((c) => {
-      const subj = (DB.classCourses && DB.classCourses[c.id] && DB.classCourses[c.id].title)
-        || (DB.course && DB.course.class_id === c.id ? DB.course.title : '');
-      if (q && (dbFoldSearch(c.name).includes(q) || (subj && dbFoldSearch(subj).includes(q)))) {
-        const title = subj ? `${c.name} · ${subj}` : c.name;
-        out.push({ kind: 'class', classId: c.id, icon: 'classes', title, sub: c.id === DB.classId ? 'Lớp đang chọn' : 'Chuyển sang lớp này' });
-      }
-    });
-  }
+  (DB.classes || []).forEach((c) => {
+    if (!q || !dbFoldSearch(c.name).includes(q)) return;
+    /* Học sinh chỉ thấy lớp mình được mở (không mời chuyển sang lớp khác trong cùng môn học). */
+    if (!dbStudentCanOpenClass(c.id)) return;
+    const current = c.id === DB.classId;
+    out.push({ kind: 'class', classId: c.id, icon: 'classes', title: c.name, sub: current ? 'Lớp đang chọn' : (dbIsTeacher() ? 'Chuyển sang lớp này' : 'Lớp của em') });
+  });
   const d = DB.data && typeof DB.data === 'object' ? DB.data : null;
   if (d && q) {
     (d.assignments || []).forEach((a) => {
@@ -483,16 +480,13 @@ function dbShell(P, body) {
   const title = typeof P.title === 'function' ? P.title() : P.title;
   const sub = typeof P.sub === 'function' ? P.sub() : P.sub;
   const activeClass = DB.classes.find((c) => c.id === DB.classId) || DB.classes[0] || null;
-  const classSubjTitle = (c) => {
-    if (!c) return '';
-    return (DB.classCourses && DB.classCourses[c.id] && DB.classCourses[c.id].title)
-      || (DB.course && DB.course.class_id === c.id ? DB.course.title : '');
-  };
-  const activeSubj = classSubjTitle(activeClass);
+  /* Học sinh chỉ thuộc một lớp cho mỗi giáo viên: lớp hiển thị là cố định, không có ô chọn.
+     Ô chọn lớp chỉ dành cho giáo viên (nhiều lớp do mình tạo) hoặc học sinh học nhiều giáo viên khác nhau. */
+  const canPickClass = !P.hideClass && dbShowClassPicker();
   const topClassPicker = DB.classes.length
-    ? (!P.hideClass && (T || DB.classes.length > 1)
-        ? `<label class="user-class-picker" for="classSelect" title="${T ? 'Chọn lớp giảng dạy' : 'Chọn lớp môn học đang tham gia'}"><span class="user-class-label">Lớp:</span><select id="classSelect" data-change="setClass" aria-label="${T ? 'Chọn lớp' : 'Chọn lớp môn học'}">${DB.classes.map((c) => { const subj = classSubjTitle(c); const optText = subj ? `${c.name} · ${subj}` : c.name; return `<option value="${h(c.id)}" ${c.id === DB.classId ? 'selected' : ''}>${h(optText)}</option>`; }).join('')}</select></label>`
-        : `<span class="user-role user-class-static">· Lớp: ${h(activeClass ? (activeSubj ? `${activeClass.name} · ${activeSubj}` : activeClass.name) : '')}</span>`)
+    ? (canPickClass
+        ? `<label class="user-class-picker" for="classSelect" title="Lớp"><span class="user-class-label">Lớp:</span><select id="classSelect" data-change="setClass" aria-label="Chọn lớp">${DB.classes.map((c) => `<option value="${h(c.id)}" ${c.id === DB.classId ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></label>`
+        : `<span class="user-role user-class-static" title="${T ? 'Lớp đang làm việc' : 'Lớp do giáo viên phân công'}"><span class="user-class-label">Lớp:</span><b>${h(activeClass ? activeClass.name : '')}</b></span>`)
     : `<span class="user-role user-class-static">· Chưa có lớp</span>`;
   const iconBtn = (label, icon, attrs, extra, cls) => `<button type="button" class="btn light icon-only ${cls || ''}" data-iconified="1" ${attrs} aria-label="${label}" title="${label}">${ic(icon, 18)}<span class="sr">${label}</span>${extra || ''}</button>`;
   const greetingName = h(dbName(DB.me));

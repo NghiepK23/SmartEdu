@@ -1049,6 +1049,11 @@ service cloud.firestore {
         && existsAfter(/databases/$(database)/documents/teacher_students/$(incoming().teacher_id + '_' + incoming().student_id))
         && existsAfter(/databases/$(database)/documents/student_teachers/$(incoming().student_id + '_' + incoming().teacher_id))
         && (
+          !exists(/databases/$(database)/documents/teacher_students/$(incoming().teacher_id + '_' + incoming().student_id))
+          || get(/databases/$(database)/documents/teacher_students/$(incoming().teacher_id + '_' + incoming().student_id)).data.class_id == null
+          || get(/databases/$(database)/documents/teacher_students/$(incoming().teacher_id + '_' + incoming().student_id)).data.class_id == incoming().class_id
+        )
+        && (
           incoming().teacher_id == request.auth.uid
           || (
             incoming().student_id == request.auth.uid

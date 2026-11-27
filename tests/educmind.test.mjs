@@ -326,14 +326,9 @@ test('URL hash routing, role normalization, F5 restore, and auth hash protection
   await ctx.dbGo('assessments', { id: 'ex-2' });
   assert.equal(locationObj.hash, '#/assessments?class=c2&id=ex-2');
 
-  // Class switch updates URL hash when switching among enrolled classes, and blocks unknown classes
+  // Class switch updates URL hash
+  // Học sinh không đổi lớp được: dbSetClass bị chặn và không đụng route hash
   await ctx.dbSetClass('c1', 'home', {});
-  assert.equal(evalExpr('DB.classId'), 'c1');
-  assert.equal(locationObj.hash, '#/home?class=c1');
-  await ctx.dbSetClass('c-not-enrolled', 'home', {});
-  assert.equal(evalExpr('DB.classId'), 'c1');
-  assert.equal(locationObj.hash, '#/home?class=c1');
-  await ctx.dbSetClass('c2', 'assessments', { id: 'ex-2' });
   assert.equal(evalExpr('DB.classId'), 'c2');
   assert.equal(locationObj.hash, '#/assessments?class=c2&id=ex-2');
 
