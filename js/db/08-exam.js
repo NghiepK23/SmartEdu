@@ -233,7 +233,7 @@ function dbExamStop(flush) {
   if (flush) for (const id of Object.keys(X.state)) if (X.state[id] === 'dirty') dbExamSave(id);
   DBX = null;
 }
-/* Nộp bài: gọi RPC (dùng được cả khi đã hết giờ) rồi mở trang kết quả của lượt vừa nộp. */
+/* Nộp bài: gọi API máy chủ (dùng được cả khi đã hết giờ) rồi mở trang kết quả của lượt vừa nộp. */
 async function dbExamFinish(reason) {
   const X = DBX;
   if (!X || X.finishing) return;

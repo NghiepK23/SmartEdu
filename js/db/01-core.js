@@ -310,9 +310,9 @@ const dbById = (list) => Object.fromEntries((list || []).map((x) => [x.id, x]));
 const dbGroup = (list, key) => (list || []).reduce((m, x) => { (m[x[key]] = m[x[key]] || []).push(x); return m; }, {});
 const dbInitials = (name) => String(name || '?').trim().split(/\s+/).slice(-2).map((w) => w[0] || '').join('').toUpperCase() || '?';
 const dbName = (p) => (p && (p.full_name || p.email)) || 'Không rõ';
-/* Tên tệp dùng cho khóa Storage: Supabase Storage chỉ cho phép ký tự ASCII
-   [A-Za-z0-9_/!.*'() &$=@;:+,?-] — tên có dấu tiếng Việt bị từ chối ("Invalid key").
-   Bỏ dấu, thay ký tự lạ bằng '-', giữ nguyên đuôi tệp; tên hiển thị vẫn dùng tên gốc. */
+/* Tên tệp dùng cho khóa Storage: Firebase Storage không nhận ký tự điều khiển và dấu "#"
+   trong tên tệp, tên có dấu tiếng Việt cũng dễ hỏng khi tạo URL tải xuống. Bỏ dấu, thay ký
+   tự lạ bằng '-', giữ nguyên đuôi tệp; tên hiển thị vẫn dùng tên gốc. */
 function dbSafeFileName(name) {
   const s = String(name || 'tep');
   const dot = s.lastIndexOf('.');
@@ -351,13 +351,13 @@ const DB_ERRORS = [
   [/Only an open knowledge gap can be dismissed/i, 'Chỉ bỏ qua được lỗ hổng đang mở.'],
   [/Students cannot (change|submit) (grades|grading)/i, 'Học sinh không được thay đổi điểm.'],
   [/(Attempt|Assignment|Assessment|Class|Knowledge gap) not found/i, 'Không tìm thấy dữ liệu hoặc bạn không có quyền.'],
-  [/Cannot coerce the result to a single JSON object/i, 'Không tìm thấy dữ liệu hoặc bạn không có quyền thực hiện thao tác này.'],
-  [/row-level security|permission denied/i, 'Bạn không có quyền thực hiện thao tác này.'],
+  [/not-found|not found/i, 'Không tìm thấy dữ liệu hoặc bạn không có quyền thực hiện thao tác này.'],
+  [/Missing or insufficient permissions|permission-denied|permission denied/i, 'Bạn không có quyền thực hiện thao tác này.'],
   [/violates foreign key constraint/i, 'Không xóa được vì dữ liệu này đang được dùng ở nơi khác (ví dụ đã có kết quả học tập).'],
-  [/duplicate key value/i, 'Dữ liệu này đã tồn tại.'],
-  [/assignments_check|late_close_at/i, 'Hạn nộp muộn phải sau hạn nộp.'],
-  [/assessments_check|close_at/i, 'Thời điểm đóng phải sau thời điểm mở.'],
-  [/violates check constraint/i, 'Dữ liệu chưa hợp lệ. Hãy kiểm tra lại các ô đã nhập.'],
+  [/already-exists|already exists/i, 'Dữ liệu này đã tồn tại.'],
+  [/late_close_at/i, 'Hạn nộp muộn phải sau hạn nộp.'],
+  [/close_at/i, 'Thời điểm đóng phải sau thời điểm mở.'],
+  [/invalid-argument/i, 'Dữ liệu chưa hợp lệ. Hãy kiểm tra lại các ô đã nhập.'],
   [/Failed to fetch|NetworkError|Load failed/i, 'Không kết nối được máy chủ. Hãy kiểm tra mạng rồi thử lại.'],
   [/JWT expired|invalid JWT/i, 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.'],
 ];
@@ -372,7 +372,7 @@ async function dbCall(promise) {
   if (error) { const err = new Error(dbErrText(error)); err.raw = error; throw err; }
   return data;
 }
-/* Truy vấn theo danh sách mã (in.(...)): chia nhỏ để địa chỉ yêu cầu không quá dài; danh sách rỗng thì không gọi máy chủ. */
+/* Truy vấn theo danh sách mã: chia nhỏ để mỗi lượt đọc Firestore gọn; danh sách rỗng thì không gọi máy chủ. */
 async function dbCallIn(fn, ids, size = 60) {
   const uniq = [...new Set((ids || []).filter(Boolean))];
   let out = [];
@@ -404,10 +404,6 @@ function dbMasteryPill(score) {
 }
 
 /* ===== Điều hướng qua URL hash (#/<page>?class=...&...) và nạp dữ liệu ===== */
-function dbIsAuthHash(hash) {
-  const raw = String(hash || '');
-  return !!raw && !raw.startsWith('#/') && /(?:^|[#&?])(access_token|refresh_token|token_hash|error|error_description|type)=/i.test(raw);
-}
 function dbParseRouteHash(hash) {
   const raw = String(hash || '');
   if (!raw.startsWith('#/')) return null;
@@ -462,7 +458,6 @@ function dbNormalizeRouteForRole(page, arg, isTeacher) {
 }
 function dbSyncUrl(replace = false) {
   if (typeof location === 'undefined') return;
-  if (dbIsAuthHash(location.hash)) return;
   const target = dbBuildRouteHash(DB.page, DB.classId, DB.arg);
   if (location.hash === target) return;
   try {
@@ -475,7 +470,7 @@ function dbSyncUrl(replace = false) {
 }
 function dbClearRouteHash() {
   if (typeof location === 'undefined') return;
-  if (!location.hash || dbIsAuthHash(location.hash)) return;
+  if (!location.hash) return;
   try {
     if (typeof history !== 'undefined' && history && typeof history.replaceState === 'function') {
       history.replaceState(null, '', (location.pathname || '/') + (location.search || ''));
@@ -486,7 +481,6 @@ function dbClearRouteHash() {
 }
 async function dbNavigateFromHash() {
   if (!dbActive() || typeof location === 'undefined') return;
-  if (dbIsAuthHash(location.hash)) return;
   const parsed = dbParseRouteHash(location.hash);
   const page = parsed ? parsed.page : 'home';
   const arg = parsed ? parsed.arg : {};
@@ -502,7 +496,7 @@ async function dbNavigateFromHash() {
 }
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
   window.addEventListener('hashchange', () => {
-    if (!dbActive() || dbIsAuthHash(location.hash)) return;
+    if (!dbActive()) return;
     dbNavigateFromHash().catch((e) => dbLogError(e));
   });
 }
@@ -630,7 +624,7 @@ function dbFormValues(form) {
 /* Lỗi do người dùng nhập thiếu / sai (Error thường) chỉ hiện trên màn hình; lỗi từ máy chủ ghi mức cảnh báo; lỗi lập trình ghi mức lỗi. */
 function dbLogError(e) {
   if (!e || e.name !== 'Error') console.error(e);
-  else if (e.raw) console.warn('Supabase:', e.raw.code || '', e.raw.message || '');
+  else if (e.raw) console.warn('Firestore:', e.raw.code || '', e.raw.message || '');
 }
 function dbShowError(e, el) {
   const text = dbErrText(e);
@@ -949,7 +943,7 @@ document.addEventListener('keydown', (ev) => {
   }
 });
 
-/* ===== Vẽ màn hình (render() trong js/09-render.js gọi hàm này khi đăng nhập bằng Supabase) ===== */
+/* ===== Vẽ màn hình (render() trong js/09-render.js gọi hàm này khi đăng nhập bằng Firebase) ===== */
 function dbRender() {
   const P = DB_PAGES[DB.page] || DB_PAGES.home;
   /* Giữ nội dung đang nhập khi màn hình được vẽ lại vì lý do khác (đổi giao diện sáng / tối, thu gọn thanh bên, …). */

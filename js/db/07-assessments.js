@@ -1,7 +1,7 @@
 /* EducMind · js/db/07-assessments.js
    Bài kiểm tra: giáo viên soạn đề từ ngân hàng câu hỏi, xuất bản, xem lượt làm và chấm câu tự luận;
    học sinh xem danh sách, bắt đầu làm bài (js/db/08-exam.js) và xem lại kết quả.
-   Lưu ý: Máy chủ đếm lượt, tính giờ và chấm phần trắc nghiệm. Giao diện chỉ gọi RPC và hiển thị kết quả. */
+   Lưu ý: Máy chủ đếm lượt, tính giờ và chấm phần trắc nghiệm. Giao diện chỉ gọi API máy chủ và hiển thị kết quả. */
 
 const DB_ATTEMPT = { IN_PROGRESS: ['Đang làm', 'prog'], SUBMITTED: ['Chờ chấm', 'prog'], GRADED: ['Đã chấm', 'good'] };
 const DB_ASSESSMENT_IMPORTS = new Map();

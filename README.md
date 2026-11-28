@@ -1,8 +1,8 @@
 # EducMind — Hệ thống quản lý dạy và học
 
 Website quản lý lớp học, nội dung bài học, bài tập, câu hỏi, đề kiểm tra và tiến độ học tập.
-Giao diện viết bằng **JavaScript thuần** (không framework, không cần bước build), backend dùng **Supabase**
-(PostgreSQL + Auth + REST + Storage + Realtime), toàn bộ mã nguồn lưu trong repository này.
+Giao diện viết bằng **JavaScript thuần** (không framework, không cần bước build), backend dùng **Firebase**
+(Authentication + Firestore + Storage), toàn bộ mã nguồn lưu trong repository này.
 Giáo viên có thể tạo nhiều dạng câu hỏi, chọn câu từ ngân hàng hoặc nhập câu hỏi bằng Excel/CSV để gắn vào bài tập; học sinh trả lời trực tiếp trên web hoặc nộp bài/tệp như trước. Giao diện dữ liệu thật tổ chức nội dung theo thư mục Chủ đề → Bài học, tách mục tiêu và tài liệu thành từng tab; bài tập và bài kiểm tra hiển thị dạng thẻ có thao tác thu gọn.
 
 Để thêm câu hỏi vào bài tập, hãy tạo bài tập thành bản nháp trước. Trang chi tiết của bài tập có mục
@@ -11,21 +11,20 @@ câu hỏi mới tạo hay nhập từ mục này sẽ được gắn trực ti�
 
 ## Chạy website trên máy cá nhân
 
-Trang là tĩnh hoàn toàn, chỉ cần một máy chủ tệp nhỏ để trình duyệt nạp được các tệp JS:
+Website cần **máy chủ Express** (`server.js`) vì mọi lời gọi Gemini đều đi qua máy chủ:
 
 ```bash
 # trong thư mục gốc của repository
-python3 -m http.server 5500
-# hoặc: npx serve -l 5500
-# hoặc: mở VS Code → cài extension Live Server → chuột phải index.html → Open with Live Server
+npm install
+npm start          # http://localhost:3000
 ```
 
-Mở `http://localhost:5500/` trong trình duyệt.
+Mở `http://localhost:3000/` trong trình duyệt. Nếu chỉ muốn xem giao diện tĩnh (không có
+Trợ lý AI), có thể dùng `python3 -m http.server 5500` hoặc Live Server.
 
-> Cổng 5500 hiện đang được khai báo trong cấu hình Auth của Supabase
-> (`site_url` và danh sách URL cho phép), nên hãy chạy đúng cổng này.
-> Muốn thay cổng hoặc đưa website lên Internet (GitHub Pages, Vercel, Netlify…),
-> cần cập nhật cấu hình Auth của Supabase theo URL mới trước.
+> Domain đang chạy phải được thêm vào **Authentication → Settings → Authorized domains**
+> của Firebase, nếu không đăng nhập/đặt lại mật khẩu sẽ bị từ chối. Muốn đưa website lên
+> Internet (Firebase Hosting, Vercel, Netlify…) thì thêm domain mới vào danh sách này trước.
 
 ## Chạy unit test & kiểm tra cú pháp
 
@@ -60,7 +59,7 @@ Hệ thống chỉ dùng **tài khoản thật** đăng ký bằng email:
    (tự đặt mật khẩu giao cho học sinh).
 
 Tải lại trang bao nhiêu lần cũng giữ nguyên đăng nhập và dữ liệu — mọi thứ được lưu
-trên Supabase, không còn dữ liệu tạm trong bộ nhớ.
+trên Firestore, không còn dữ liệu tạm trong bộ nhớ.
 
 Tên môn học được lưu trong `courses.title` và liên kết với lớp qua `courses.class_id`.
 Thông tin lớp/môn học trong Tài khoản và báo cáo/Xuất Excel-Word đều lấy từ dữ liệu này.
@@ -74,10 +73,10 @@ css/
 js/
   00-grade-config.js       Dải khối lớp dùng chung cho các biểu mẫu và kiểm tra dữ liệu
   02-state.js … 77-liquid-glass.js
-                           16 mô-đun giao diện dùng chung đã chuẩn hóa (trạng thái, Supabase API,
+                           16 mô-đun giao diện dùng chung đã chuẩn hóa (trạng thái, Firebase API,
                            biểu tượng, tiện ích & kiểm tra URL, khung trang, chủ đề, xác thực/đăng nhập,
                            hình đại diện, mẫu nhập/bộ đọc tệp Excel–Word–CSV, lời chào giáo viên, hiệu ứng kính)
-  db/                      Màn hình dữ liệu thật (đăng nhập Supabase), nạp trước js/76-main.js
+  db/                      Màn hình dữ liệu thật (đăng nhập Firebase), nạp trước js/76-main.js
     01-core.js             Vào app, đăng xuất, phiên, đồng bộ chuông báo
     02-shell.js            Vỏ ứng dụng: điều hướng theo vai trò, chuông thông báo
     03-classes.js … 13-report.js   Lớp học, nội dung, bài tập, câu hỏi, thi, tiến độ,
@@ -88,52 +87,52 @@ js/
     15-games.js            Trò chơi ôn tập 3 chế độ
     16-live.js             Realtime cho chuông thông báo (tự fallback polling)
   vendor/
-    supabase-js.min.js     Thư viện Supabase ghim sẵn trong repo — không phụ thuộc CDN
+    firebase-sdk.min.js    Firebase SDK (Auth, Firestore, Storage) ghim sẵn — không phụ thuộc CDN
 tests/
   educmind.test.mjs        Bộ kiểm thử tự động Node.js cho các mô-đun nghiệp vụ
   grade-config.test.html   Trang kiểm thử cấu hình khối lớp trên trình duyệt
-supabase/
-  migrations/              Migration SQL của backend — nguồn chuẩn cho cấu trúc cơ sở dữ liệu
-  functions/ai-generate/   Supabase Edge Function xử lý hàng đợi Gemini và lưu tiến độ
-  functions/ai-credentials/ Quản lý API key Gemini riêng của giáo viên
+firestore.rules            Quy tắc bảo mật Firestore — nguồn chuẩn cho phân quyền dữ liệu
+firebase-blueprint.json    Bản thiết kế dữ liệu (collections, trường) của ứng dụng
 ```
 
 Quy ước: tệp **số nhỏ nạp trước**, tệp số lớn có thể dùng hàm/định nghĩa của tệp số nhỏ.
 Muốn đổi dải khối lớp trên giao diện, chỉnh `EDUCMIND_GRADE_MIN` và `EDUCMIND_GRADE_MAX` trong `js/00-grade-config.js`.
-Ràng buộc dữ liệu được áp dụng bằng migration trong `supabase/migrations/`; khi đổi dải, cần tạo migration mới tương ứng và không sửa migration đã triển khai.
-`js/03-supabase.js` chứa địa chỉ dự án Supabase, khóa công khai và `EducMindDB` —
-mọi lệnh đọc/ghi cơ sở dữ liệu đều đi qua đối tượng này (mỗi hàm = một lệnh tới Supabase).
+Ràng buộc dữ liệu và phân quyền được áp dụng bằng `firestore.rules` (kèm `security_spec.md`);
+khi đổi dải khối lớp, cần cập nhật quy tắc tương ứng và không sửa quy tắc đã triển khai.
+`js/03-firebase.js` chứa cấu hình Firebase và `EducMindDB` — mọi lệnh đọc/ghi cơ sở dữ
+liệu đều đi qua đối tượng này (mỗi hàm = một truy vấn tới Firestore).
 
-## Thiết lập backend Supabase
+## Thiết lập backend Firebase
 
-1. Tạo dự án Supabase (miễn phí là đủ).
-2. Chạy toàn bộ tệp trong `supabase/migrations/` theo thứ tự thời gian trong tên tệp
-   (dùng Supabase CLI `supabase db push --remote`, hoặc mở SQL Editor và chạy tuần tự từng tệp).
-3. Sửa `js/03-supabase.js`: điền `SUPABASE_URL` và `SUPABASE_PUBLISHABLE_KEY`
-   (chỉ dùng **khóa công khai** publishable; mọi phân quyền do **RLS** trong cơ sở dữ liệu quyết định).
-4. Trong Authentication → URL Configuration của Supabase: đặt `site_url` là địa chỉ website
-   (mặc định `http://localhost:5500`) và thêm URL đó vào danh sách cho phép.
-5. Hai **Storage bucket** `educmind-resources` (tài liệu bài học) và `educmind-submissions`
-   (bài nộp của học sinh) đã được migration tạo sẵn kèm policy đọc/ghi; nếu tự tạo lại thì
-   để trống `allowed_mime_types` để nhận mọi định dạng tệp.
+1. Tạo dự án Firebase và bật **Authentication** (Email/Password), **Firestore** và **Storage**.
+2. Điền cấu hình dự án vào `firebase-applet-config.json` (hoặc `js/00-environment.local.js`
+   cho cấu hình cục bộ). Khóa trong cấu hình Firebase là khóa công khai của trình duyệt;
+   mọi phân quyền do **`firestore.rules`** quyết định.
+3. Triển khai quy tắc bảo mật: `firebase deploy --only firestore:rules,storage:rules`
+   (hoặc dán nội dung `firestore.rules` vào Firestore → Rules trên Firebase Console).
+4. Trong **Authentication → Settings → Authorized domains**: thêm domain đang chạy
+   (mặc định `localhost` có sẵn) để đăng nhập và đặt lại mật khẩu hoạt động.
+5. Hai thư mục lưu tệp `educmind-resources` (tài liệu bài học) và `educmind-submissions`
+   (bài nộp của học sinh) được tạo tự động ở lần tải lên đầu tiên; quy tắc Storage nằm
+   trong `firestore.rules`/cấu hình Storage của dự án.
 
 ### Gửi mã xác nhận và đặt lại mật khẩu qua Gmail
 
-Gmail thay thế máy chủ **gửi thư mặc định** của Supabase; Supabase Auth vẫn tạo tài khoản,
-phát hành/kiểm tra mã OTP và lưu mật khẩu. Không gửi mật khẩu người dùng qua Gmail, không
-tự kiểm tra mã ở trình duyệt và không tắt xác nhận email.
+Gmail thay thế máy chủ **gửi thư mặc định** của Firebase Authentication; Firebase Auth vẫn tạo
+tài khoản, phát hành/kiểm tra mã OTP và lưu mật khẩu. Không gửi mật khẩu người dùng qua Gmail,
+không tự kiểm tra mã ở trình duyệt và không tắt xác nhận email.
 
 1. Bật **Xác minh 2 bước** cho tài khoản Gmail, sau đó tạo **App Password** tại
    [Google Account → App passwords](https://myaccount.google.com/apppasswords).
    Dùng App Password này thay cho mật khẩu đăng nhập Gmail.
-2. Trong Supabase Dashboard, mở **Authentication → SMTP Settings**, bật custom SMTP và đặt:
+2. Trong Firebase Console, mở **Authentication → Templates → SMTP settings**, bật custom SMTP và đặt:
    - Host: `smtp.gmail.com`
    - Port: `587` (TLS/STARTTLS)
    - Username: địa chỉ Gmail đầy đủ
    - Password: App Password của Google
    - Sender email: chính địa chỉ Gmail đã xác thực
    - Sender name: `EducMind`
-3. Trong **Authentication → Email Templates**, đặt template **Confirm signup**:
+3. Trong **Authentication → Templates**, đặt template **Email address verification**:
 
    - Subject: `Mã xác nhận tài khoản EducMind`
    - Body:
@@ -141,11 +140,11 @@ tự kiểm tra mã ở trình duyệt và không tắt xác nhận email.
      ```html
      <h2>Xác nhận email</h2>
      <p>Nhập mã này trong EducMind để xác nhận tài khoản:</p>
-     <p style="font-size:28px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
+     <p style="font-size:28px;font-weight:bold;letter-spacing:6px">%VERIFICATION_CODE%</p>
      <p>Nếu bạn không tạo tài khoản, hãy bỏ qua email này.</p>
      ```
 
-4. Đặt template **Reset password**:
+4. Đặt template **Password reset**:
 
    - Subject: `Mã đặt lại mật khẩu EducMind`
    - Body:
@@ -153,16 +152,16 @@ tự kiểm tra mã ở trình duyệt và không tắt xác nhận email.
      ```html
      <h2>Đặt lại mật khẩu</h2>
      <p>Nhập mã này trong EducMind để tiếp tục:</p>
-     <p style="font-size:28px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
+     <p style="font-size:28px;font-weight:bold;letter-spacing:6px">%VERIFICATION_CODE%</p>
      <p>Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này.</p>
      ```
 
 5. Giữ bật xác nhận email và kiểm tra giới hạn gửi thư trong
-   **Authentication → Rate Limits**. Gmail có hạn mức gửi; với lượng email giao dịch lớn,
-   nên dùng dịch vụ SMTP chuyên cho ứng dụng thay vì hộp thư cá nhân. Mã OTP Supabase mặc định
-   có 6 chữ số; giao diện hỗ trợ mã dài từ 6 đến 10 chữ số.
+   **Authentication → Templates → Quotas**. Gmail có hạn mức gửi; với lượng email giao dịch lớn,
+   nên dùng dịch vụ SMTP chuyên cho ứng dụng thay vì hộp thư cá nhân. Mã OTP mặc định
+   thường có 6 chữ số; giao diện hỗ trợ mã dài từ 6 đến 10 chữ số.
 
-Không lưu App Password trong mã nguồn, `supabase/config.toml` hay biến JavaScript phía trình duyệt.
+Không lưu App Password trong mã nguồn, tệp cấu hình nào của dự án hay biến JavaScript phía trình duyệt.
 Nếu lộ App Password, hãy thu hồi ngay trong Google Account rồi tạo mật khẩu ứng dụng mới.
 
 ### Trợ lý AI và API key Gemini (mỗi người dùng tự đăng ký key)
@@ -227,14 +226,15 @@ cho biết `AI_KEY_ENCRYPTION_KEY` đã cấu hình chưa. Mọi lời gọi ra 
 
 Lưu ý bảo mật của backend:
 
-- Bảng do máy chủ tự ghi bằng trigger (`learning_evidence`, `mastery`, `knowledge_gaps`,
-  `content_revisions`, `notifications`): người dùng **chỉ được đọc**, mọi thay đổi được
-  trigger ghi lại (ví dụ `content_revisions` là nhật ký chỉnh sửa nội dung — chỉ máy chủ ghi).
+- Collection do máy chủ tự ghi (`learning_evidence`, `mastery`, `knowledge_gaps`,
+  `content_revisions`, `notifications`): người dùng **chỉ được đọc** theo `firestore.rules`,
+  mọi thay đổi do máy chủ (Express API) ghi lại (ví dụ `content_revisions` là nhật ký chỉnh
+  sửa nội dung — chỉ máy chủ ghi).
 - Các thao tác nhiều bước (tạo lớp, vào lớp, bắt đầu/nộp bài kiểm tra, tạo tài khoản học sinh,
-  sinh câu hỏi AI…) gọi **RPC** để máy chủ kiểm tra và ghi trong một giao dịch.
-- `public.server_now()` trả về giờ máy chủ để tính hạn nộp và đồng hồ làm bài,
+  sinh câu hỏi AI…) đi qua API máy chủ để kiểm tra quyền và ghi trong một transaction.
+- `EducMindDB.serverNow()` trả về giờ máy chủ để tính hạn nộp và đồng hồ làm bài,
   không phụ thuộc đồng hồ trên máy người dùng.
-- Câu hỏi trò chơi chỉ học sinh đọc được qua RPC `game_questions`, **không lộ câu hỏi
+- Câu hỏi trò chơi chỉ được cấp qua API máy chủ, **không lộ câu hỏi
   đang dùng cho bài kiểm tra chưa đóng**.
 
 ## Tính năng hiện có

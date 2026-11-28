@@ -282,13 +282,6 @@ test('URL hash routing, role normalization, F5 restore, and auth hash protection
     DB_PAGES.trash.load = async () => ({ ok: true });
   `);
 
-  // Auth hash detection
-  assert.equal(evalExpr(`dbIsAuthHash('#access_token=abc&type=recovery')`), true);
-  assert.equal(evalExpr(`dbIsAuthHash('#error=access_denied&error_description=expired')`), true);
-  assert.equal(evalExpr(`dbIsAuthHash('#token_hash=xyz&type=magiclink')`), true);
-  assert.equal(evalExpr(`dbIsAuthHash('#/assignments?class=c1')`), false);
-  assert.equal(evalExpr(`dbIsAuthHash('')`), false);
-
   // Hash parsing & building
   assert.deepEqual(evalJson(`dbParseRouteHash('#/assignments?class=c1&id=a1&tab=preview')`), {
     page: 'assignments',
@@ -296,6 +289,8 @@ test('URL hash routing, role normalization, F5 restore, and auth hash protection
     arg: { id: 'a1', tab: 'preview' },
   });
   assert.deepEqual(evalJson(`dbParseRouteHash('#/')`), { page: 'home', classId: '', arg: {} });
+  // Chỉ hash định tuyến của ứng dụng (#/…) mới được phân tích
+  assert.equal(evalExpr(`dbParseRouteHash('access_token=123')`), null);
   assert.equal(evalExpr(`dbParseRouteHash('#access_token=123')`), null);
   assert.equal(evalExpr(`dbBuildRouteHash('assignments', 'c1', { tab: 'b', id: '1', empty: '' })`), '#/assignments?class=c1&id=1&tab=b');
   assert.equal(evalExpr(`dbBuildRouteHash('classes', 'c1', {})`), '#/classes');
@@ -341,12 +336,9 @@ test('URL hash routing, role normalization, F5 restore, and auth hash protection
   assert.deepEqual(evalJson('DB.arg'), { id: 'asg-9' });
   assert.equal(historyCalls.length, beforePopCount);
 
-  // Logout hash clear strips app route hash, but preserves Supabase auth hash
+  // Logout hash clear strips the app route hash
   ctx.dbClearRouteHash();
   assert.equal(locationObj.hash, '');
-  locationObj.hash = '#access_token=tok&type=recovery';
-  ctx.dbClearRouteHash();
-  assert.equal(locationObj.hash, '#access_token=tok&type=recovery');
 });
 
 test('Course config thresholds are persisted and clamped (js/03-firebase.js)', () => {
