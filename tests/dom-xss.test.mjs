@@ -8,6 +8,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { parseHTML } from 'linkedom';
 import { runBuild } from '../scripts/build.mjs';
+import { readFirebaseConfig } from './fixtures/firebase-config.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1473,9 +1474,11 @@ test('Build script bundles & minifies assets, converts to WebP, runs minified ru
   assert.equal(distLinks.length, 1, 'dist/index.html loads single hashed CSS bundle');
   assert.equal(distScripts.length, 4, 'dist/index.html loads firebase, core bundle, env override, app bundle');
   assert.equal(distScripts[0], buildInfo.firebaseFile, 'dist/index.html loads content-hashed Firebase SDK bundle');
-  const fbCfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase-applet-config.json'), 'utf8'));
+  /* Gói Firebase đã build KHÔNG được chứa cấu hình dự án hay khóa API (chúng được server
+     phục vụ riêng tại /firebase-applet-config.json), để git không báo rò rỉ bí mật. */
   const fbDistJs = fs.readFileSync(path.join(ROOT, 'dist', buildInfo.firebaseFile), 'utf8');
-  assert.ok(fbDistJs.includes(`projectId:${JSON.stringify(fbCfg.projectId)}`), 'hashed Firebase bundle matches firebase-applet-config.json');
+  assert.doesNotMatch(fbDistJs, /AIza[0-9A-Za-z_-]{35}/, 'Firebase bundle must not embed an API key');
+  assert.doesNotMatch(fbDistJs, /projectId:"gen-lang/, 'Firebase bundle must not embed project config');
   assert.ok(fs.existsSync(path.join(ROOT, 'dist', 'js', 'vendor', 'xlsx.full.min.js')));
   assert.ok(fs.existsSync(path.join(ROOT, 'dist', 'js', 'vendor', 'mammoth.browser.min.js')));
 
@@ -1839,7 +1842,7 @@ test('Server API auth: header Authorization and body auth_token both accepted, f
     req.end();
   });
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
-  const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase-applet-config.json'), 'utf8'));
+  const cfg = readFirebaseConfig(ROOT);
   const jwt = [b64({ alg: 'RS256', kid: 'test' }), b64({ sub: 'u1', aud: cfg.projectId, iss: `https://securetoken.google.com/${cfg.projectId}`, exp: 9999999999, iat: 1, email_verified: true }), 'sig'].join('.');
   const payload = { apiKey: 'AIzaXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' };
 

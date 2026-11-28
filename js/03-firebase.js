@@ -3,10 +3,38 @@
    Toàn bộ suy luận AI chạy ở máy chủ Express (/api/ai/generate, /api/ai/chat) với Firebase ID token. */
 
 const FirebaseRuntime = (typeof window !== 'undefined' && window.EducMindFirebase) || null;
-const firebaseConfig = FirebaseRuntime ? FirebaseRuntime.firebaseConfig : null;
-const firebaseAuth = FirebaseRuntime ? FirebaseRuntime.auth : null;
-const firebaseDb = FirebaseRuntime ? FirebaseRuntime.db : null;
-const firebaseStorage = FirebaseRuntime ? FirebaseRuntime.storage : null;
+
+/* Cấu hình dự án KHÔNG nằm trong mã nguồn hay gói thư viện: server.js phục vụ
+   firebase-applet-config.json tại /firebase-applet-config.json (không cache), trình duyệt
+   nạp bằng fetch rồi mới khởi tạo Firebase. Nhờ vậy git không chứa khóa API nào. */
+let firebaseConfig = null;
+let firebaseApp = null;
+let firebaseAuth = null;
+let firebaseDb = null;
+let firebaseStorage = null;
+const firebaseConfigReady = (async () => {
+  try {
+    const res = await fetch('/firebase-applet-config.json', { cache: 'no-store', credentials: 'same-origin' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    firebaseConfig = await res.json();
+  } catch (e) {
+    console.error('Không nạp được cấu hình Firebase (/firebase-applet-config.json):', e && e.message ? e.message : e);
+    return null;
+  }
+  try {
+    const { initializeApp, getAuth, getFirestore, getStorage } = FirebaseRuntime;
+    firebaseApp = initializeApp(firebaseConfig);
+    firebaseAuth = getAuth(firebaseApp);
+    firebaseDb = firebaseConfig.firestoreDatabaseId
+      ? getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId)
+      : getFirestore(firebaseApp);
+    firebaseStorage = getStorage(firebaseApp);
+  } catch (e) {
+    console.error('Không khởi tạo được Firebase:', e && e.message ? e.message : e);
+    return null;
+  }
+  return firebaseConfig;
+})();
 
 /* Ngưỡng cấu hình của khóa học (luyện tập thích ứng + chỉ số lớp học) và miền giá trị hợp lệ. */
 const COURSE_CONFIG_NUMERIC = [
@@ -77,7 +105,9 @@ async function testFirebaseConnection() {
 
 /* backendBusy: đang chờ Firebase trả lời ở màn hình đăng nhập. backendRecovery: người dùng đang đặt lại mật khẩu. */
 let backendBusy = false, backendRecovery = false;
-if (FirebaseRuntime && firebaseAuth) {
+/* Chờ nạp xong cấu hình rồi mới theo dõi trạng thái đăng nhập (firebaseAuth chưa có trước đó). */
+firebaseConfigReady.then(() => {
+  if (!FirebaseRuntime || !firebaseAuth) return;
   const { onAuthStateChanged } = FirebaseRuntime.authApi;
   onAuthStateChanged(firebaseAuth, (user) => {
     if (!user && typeof appReady !== 'undefined' && appReady && typeof logged !== 'undefined' && logged && sess && sess.backend) {
@@ -92,7 +122,7 @@ if (FirebaseRuntime && firebaseAuth) {
       if (typeof render === 'function') render();
     }
   });
-}
+});
 
 async function educMindSha256Hex(text) {
   const normalized = String(text || '').trim().toLowerCase();
