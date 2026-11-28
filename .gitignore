@@ -7,9 +7,11 @@ dist/
 .env.*
 !.env.example
 
-# Supabase CLI (tệp tạm, thông tin liên kết dự án)
-supabase/.temp/
-supabase/.branches/
+# Firebase CLI (tệp tạm và nhật ký triển khai)
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
 
 # Hệ điều hành và trình soạn thảo
 .DS_Store

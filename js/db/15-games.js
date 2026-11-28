@@ -98,7 +98,7 @@ DB_PAGES.games = {
     if (dbIsTeacher()) return {};
     if (!DB.classId) return {};
     const content = await dbLoadContent();
-    /* Học sinh KHÔNG đọc trực tiếp bảng questions (RLS) — câu hỏi trò chơi lấy qua RPC game_questions. */
+    /* Học sinh KHÔNG đọc trực tiếp câu hỏi trong Firestore — câu hỏi trò chơi lấy qua API máy chủ. */
     const gameQs = DB.course ? await dbCall(EducMindDB.gameQuestions(DB.course.id)) : [];
     const questions = gameQs.map((q) => ({ id: q.id, content: q.content, kind: q.kind, options: q.options, correct_answer: q.correct_answer, explain: q.explain || '', objective_ids: q.objective_ids || [] }));
     const sessions = DB.course ? await dbCall(EducMindDB.listGameSessions(DB.course.id)) : [];

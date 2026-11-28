@@ -153,7 +153,7 @@ function dbAiHistory(d, byLesson) {
 }
 
 /* ===== Thao tác ===== */
-/* Gửi yêu cầu vào hàng đợi; tiến độ được nạp lại từ Supabase trong lúc xử lý. */
+/* Gửi yêu cầu vào hàng đợi; tiến độ được nạp lại từ Firestore trong lúc xử lý. */
 DB_ACT.aiGenerate = (form) => dbRun(form, async (v) => {
   const qty = Number(v.qty);
   if (!v.lesson) throw new Error('Hãy chọn bài học cần sinh câu hỏi.');
@@ -361,7 +361,7 @@ DB_ACT.aiEditApprove = (el) => {
     },
   });
 };
-/* Đọc hộp thoại sửa bản nháp thành tham số cho RPC duyệt. */
+/* Đọc hộp thoại sửa bản nháp thành tham số cho API duyệt. */
 function dbAiParseEdit(o, v) {
   const content = (v.content || '').trim();
   if (!content) throw new Error('Nhập nội dung câu hỏi.');

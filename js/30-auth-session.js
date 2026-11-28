@@ -1,5 +1,5 @@
 /* EducMind · js/30-auth-session.js
-   Quy tắc phiên đăng nhập: thời hạn không hoạt động, độ dài mật khẩu tối thiểu và bảo vệ phiên Supabase. */
+   Quy tắc phiên đăng nhập: thời hạn không hoạt động, độ dài mật khẩu tối thiểu và bảo vệ phiên Firebase. */
 const SESS_IDLE=30,PW_MIN=8;
 function authGuard(){
   /* Mở liên kết đặt lại mật khẩu: luôn hiện màn hình đặt mật khẩu mới, kể cả khi phiên vừa được khôi phục từ liên kết. */

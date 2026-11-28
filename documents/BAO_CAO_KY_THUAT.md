@@ -445,7 +445,6 @@ js/
 server.js                   Máy chủ Express: AI, luyện tập, giờ máy chủ, phục vụ tĩnh
 firestore.rules             Quy tắc bảo mật Firestore (phân quyền ở DB)
 tests/                      Kiểm thử tự động (Node.js) + trang kiểm thử trình duyệt
-supabase/                   (Di sản) Thiết kế backend PostgreSQL trước đây — xem §6.4
 ```
 
 ---
@@ -607,11 +606,7 @@ classes (lớp học) ── 1 ── 1 courses (khóa học/môn học)
 - Trạng thái xuất bản thống nhất: `DRAFT` (nháp) / `PUBLISHED` (đã xuất bản) cho chủ đề, bài học, bài tập, bài kiểm tra.
 - Xóa mềm bằng `deleted_at`; Thùng rác có thể khôi phục hoặc xóa vĩnh viễn (purge).
 
-### 6.4. Ghi chú về thiết kế Supabase (di sản)
-
-Repository còn chứa thư mục `supabase/` (52 tệp migration SQL + 3 Edge Functions) — đây là **thiết kế backend PostgreSQL/Supabase trước đây** (bảng quan hệ, RLS, RPC, trigger tính mastery). **Bản triển khai hiện tại dùng Firebase/Firestore** (mã nguồn `js/03-firebase.js`, `firestore.rules`, `server.js`); thư mục `supabase/` được giữ lại làm tài liệu tham khảo thiết kế quan hệ. Báo cáo này mô tả bản triển khai Firebase hiện tại.
-
-### 6.5. ERD chi tiết (Entity-Relationship Diagram)
+### 6.4. ERD chi tiết (Entity-Relationship Diagram)
 
 Sơ đồ ERD dưới đây mô tả toàn bộ 47 collections được khai báo trong `firestore.rules` (46 collections nghiệp vụ và collection `test` dùng kiểm tra kết nối), các trường chính và quan hệ giữa các thực thể. Trong Firestore (NoSQL), quan hệ được thể hiện bằng **trường tham chiếu ID** (`*_id`) thay vì khóa ngoại; các quan hệ nhiều–nhiều dùng collection liên kết riêng.
 
@@ -1657,7 +1652,7 @@ Chơi bằng câu hỏi trắc nghiệm của lớp (không ảnh hưởng đi�
 Kết thúc → ghi game_sessions (điểm, số câu đúng, thời gian) → giáo viên xem lịch sử chơi của lớp
 ```
 
-Câu hỏi trò chơi chỉ học sinh đọc được qua RPC/hàm riêng, **không lộ câu hỏi đang dùng cho bài kiểm tra chưa đóng**. Âm thanh hiệu ứng bằng Web Audio, mặc định TẮT.
+Câu hỏi trò chơi chỉ được cấp qua API máy chủ, **không lộ câu hỏi đang dùng cho bài kiểm tra chưa đóng**. Âm thanh hiệu ứng bằng Web Audio, mặc định TẮT.
 
 ### 8.9. Phân tích học tập (Learning Analytics)
 
@@ -2109,7 +2104,7 @@ sequenceDiagram
 | N3 | `role`, `id`, `email`, `createdAt` trong `profiles` là **bất biến** sau khi tạo; chỉ được sửa `full_name`. |
 | N4 | Giáo viên phải hoàn tất **tên lớp + môn học** trước khi dùng chức năng dạy học. |
 | N5 | Giáo viên có thể tự tạo tài khoản cho học sinh (tự đặt mật khẩu). |
-| N6 | Khối lớp hợp lệ: **3–12** (`EDUCMIND_GRADE_MIN/MAX` trong `js/00-grade-config.js`); đổi dải cần tạo migration/quy tắc mới, không sửa quy tắc đã triển khai. |
+| N6 | Khối lớp hợp lệ: **3–12** (`EDUCMIND_GRADE_MIN/MAX` trong `js/00-grade-config.js`); đổi dải cần cập nhật quy tắc Firestore tương ứng, không sửa quy tắc đã triển khai. |
 
 ### 10.2. Quy định về lớp học
 
@@ -2249,7 +2244,7 @@ Hệ thống kiểm thử 12 trường hợp tấn công phải bị từ chối
 | **Chống XSS** | Escape HTML khi render; bộ kiểm thử DOM/XSS (1878 dòng) kiểm tra không có inline event handler, Markdown AI được escape HTML. |
 | **HTTP Headers** | CSP chặt (`script-src 'self'` + Google domains), `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy` (tắt camera/micro/geolocation…), `frame-ancestors` giới hạn. |
 | **Hạ tầng AI** | Mọi lời gọi ra Google có timeout 15 giây + thử lại 1 lần; lỗi mạng báo 502 `UPSTREAM_UNREACHABLE` kèm câu tiếng Việt thay vì `fetch failed` thô. Trang chẩn đoán `GET /api/health/upstream`. |
-| **Email** | Gmail chỉ thay máy chủ gửi thư (SMTP); Supabase/Firebase Auth vẫn tạo tài khoản, phát hành/kiểm tra OTP, lưu mật khẩu. Không gửi mật khẩu qua Gmail, không tắt xác nhận email. App Password không lưu trong mã nguồn. |
+| **Email** | Gmail chỉ thay máy chủ gửi thư (SMTP); Firebase Auth vẫn tạo tài khoản, phát hành/kiểm tra OTP, lưu mật khẩu. Không gửi mật khẩu qua Gmail, không tắt xác nhận email. App Password không lưu trong mã nguồn. |
 
 ---
 
@@ -2354,8 +2349,7 @@ Tổng cộng:                   44 tests  PASS (0 fail)
 2. **Không có ứng dụng di động native**: chỉ có web responsive.
 3. **Chấm tự động giới hạn**: câu trả lời ngắn/tự luận vẫn cần giáo viên chấm tay (AI chỉ hỗ trợ tham khảo đáp án mẫu).
 4. **Phụ thuộc hạ tầng đám mây**: cần Internet; máy chủ AI cần ra được Internet để gọi Gemini.
-5. **Thư mục `supabase/` còn di sản**: thiết kế PostgreSQL cũ chưa được dọn khỏi repository.
-6. **Chưa có kiểm thử tải (load test)**: chưa đánh giá hiệu năng khi nhiều học sinh làm bài đồng thời.
+5. **Chưa có kiểm thử tải (load test)**: chưa đánh giá hiệu năng khi nhiều học sinh làm bài đồng thời.
 
 ### 14.2. Hướng phát triển
 
@@ -2435,7 +2429,6 @@ Tổng cộng:                   44 tests  PASS (0 fail)
 | `security_spec.md` | Đặc tả bảo mật Firestore (bất biến dữ liệu + 12 payload tấn công) |
 | `firestore.rules` | Quy tắc bảo mật Firestore đầy đủ (nguồn chuẩn phân quyền) |
 | `firestore.rules.test.ts` | Kiểm thử 12 payload tấn công |
-| `supabase/migrations/` | Thiết kế backend PostgreSQL trước đây (di sản) |
 | `firebase-blueprint.json` | Bản thiết kế ứng dụng Firebase |
 
 ---
