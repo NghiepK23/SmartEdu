@@ -79,18 +79,11 @@ export function runBuild() {
   const coreName = `core.${shortHash(coreBundle)}.js`;
   const appName = `app.${shortHash(appBundle)}.js`;
 
-  const fbConfigPath = path.join(ROOT, 'firebase-applet-config.json');
+  /* Gói Firebase chỉ chứa thư viện; cấu hình dự án do server phục vụ riêng từ
+     firebase-applet-config.json nên tệp build không bao giờ chứa khóa API. */
   const fbVendorPath = path.join(ROOT, 'js', 'vendor', 'firebase-sdk.min.js');
-  if (fs.existsSync(fbConfigPath)) {
-    const cfg = JSON.parse(fs.readFileSync(fbConfigPath, 'utf8'));
-    const curSdk = fs.existsSync(fbVendorPath) ? fs.readFileSync(fbVendorPath, 'utf8') : '';
-    const inSync = curSdk.includes(`projectId:${JSON.stringify(cfg.projectId || '')}`)
-      && curSdk.includes(`apiKey:${JSON.stringify(cfg.apiKey || '')}`)
-      && curSdk.includes(`authDomain:${JSON.stringify(cfg.authDomain || '')}`)
-      && curSdk.includes(`firestoreDatabaseId:${JSON.stringify(cfg.firestoreDatabaseId || '')}`);
-    if (!inSync) {
-      execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'bundle-firebase.mjs')], { stdio: 'inherit' });
-    }
+  if (!fs.existsSync(fbVendorPath)) {
+    execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'bundle-firebase.mjs')], { stdio: 'inherit' });
   }
 
   const fbBundle = fs.readFileSync(fbVendorPath);

@@ -2,6 +2,10 @@
 node_modules/
 dist/
 
+# Cấu hình Firebase của từng máy (projectId + apiKey): KHÔNG commit.
+# Sao chép firebase-applet-config.example.json -> firebase-applet-config.json rồi điền.
+firebase-applet-config.json
+
 # Biến môi trường và khóa bí mật: KHÔNG đưa lên GitHub
 .env
 .env.*

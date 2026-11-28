@@ -5,13 +5,12 @@ import esbuild from 'esbuild';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
-const configPath = path.join(rootDir, 'firebase-applet-config.json');
 const outFile = path.join(rootDir, 'js', 'vendor', 'firebase-sdk.min.js');
 
-if (!fs.existsSync(configPath)) {
-  throw new Error('Missing firebase-applet-config.json');
-}
-const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+/* Tệp này CHỈ đóng gói thư viện Firebase, không nhúng cấu hình dự án.
+   Cấu hình nằm ở firebase-applet-config.json (gitignore), được server.js phục vụ tại
+   /firebase-applet-config.json và js/03-firebase.js nạp bằng fetch. Nhờ vậy không có
+   khóa API nào nằm trong mã nguồn hay trong tệp build, và git không báo rò rỉ. */
 
 const entrySource = `
 import { initializeApp } from 'firebase/app';
@@ -59,17 +58,11 @@ import {
   deleteObject
 } from 'firebase/storage';
 
-const firebaseConfig = ${JSON.stringify(firebaseConfig)};
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = firebaseConfig.firestoreDatabaseId
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
-const storage = getStorage(app);
-
 const sdk = {
-  firebaseConfig,
-  app,
+  initializeApp,
+  getAuth,
+  getFirestore,
+  getStorage,
   auth,
   db,
   storage,

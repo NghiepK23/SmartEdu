@@ -88,9 +88,12 @@ js/
     16-live.js             Realtime cho chuông thông báo (tự fallback polling)
   vendor/
     firebase-sdk.min.js    Firebase SDK (Auth, Firestore, Storage) ghim sẵn — không phụ thuộc CDN
+                           (chỉ chứa thư viện, KHÔNG nhúng cấu hình dự án hay khóa API)
 tests/
   educmind.test.mjs        Bộ kiểm thử tự động Node.js cho các mô-đun nghiệp vụ
+  secrets.test.mjs         Chặn rò rỉ bí mật (khóa API, .env, PEM) vào git
   grade-config.test.html   Trang kiểm thử cấu hình khối lớp trên trình duyệt
+firebase-applet-config.example.json  Mẫu cấu hình Firebase (không chứa giá trị thật)
 firestore.rules            Quy tắc bảo mật Firestore — nguồn chuẩn cho phân quyền dữ liệu
 firebase-blueprint.json    Bản thiết kế dữ liệu (collections, trường) của ứng dụng
 ```
@@ -99,15 +102,20 @@ Quy ước: tệp **số nhỏ nạp trước**, tệp số lớn có thể dùn
 Muốn đổi dải khối lớp trên giao diện, chỉnh `EDUCMIND_GRADE_MIN` và `EDUCMIND_GRADE_MAX` trong `js/00-grade-config.js`.
 Ràng buộc dữ liệu và phân quyền được áp dụng bằng `firestore.rules` (kèm `security_spec.md`);
 khi đổi dải khối lớp, cần cập nhật quy tắc tương ứng và không sửa quy tắc đã triển khai.
-`js/03-firebase.js` chứa cấu hình Firebase và `EducMindDB` — mọi lệnh đọc/ghi cơ sở dữ
-liệu đều đi qua đối tượng này (mỗi hàm = một truy vấn tới Firestore).
+`js/03-firebase.js` chứa `EducMindDB` — mọi lệnh đọc/ghi cơ sở dữ liệu đều đi qua đối tượng
+này (mỗi hàm = một truy vấn tới Firestore). Cấu hình Firebase **không** nằm trong mã nguồn:
+trình duyệt nạp `GET /firebase-applet-config.json` do `server.js` phục vụ từ tệp cục bộ (đã
+gitignore) rồi mới khởi tạo Firebase.
 
 ## Thiết lập backend Firebase
 
 1. Tạo dự án Firebase và bật **Authentication** (Email/Password), **Firestore** và **Storage**.
-2. Điền cấu hình dự án vào `firebase-applet-config.json` (hoặc `js/00-environment.local.js`
-   cho cấu hình cục bộ). Khóa trong cấu hình Firebase là khóa công khai của trình duyệt;
-   mọi phân quyền do **`firestore.rules`** quyết định.
+2. Sao chép `firebase-applet-config.example.json` thành `firebase-applet-config.json` rồi điền
+   cấu hình dự án (Firebase Console → Project settings → Your apps → SDK setup and
+   configuration). Tệp này **đã nằm trong `.gitignore`** và chỉ được `server.js` phục vụ tại
+   `/firebase-applet-config.json`, nên không có khóa API nào trong mã nguồn hay trong git.
+   Khóa trong cấu hình Firebase là khóa công khai của trình duyệt; mọi phân quyền do
+   **`firestore.rules`** quyết định.
 3. Triển khai quy tắc bảo mật: `firebase deploy --only firestore:rules,storage:rules`
    (hoặc dán nội dung `firestore.rules` vào Firestore → Rules trên Firebase Console).
 4. Trong **Authentication → Settings → Authorized domains**: thêm domain đang chạy
@@ -115,6 +123,21 @@ liệu đều đi qua đối tượng này (mỗi hàm = một truy vấn tới 
 5. Hai thư mục lưu tệp `educmind-resources` (tài liệu bài học) và `educmind-submissions`
    (bài nộp của học sinh) được tạo tự động ở lần tải lên đầu tiên; quy tắc Storage nằm
    trong `firestore.rules`/cấu hình Storage của dự án.
+
+### Vì sao GitHub báo “Google API Key” trong repo?
+
+Firebase web SDK **luôn** cần `apiKey` công khai trong trình duyệt, nên secret scanning của
+GitHub coi chuỗi `AIza…` là bí mật dù nó không phải khóa bí mật. Repo này tránh cảnh báo bằng cách:
+
+- Không commit cấu hình: `firebase-applet-config.json` nằm trong `.gitignore`, chỉ có tệp mẫu
+  `firebase-applet-config.example.json` (giá trị giả) được đưa lên git.
+- `scripts/bundle-firebase.mjs` chỉ đóng gói thư viện, không nhúng cấu hình vào
+  `js/vendor/firebase-sdk.min.js`.
+- `tests/secrets.test.mjs` quét toàn repo và **fail** nếu có khóa Google API, PEM, `.env` hay
+  cấu hình dự án bị commit — chạy trong `npm test`.
+
+Nếu cảnh báo vẫn còn trên GitHub, đó là các cảnh báo cho commit **cũ**: cần thu hồi khóa đã lộ
+và xóa cảnh báo trên trang Security (xem hướng dẫn xử lý bên dưới).
 
 ### Gửi mã xác nhận và đặt lại mật khẩu qua Gmail
 

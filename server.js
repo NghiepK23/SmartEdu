@@ -1723,6 +1723,22 @@ export function createApp(options = {}) {
     }
   });
 
+  /* Cấu hình Firebase (projectId, apiKey của trình duyệt) KHÔNG nằm trong mã nguồn:
+     tệp firebase-applet-config.json đã gitignore và chỉ được phục vụ tại đây. Khóa này
+     là khóa công khai của ứng dụng web (luôn hiển thị với trình duyệt), phân quyền thật
+     nằm ở firestore.rules + Firebase ID token mà server.js kiểm tra. */
+  app.get('/firebase-applet-config.json', (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const cfg = loadFirebaseConfig(rootDir);
+    if (!cfg) {
+      return res.status(503).type('application/json').send(JSON.stringify({
+        error: 'MISSING_FIREBASE_CONFIG',
+        message: 'Chưa có firebase-applet-config.json trên máy chủ. Sao chép firebase-applet-config.example.json thành firebase-applet-config.json rồi điền cấu hình dự án Firebase.',
+      }));
+    }
+    res.type('application/json').send(JSON.stringify(cfg));
+  });
+
   // Provide a safe empty fallback if gitignored local override file is absent
   app.get('/js/00-environment.local.js', (_req, res) => {
     res.set('Cache-Control', 'no-store');

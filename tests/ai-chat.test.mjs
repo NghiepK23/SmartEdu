@@ -9,6 +9,35 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
 
+/* Cấu hình Firebase do server phục vụ tại /firebase-applet-config.json — trong ngữ cảnh
+   VM của test thì fetch giả lập trả về cấu hình mẫu (không có giá trị thật nào ở đây). */
+const FIREBASE_CONFIG_RESPONSE = {
+  ok: true,
+  status: 200,
+  json: async () => ({ projectId: 'demo-project', apiKey: 'AIzaDUMMY-BROWSER-KEY', firestoreDatabaseId: '(default)' }),
+};
+
+/* Runtime Firebase giả: 03-firebase.js khởi tạo Firebase từ cấu hình nạp lúc chạy. */
+function fakeFirebaseRuntime(getIdToken) {
+  return {
+    initializeApp: () => ({ name: '[DEFAULT]' }),
+    getAuth: () => ({ currentUser: { uid: 'u1', email: 'gv@edu.vn', getIdToken } }),
+    getFirestore: () => ({}),
+    getStorage: () => ({}),
+    firestoreApi: {},
+    authApi: { onAuthStateChanged: () => {} },
+  };
+}
+
+/* Chờ 03-firebase.js nạp xong cấu hình và khởi tạo Firebase trong sandbox. */
+async function waitForFirebaseReady(vmMod, ctx) {
+  for (let i = 0; i < 50; i++) {
+    if (vmMod.runInContext('!!firebaseAuth', ctx)) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error('03-firebase.js chưa khởi tạo xong Firebase');
+}
+
 function createChatUnitContext() {
   const noop = () => {};
   const appEl = {
@@ -185,22 +214,20 @@ test('apiRequest sends the ID token in header and body, and retries once with a 
     addEventListener: noop, removeEventListener: noop, toast: noop, render: noop,
     app: { innerHTML: '', addEventListener: noop, querySelector: () => null, querySelectorAll: () => [] },
     fetch: async (url, opts) => {
+      if (String(url).includes('firebase-applet-config.json')) return FIREBASE_CONFIG_RESPONSE;
       seen.push({ url, headers: opts.headers, body: JSON.parse(opts.body) });
       return responses.shift();
     },
   };
   /* 03-firebase.js đọc runtime Firebase từ window.EducMindFirebase. */
   sandbox.window = sandbox;
-  sandbox.EducMindFirebase = {
-    firestoreApi: {},
-    authApi: { onAuthStateChanged: () => {} },
-    auth: { currentUser: { uid: 'u1', email: 'gv@edu.vn', getIdToken: async (force) => { if (force) tokenVersion = 'TOKEN2'; return tokenVersion; } } },
-  };
+  sandbox.EducMindFirebase = fakeFirebaseRuntime(async (force) => { if (force) tokenVersion = 'TOKEN2'; return tokenVersion; });
   sandbox.globalThis = sandbox;
   const ctx = vmMod.createContext(sandbox);
   for (const rel of ['js/00-grade-config.js', 'js/02-state.js', 'js/03-firebase.js']) {
     vmMod.runInContext(fsMod.readFileSync(pathMod.join(root, rel), 'utf8'), ctx, { filename: rel });
   }
+  await waitForFirebaseReady(vmMod, ctx);
   vmMod.runInContext("sess = { userId: 'u1', backend: true }; role = 'T'; DB = { me: { id: 'u1', role: 'TEACHER' } };", ctx);
   const res = await vmMod.runInContext("EducMindDB.aiKeySave('AIzaTestKey0123456789abcdef')", ctx);
 
@@ -229,6 +256,7 @@ test('apiRequest never sends a body with GET/HEAD (browsers reject "Request with
     addEventListener: noop, removeEventListener: noop, toast: noop, render: noop,
     app: { innerHTML: '', addEventListener: noop, querySelector: () => null, querySelectorAll: () => [] },
     fetch: async (url, opts) => {
+      if (String(url).includes('firebase-applet-config.json')) return FIREBASE_CONFIG_RESPONSE;
       /* Mô phỏng đúng lỗi của trình duyệt. */
       const verb = String((opts && opts.method) || 'GET').toUpperCase();
       if ((verb === 'GET' || verb === 'HEAD') && opts && opts.body !== undefined) {
@@ -239,16 +267,13 @@ test('apiRequest never sends a body with GET/HEAD (browsers reject "Request with
     },
   };
   sandbox.window = sandbox;
-  sandbox.EducMindFirebase = {
-    firestoreApi: {},
-    authApi: { onAuthStateChanged: () => {} },
-    auth: { currentUser: { uid: 'u1', email: 'gv@edu.vn', getIdToken: async () => 'TOKEN1' } },
-  };
+  sandbox.EducMindFirebase = fakeFirebaseRuntime(async () => 'TOKEN1');
   sandbox.globalThis = sandbox;
   const ctx = vmMod.createContext(sandbox);
   for (const rel of ['js/00-grade-config.js', 'js/02-state.js', 'js/03-firebase.js']) {
     vmMod.runInContext(fsMod.readFileSync(pathMod.join(root, rel), 'utf8'), ctx, { filename: rel });
   }
+  await waitForFirebaseReady(vmMod, ctx);
   vmMod.runInContext("sess = { userId: 'u1', backend: true }; role = 'T'; DB = { me: { id: 'u1', role: 'TEACHER' }, classId: 'c1' };", ctx);
 
   const status = await vmMod.runInContext('EducMindDB.aiKeyStatus("c1")', ctx);
@@ -273,23 +298,23 @@ test('sendAiChat never crashes with Cannot read properties of null (reading sugg
     localStorage: { getItem: () => null, setItem: noop, removeItem: noop, clear: noop },
     addEventListener: noop, removeEventListener: noop, toast: noop, render: noop,
     app: { innerHTML: '', addEventListener: noop, querySelector: () => null, querySelectorAll: () => [] },
-    fetch: async () => ({
-      ok: true,
-      status: 200,
-      text: async () => '<!doctype html><html><body>Warmup</body></html>',
-    }),
+    fetch: async (url) => {
+      if (String(url).includes('firebase-applet-config.json')) return FIREBASE_CONFIG_RESPONSE;
+      return {
+        ok: true,
+        status: 200,
+        text: async () => '<!doctype html><html><body>Warmup</body></html>',
+      };
+    },
   };
   sandbox.window = sandbox;
-  sandbox.EducMindFirebase = {
-    firestoreApi: {},
-    authApi: { onAuthStateChanged: () => {} },
-    auth: { currentUser: { uid: 'u1', email: 'gv@edu.vn', getIdToken: async () => 'TOKEN1' } },
-  };
+  sandbox.EducMindFirebase = fakeFirebaseRuntime(async () => 'TOKEN1');
   sandbox.globalThis = sandbox;
   const ctx = vmMod.createContext(sandbox);
   for (const rel of ['js/00-grade-config.js', 'js/02-state.js', 'js/03-firebase.js']) {
     vmMod.runInContext(fsMod.readFileSync(pathMod.join(root, rel), 'utf8'), ctx, { filename: rel });
   }
+  await waitForFirebaseReady(vmMod, ctx);
   vmMod.runInContext("sess = { userId: 'u1', backend: true }; role = 'T'; DB = { me: { id: 'u1', role: 'TEACHER' } };", ctx);
 
   const res = await vmMod.runInContext("EducMindDB.sendAiChat({ message: 'Xin chào', include_context: false })", ctx);

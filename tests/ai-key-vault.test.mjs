@@ -5,11 +5,15 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFirebaseConfig } from './fixtures/firebase-config.mjs';
 /* Khoá mã hoá phải có TRƯỚC khi nạp server.js (module đọc biến môi trường lúc khởi tạo).
    Bản clone sạch không có .env nên test phải tự đặt, không phụ thuộc máy đang chạy. */
 if (!(process.env.AI_KEY_ENCRYPTION_KEY || '').trim() || process.env.AI_KEY_ENCRYPTION_KEY.trim().length < 32) {
   process.env.AI_KEY_ENCRYPTION_KEY = 'test-encryption-secret-with-enough-length-1234';
 }
+/* Không mở cổng 3000 thật khi chạy test: mỗi test tự dựng http.createServer(createApp()).
+   Thiếu dòng này, tiến trình test bị giữ sống bởi listener của server.js và `npm test` treo. */
+process.env.EDUCMIND_NO_LISTEN = '1';
 /* Nạp server.js NGAY khi file test bắt đầu, trước mọi lần thay globalThis.fetch:
    module dùng fetch toàn cục lúc chạy, nhưng nạp sớm giúp hành vi ổn định giữa các test. */
 const { createApp } = await import('../server.js');
@@ -44,7 +48,7 @@ function makeIdToken(projectId) {
 }
 
 test('AI key vault: save/status round-trip against a fake Google, ciphertext only', async () => {
-  const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase-applet-config.json'), 'utf8'));
+  const cfg = readFirebaseConfig(ROOT);
   const { token, certPem } = makeIdToken(cfg.projectId);
   const seen = [];
   const fake = http.createServer((req, res) => {
@@ -137,7 +141,7 @@ test('AI key vault: save/status round-trip against a fake Google, ciphertext onl
 });
 
 test('Upstream network failure is reported as 502 UPSTREAM_UNREACHABLE instead of "fetch failed"', async () => {
-  const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase-applet-config.json'), 'utf8'));
+  const cfg = readFirebaseConfig(ROOT);
   const { token } = makeIdToken(cfg.projectId);
   const realFetch = globalThis.fetch;
   /* Khoá mã hoá phải có để đi tới bước gọi Google (máy chủ thật đọc từ .env). */

@@ -466,7 +466,15 @@ async function cancelGoogleOnboarding() {
 }
 
 async function restoreBackendSession() {
-  if (!FirebaseRuntime || !firebaseAuth || backendRecovery) return;
+  /* Cấu hình Firebase do server phục vụ lúc chạy: chờ tới khi nạp xong mới khôi phục phiên. */
+  if (typeof firebaseConfigReady !== 'undefined' && firebaseConfigReady) await firebaseConfigReady;
+  if (!FirebaseRuntime || !firebaseAuth || backendRecovery) {
+    if (!firebaseAuth && !backendRecovery) {
+      authErr = 'Không tải được cấu hình Firebase. Hãy kiểm tra máy chủ phục vụ /firebase-applet-config.json rồi tải lại trang.';
+      if (typeof render === 'function') render();
+    }
+    return;
+  }
   if (firebaseAuth.currentUser) {
     await activateBackendSession(firebaseAuth.currentUser);
     return;

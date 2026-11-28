@@ -2245,6 +2245,7 @@ Hệ thống kiểm thử 12 trường hợp tấn công phải bị từ chối
 | **HTTP Headers** | CSP chặt (`script-src 'self'` + Google domains), `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy` (tắt camera/micro/geolocation…), `frame-ancestors` giới hạn. |
 | **Hạ tầng AI** | Mọi lời gọi ra Google có timeout 15 giây + thử lại 1 lần; lỗi mạng báo 502 `UPSTREAM_UNREACHABLE` kèm câu tiếng Việt thay vì `fetch failed` thô. Trang chẩn đoán `GET /api/health/upstream`. |
 | **Email** | Gmail chỉ thay máy chủ gửi thư (SMTP); Firebase Auth vẫn tạo tài khoản, phát hành/kiểm tra OTP, lưu mật khẩu. Không gửi mật khẩu qua Gmail, không tắt xác nhận email. App Password không lưu trong mã nguồn. |
+| **Cấu hình Firebase** | Không commit `firebase-applet-config.json` (đã gitignore); gói thư viện `js/vendor/firebase-sdk.min.js` chỉ chứa SDK, không nhúng cấu hình. Trình duyệt nạp `GET /firebase-applet-config.json` từ `server.js` lúc chạy; `tests/secrets.test.mjs` chặn mọi khóa Google API/`.env`/PEM bị commit. |
 
 ---
 
@@ -2430,6 +2431,8 @@ Tổng cộng:                   44 tests  PASS (0 fail)
 | `firestore.rules` | Quy tắc bảo mật Firestore đầy đủ (nguồn chuẩn phân quyền) |
 | `firestore.rules.test.ts` | Kiểm thử 12 payload tấn công |
 | `firebase-blueprint.json` | Bản thiết kế ứng dụng Firebase |
+| `firebase-applet-config.example.json` | Mẫu cấu hình Firebase (giá trị giả); tệp cấu hình thật đã gitignore |
+| `tests/secrets.test.mjs` | Kiểm thử chặn rò rỉ bí mật (khóa Google API, `.env`, PEM) vào git |
 
 ---
 
